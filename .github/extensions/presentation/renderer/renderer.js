@@ -4,7 +4,7 @@
 // (optional front matter + body). This script parses the front matter, renders
 // the body with marked, sanitizes the HTML with DOMPurify, turns ```mermaid
 // fences into diagrams, and assembles the themed deck DOM. Logic and styling
-// are ported from the .NET PresentationApp's SlideState.cs so the look matches.
+// are self-contained in this extension (renderer.js + slides.css).
 
 const PLACEHOLDER = [
   "---",
@@ -17,8 +17,8 @@ const PLACEHOLDER = [
 ].join("\n");
 
 // --- front matter ----------------------------------------------------------
-// Mirrors SlideState.SplitFrontMatter: a leading `---` fenced block of
-// `key: value` lines is deck metadata, everything after is the body.
+// Split a leading `---` fenced block of `key: value` deck metadata from the
+// body; everything after the closing `---` is the body.
 function splitFrontMatter(md) {
   const meta = {};
   const text = md.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -51,8 +51,8 @@ function nonEmpty(value) {
 }
 
 // --- emoji shortcodes ------------------------------------------------------
-// Best-effort `:name:` → emoji, mirroring Markdig's UseEmojiAndSmiley for the
-// shortcodes most useful in slides. Applied only to text nodes outside code.
+// Best-effort `:name:` → emoji shortcode support for the shortcodes most
+// useful in slides. Applied only to text nodes outside code.
 const EMOJI = {
   rocket: "\uD83D\uDE80", sparkles: "\u2728", tada: "\uD83C\uDF89",
   fire: "\uD83D\uDD25", star: "\u2B50", star2: "\uD83C\uDF1F",

@@ -1,12 +1,2 @@
-# .NET build artifacts
-[Bb]in/
-[Oo]bj/
-
-# Runtime presentation artifacts (generated while presenting)
-PresentationApp/slides/current.md
-PresentationApp/slides/.render*.md
-PresentationApp/slides/deck.json
-PresentationApp/slides/state.json
-
 # User-specific
 *.user

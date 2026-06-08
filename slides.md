@@ -8,8 +8,8 @@ GitHub Copilot とつくる、ライブなスライド発表
 
 - スライドは **Markdown**（このファイル）に書く
 - Copilot は 1 枚ずつ **小さな Markdown 断片**を生成するだけ
-- **HTML 変換・装飾は .NET 10 / Blazor アプリ**が担当
-- ファイルを上書きすると **自動でスライドが切り替わる** ⚡
+- **HTML 変換・装飾は presentation canvas 拡張機能**が担当
+- 断片を渡すと **自動でスライドが切り替わる** ⚡
 
 ---
 
@@ -26,15 +26,13 @@ GitHub Copilot とつくる、ライブなスライド発表
 
 ## コードもきれいに表示
 
-```csharp
-app.MapGet("/slide", (SlideState s, HttpContext ctx) =>
-{
-    ctx.Response.Headers.CacheControl = "no-store";
-    return Results.Content(s.ReadCurrentHtml(), "text/html");
+```js
+await invokeCanvasAction("presentation", "show_slide", {
+  markdown: "## 次のスライド\n\n- 箇条書きも\n- 自由自在",
 });
 ```
 
-`current.md` を上書きするだけでスライドが入れ替わります。
+`show_slide` に小さな Markdown 断片を渡すだけでスライドが入れ替わります。
 
 ---
 
@@ -42,7 +40,7 @@ app.MapGet("/slide", (SlideState s, HttpContext ctx) =>
 
 1. このリポジトリで Copilot にこう伝える:
    - 「**slides.md に従ってプレゼンしてください**」
-2. ブラウザー canvas にスライドが表示される
+2. canvas にスライドが表示される
 3. あとは選択肢でページを送るだけ 🎉
 
 ---
@@ -51,7 +49,7 @@ app.MapGet("/slide", (SlideState s, HttpContext ctx) =>
 
 ```mermaid
 flowchart LR
-    A[Markdown] --> B[Markdig]
+    A[Markdown] --> B[marked]
     B --> C[Mermaid.js]
     C --> D((図 / SVG))
 ```

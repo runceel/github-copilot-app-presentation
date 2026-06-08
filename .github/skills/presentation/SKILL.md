@@ -40,7 +40,7 @@ total: 6
    ネイティブ canvas の iframe が自動更新
 ```
 
-- スライド切り替えは **`show_slide` アクションに 1 枚分の Markdown 断片を渡すだけ**。`.NET` アプリや `localhost` ポートは不要です。
+- スライド切り替えは **`show_slide` アクションに 1 枚分の Markdown 断片を渡すだけ**。外部サーバーや `localhost` ポートは不要です。
 - レンダリング（HTML 化・装飾・ページ番号・Mermaid 図・絵文字）は **すべて拡張機能側**が担当します。
 - 同時に表示するデッキは 1 つ。1 人での発表を前提とします。
 - 拡張機能は `.github/extensions/presentation/` にあります（project スコープ）。
@@ -101,7 +101,7 @@ flowchart LR
 > 表示中のスライドは拡張機能側でも自動保存されるため、`extensions_reload` などが起きても直近の 1 枚は復元されます。手動のファイル保存は不要です。
 
 ### 4. canvas を開く
-ネイティブ canvas を開きます: `open_canvas`（`canvasId: "presentation"`, `instanceId: "presentation"`）。URL の指定は不要で、拡張機能が表示先を用意します。`.NET` アプリの起動や生存確認は不要です。
+ネイティブ canvas を開きます: `open_canvas`（`canvasId: "presentation"`, `instanceId: "presentation"`）。URL の指定は不要で、拡張機能が表示先を用意します。外部サーバーの起動や生存確認は不要です。
 
 ### 5. 最初のスライドを表示する
 現在 index のスライドを「スライド断片の生成」に従って `show_slide` アクションに渡します。canvas が自動更新されます。

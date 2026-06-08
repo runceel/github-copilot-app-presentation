@@ -19,7 +19,7 @@ canvas iframe（renderer/）
 テーマ付きスライドを表示（更新は自動反映）
 ```
 
-- スライド切り替えは **`show_slide` アクションに小さな Markdown 断片を渡すだけ**。`.NET` アプリや `localhost:5050` は不要です。
+- スライド切り替えは **`show_slide` アクションに小さな Markdown 断片を渡すだけ**。外部サーバーや `localhost` ポートは不要です。
 - ページ送りのロジックはエージェント側（`ask_user`）が担当し、この拡張機能は「現在の1枚」をレンダリングするだけです。
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
 
@@ -38,7 +38,7 @@ canvas iframe（renderer/）
   copilot-extension.json   # gist 共有用マニフェスト
   renderer/
     index.html             # iframe シェル
-    slides.css             # スライドのテーマ（SlideState.cs から移植）
+    slides.css             # スライドのテーマ
     renderer.js            # フロントマター解析 / marked / mermaid / SSE 購読
   vendor/
     marked.min.js          # Markdown レンダラー

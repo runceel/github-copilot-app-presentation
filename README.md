@@ -10,8 +10,6 @@ GitHub Copilot の canvas を使って、Markdown からライブにスライド
 
 プレゼンは **presentation canvas 拡張機能**（`.github/extensions/presentation/`）が表示するため、追加のインストールやサーバー起動は不要です。
 
-> 旧構成の .NET 10 / Blazor アプリ（`PresentationApp/`）も引き続きリポジトリに残しています。そちらを使う場合は [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) が必要です。
-
 ## 使い方
 
 1. このリポジトリを GitHub Copilot アプリで開きます。
