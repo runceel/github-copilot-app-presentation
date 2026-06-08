@@ -169,6 +169,8 @@ flowchart LR
     B -->|投稿データ| V
     V -->|OK| A --> S
     V -->|NG| X[拒否]
+    
+    style X fill:#d83b01,color:#fff,stroke:#a4262c,stroke-width:3px
 ```
 
 - **サーバー側で確認**：検証・認可・レート制限
