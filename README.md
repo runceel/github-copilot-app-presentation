@@ -3,6 +3,7 @@
 GitHub Copilot の canvas を使って、Markdown からライブにスライドプレゼンを行うための環境です。
 スライドは 1 枚ずつ生成され、presentation canvas 拡張機能（Node + marked/mermaid）がネイティブ canvas に表示します。
 **Mermaid 記法の図**や、リモート / ローカル（`assets/`）の**画像挿入**にも対応しています。
+配色は **dark（既定）/ light / microsoft** の 3 テーマから選べ、「マイクロソフトっぽく」などのテイストを伝えると適切なテーマで発表できます。
 
 ## セットアップ
 

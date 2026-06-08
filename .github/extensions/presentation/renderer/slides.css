@@ -1,16 +1,40 @@
-:root{
+/* ===== Themes =====
+   Default (and explicit dark) live on :root; light/microsoft override.
+   data-theme is set on <html> by the renderer from the deck theme. */
+:root,
+:root[data-theme="dark"]{
+  --bg:#0e1117; --fg:#f0f4fa; --muted:#8b95a3; --body:#c9d2dd;
+  --accent:#4ea8ff; --accent-strong:#79c0ff; --accent-soft:rgba(78,168,255,.14); --accent-line:rgba(78,168,255,.4);
+  --surface:#161b22; --code:#1b2330; --code-fg:#a9c7ff; --border:#2a313c;
+  --glow-1:rgba(56,110,190,.22); --glow-2:rgba(120,86,210,.16);
+  --topbar:linear-gradient(90deg,#4ea8ff,#7a5cff);
+  --kicker-mark:linear-gradient(135deg,#4ea8ff,#7a5cff);
+}
+:root[data-theme="light"]{
+  --bg:#ffffff; --fg:#15181f; --muted:#5b6470; --body:#333a44;
+  --accent:#4f46e5; --accent-strong:#4338ca; --accent-soft:#eef2ff; --accent-line:#c7d2fe;
+  --surface:#ffffff; --code:#f3f4f6; --code-fg:#3730a3; --border:#e5e7eb;
+  --glow-1:#eef2ff; --glow-2:#f5f3ff;
+  --topbar:linear-gradient(90deg,#4f46e5,#7c3aed);
+  --kicker-mark:linear-gradient(135deg,#4f46e5,#7c3aed);
+}
+:root[data-theme="microsoft"]{
   --bg:#ffffff; --fg:#201f1e; --muted:#605e5c; --body:#323130;
   --accent:#0078d4; --accent-strong:#106ebe; --accent-soft:#eff6fc; --accent-line:#cfe4f7;
-  --surface:#ffffff; --code:#f3f2f1; --border:#e1dfdd;
+  --surface:#ffffff; --code:#f3f2f1; --code-fg:#0b3a66; --border:#e1dfdd;
+  --glow-1:#eaf3fc; --glow-2:#f1f8ff;
   --ms-red:#f25022; --ms-green:#7fba00; --ms-blue:#00a4ef; --ms-yellow:#ffb900;
+  --topbar:linear-gradient(90deg,
+    #f25022 0 25%, #7fba00 25% 50%, #00a4ef 50% 75%, #ffb900 75% 100%);
+  --kicker-mark:linear-gradient(135deg,var(--accent),var(--accent-strong));
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
 body{
   font-family:"Segoe UI Variable Text","Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic UI",system-ui,sans-serif;
   background:
-    radial-gradient(1100px 720px at 88% -12%, #eaf3fc 0%, rgba(234,243,252,0) 60%),
-    radial-gradient(900px 620px at -10% 112%, #f1f8ff 0%, rgba(241,248,255,0) 55%),
+    radial-gradient(1100px 720px at 88% -12%, var(--glow-1) 0%, transparent 60%),
+    radial-gradient(900px 620px at -10% 112%, var(--glow-2) 0%, transparent 55%),
     var(--bg);
   color:var(--fg);
 }
@@ -18,9 +42,7 @@ body{
       padding:clamp(30px,5.5vh,68px) clamp(40px,6.5vw,104px);
       animation:fade .35s ease both;}
 .deck::before{content:"";position:fixed;top:0;left:0;right:0;height:6px;z-index:2;
-  background:linear-gradient(90deg,
-    var(--ms-red) 0 25%, var(--ms-green) 25% 50%,
-    var(--ms-blue) 50% 75%, var(--ms-yellow) 75% 100%);}
+  background:var(--topbar);}
 @keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion:reduce){.deck{animation:none}}
 .deck>header{flex:0 0 auto;}
@@ -28,7 +50,9 @@ body{
 .kicker{display:inline-flex;align-items:center;gap:.55em;
         color:var(--accent-strong);font-weight:700;letter-spacing:.08em;
         text-transform:uppercase;font-size:clamp(12px,1.6vh,16px);margin-bottom:.55em;}
-.kicker::before{content:"";flex:0 0 auto;width:1.05em;height:1.05em;
+.kicker::before{content:"";flex:0 0 auto;width:1.05em;height:1.05em;border-radius:3px;
+  background:var(--kicker-mark);}
+:root[data-theme="microsoft"] .kicker::before{border-radius:0;
   background:
     linear-gradient(var(--ms-red),var(--ms-red)) left top/47% 47% no-repeat,
     linear-gradient(var(--ms-green),var(--ms-green)) right top/47% 47% no-repeat,
@@ -49,7 +73,7 @@ strong{color:var(--fg);font-weight:700;}
 em{color:var(--accent-strong);font-style:normal;font-weight:600;}
 a{color:var(--accent);text-underline-offset:3px;}
 code{font-family:"Cascadia Code","Cascadia Mono",Consolas,monospace;background:var(--code);
-     border:1px solid var(--border);border-radius:5px;padding:.08em .38em;font-size:.9em;color:#0b3a66;}
+     border:1px solid var(--border);border-radius:5px;padding:.08em .38em;font-size:.9em;color:var(--code-fg);}
 pre{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);
     border-radius:8px;padding:1em 1.2em;overflow:auto;font-size:clamp(14px,2.1vh,22px);line-height:1.5;
     box-shadow:0 2px 10px rgba(0,0,0,.06);}

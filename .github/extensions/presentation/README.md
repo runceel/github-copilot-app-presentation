@@ -22,6 +22,7 @@ canvas iframe（renderer/）
 ```
 
 - **全スライドはプレゼン開始時に `load_deck` で一括登録**します。ページ送りは `goto_slide` にインデックスを渡すだけで、**Markdown の再生成が不要**なため速いです。外部サーバーや `localhost` ポートは不要です。
+- 配色は **dark（既定）/ light / microsoft** の 3 テーマ。`load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。
 - ページ送りのロジックはエージェント側（`ask_user`）が担当し、この拡張機能は登録済みデッキの中から「現在の1枚」をレンダリングするだけです。
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
 
@@ -29,9 +30,9 @@ canvas iframe（renderer/）
 
 | アクション | 入力 | 説明 |
 | --- | --- | --- |
-| `load_deck` | `{ slides: string[], index?: number }` | 全スライドを一括登録し、`index`（既定 0）のスライドを表示する。各要素はフロントマター＋本文 Markdown。戻り値 `{ ok, version, index, total }`。 |
+| `load_deck` | `{ slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft" }` | 全スライドを一括登録し、`index`（既定 0）のスライドを表示する。`theme` でデッキ全体の配色（既定 `dark`）を指定。各要素はフロントマター＋本文 Markdown。戻り値 `{ ok, version, index, total, theme }`。 |
 | `goto_slide` | `{ index: number }` | 登録済みデッキ内で表示スライドを 0 始まりインデックスで切り替える。範囲外は端に丸める。戻り値 `{ ok, version, index, total }`。 |
-| `show_slide` | `{ markdown: string }` | 現在のスライドを1枚だけ差し替える（単発表示・その場限りの差し替え用）。フロントマター（`deck`/`kicker`/`page`/`total`/`title`/`layout`）＋本文 Markdown。 |
+| `show_slide` | `{ markdown: string }` | 現在のスライドを1枚だけ差し替える（単発表示・その場限りの差し替え用）。フロントマター（`deck`/`kicker`/`page`/`total`/`title`/`layout`/`theme`）＋本文 Markdown。`theme` 省略時は現在のデッキテーマを引き継ぐ。 |
 | `reset` | なし | スライドとデッキをクリアして待機プレースホルダーに戻す。 |
 
 ## ファイル構成
@@ -42,7 +43,7 @@ canvas iframe（renderer/）
   copilot-extension.json   # gist 共有用マニフェスト
   renderer/
     index.html             # iframe シェル
-    slides.css             # スライドのテーマ
+    slides.css             # 3 テーマ（dark/light/microsoft）の配色定義
     renderer.js            # フロントマター解析 / marked / mermaid / SSE 購読
   vendor/
     marked.min.js          # Markdown レンダラー

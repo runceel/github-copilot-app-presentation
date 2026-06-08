@@ -73,6 +73,14 @@ function clampIndex(value, total) {
   return i;
 }
 
+// Allowed deck-wide themes; anything else (or unset) falls back to the default.
+const THEMES = new Set(["dark", "light", "microsoft"]);
+const DEFAULT_THEME = "dark";
+function normalizeTheme(value) {
+  const t = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return THEMES.has(t) ? t : DEFAULT_THEME;
+}
+
 let logger = null;
 function log(message, level = "info") {
   try {
@@ -177,6 +185,7 @@ async function persist(inst) {
         markdown: inst.markdown,
         slides: inst.slides,
         index: inst.index,
+        theme: inst.theme,
       }),
       "utf8",
     );
@@ -220,7 +229,7 @@ async function startServer(inst) {
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
-      res.end(JSON.stringify({ version: inst.version, markdown: inst.markdown }));
+      res.end(JSON.stringify({ version: inst.version, markdown: inst.markdown, theme: inst.theme }));
       return;
     }
     if (pathname === "/events") {
@@ -278,6 +287,7 @@ async function ensureInstance(ctx) {
       clients: new Set(),
       assetsRoot: join(repoRoot, "assets"),
       dataFile: dataFileFor(key),
+      theme: DEFAULT_THEME,
     };
     // Rehydrate the last deck (e.g. after extensions_reload) if present.
     try {
@@ -288,6 +298,7 @@ async function ensureInstance(ctx) {
         inst.slides = saved.slides;
       }
       if (typeof saved.index === "number") inst.index = clampIndex(saved.index, inst.slides.length);
+      if (typeof saved.theme === "string") inst.theme = normalizeTheme(saved.theme);
     } catch (_) {
       /* no saved state — start blank */
     }
@@ -312,7 +323,7 @@ const session = await joinSession({
         {
           name: "load_deck",
           description:
-            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片（任意のフロントマター + 本文）の配列を渡すと、デッキを保持して index（既定 0）のスライドを表示する。以降のページ送りは goto_slide で行うと、その都度 Markdown を生成し直さずに済むため速い。",
+            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片（任意のフロントマター + 本文）の配列を渡すと、デッキを保持して index（既定 0）のスライドを表示する。任意の theme（dark/light/microsoft、既定 dark）でデッキ全体の配色を指定できる。以降のページ送りは goto_slide で行うと、その都度 Markdown を生成し直さずに済むため速い。",
           inputSchema: {
             type: "object",
             properties: {
@@ -321,11 +332,17 @@ const session = await joinSession({
                 items: { type: "string" },
                 minItems: 1,
                 description:
-                  "スライド1枚分の Markdown 断片の配列。各要素の先頭に deck/kicker/page/total/title/layout のフロントマターを任意で付けられる。表示順に並べる。",
+                  "スライド1枚分の Markdown 断片の配列。各要素の先頭に deck/kicker/page/total/title/layout/theme のフロントマターを任意で付けられる。表示順に並べる。",
               },
               index: {
                 type: "number",
                 description: "最初に表示するスライドの 0 始まりインデックス（省略時は 0）。",
+              },
+              theme: {
+                type: "string",
+                enum: ["dark", "light", "microsoft"],
+                description:
+                  "デッキ全体の配色テーマ。dark（既定・ダーク）/ light（明るい中立）/ microsoft（Fluent 配色）。省略時は dark。ユーザーがテーマに関わるテイストを伝えたら適切な値を選ぶ。",
               },
             },
             required: ["slides"],
@@ -352,12 +369,14 @@ const session = await joinSession({
             }
             inst.slides = slides.slice();
             inst.index = clampIndex(ctx.input?.index ?? 0, inst.slides.length);
+            inst.theme = normalizeTheme(ctx.input?.theme);
             await applyDeckSlide(inst);
             return {
               ok: true,
               version: inst.version,
               index: inst.index,
               total: inst.slides.length,
+              theme: inst.theme,
             };
           },
         },
@@ -413,7 +432,7 @@ const session = await joinSession({
               markdown: {
                 type: "string",
                 description:
-                  "表示するスライド1枚分の Markdown。先頭に `---` で囲んだ deck/kicker/page/total/title/layout のフロントマターを任意で付けられる。",
+                  "表示するスライド1枚分の Markdown。先頭に `---` で囲んだ deck/kicker/page/total/title/layout/theme のフロントマターを任意で付けられる（theme 省略時は現在のデッキテーマを引き継ぐ）。",
               },
             },
             required: ["markdown"],
@@ -452,6 +471,7 @@ const session = await joinSession({
             inst.markdown = "";
             inst.slides = [];
             inst.index = 0;
+            inst.theme = DEFAULT_THEME;
             inst.version += 1;
             broadcast(inst);
             await persist(inst);

@@ -50,6 +50,24 @@ function nonEmpty(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+// --- themes ----------------------------------------------------------------
+// The deck theme is chosen by the agent (load_deck `theme`) and delivered via
+// /state; an individual slide may override it with a `theme:` front-matter key.
+// Anything unrecognized falls back to the default so a slide is never unstyled.
+const THEMES = new Set(["dark", "light", "microsoft"]);
+const DEFAULT_THEME = "dark";
+const MERMAID_THEME = { dark: "dark", light: "default", microsoft: "neutral" };
+let deckTheme = DEFAULT_THEME;
+// Bumped on every render so a late mermaid finish from a previous slide can't
+// reveal a newer, still-rendering one.
+let renderToken = 0;
+let lastMermaidTheme = null;
+
+function normalizeTheme(value) {
+  const t = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return THEMES.has(t) ? t : DEFAULT_THEME;
+}
+
 // --- emoji shortcodes ------------------------------------------------------
 // Best-effort `:name:` → emoji shortcode support for the shortcodes most
 // useful in slides. Applied only to text nodes outside code.
@@ -101,15 +119,24 @@ function applyEmojiShortcodes(root) {
 // --- mermaid ---------------------------------------------------------------
 // Render every <pre class="mermaid"> in `scope` to SVG. Resilient: a slide with
 // no diagrams, a missing library, or an invalid diagram must never leave the
-// slide blank, so the body is always revealed in the end.
-function runMermaid(scope) {
-  const reveal = () => document.body.classList.remove("mermaid-loading");
+// slide blank, so the body is always revealed in the end. The mermaid theme is
+// matched to the slide theme, re-initialized only when it actually changes.
+function runMermaid(scope, theme, token) {
+  // Only the latest render may lift the loading veil; a stale finish is ignored.
+  const reveal = () => {
+    if (token === renderToken) document.body.classList.remove("mermaid-loading");
+  };
   const nodes = scope.querySelectorAll("pre.mermaid, .mermaid");
   if (!nodes.length || !window.mermaid) {
     reveal();
     return;
   }
   try {
+    const wanted = MERMAID_THEME[theme] || "neutral";
+    if (wanted !== lastMermaidTheme) {
+      window.mermaid.initialize({ startOnLoad: false, theme: wanted, securityLevel: "strict" });
+      lastMermaidTheme = wanted;
+    }
     Promise.resolve(window.mermaid.run({ nodes }))
       .catch((e) => console.error("Mermaid render failed", e))
       .finally(reveal);
@@ -126,6 +153,11 @@ function renderSlide(markdown) {
 
   const titleSlide = (meta.layout || "").toLowerCase() === "title";
   document.title = meta.title || meta.deck || "Slide";
+
+  // A slide-level `theme:` overrides the deck theme; set it before building the
+  // DOM so the new slide never flashes the previous theme's colors.
+  const theme = normalizeTheme(meta.theme || deckTheme);
+  document.documentElement.setAttribute("data-theme", theme);
 
   const deck = document.createElement("div");
   deck.className = titleSlide ? "deck title-slide" : "deck";
@@ -180,9 +212,10 @@ function renderSlide(markdown) {
     deck.appendChild(footer);
   }
 
+  const token = ++renderToken;
   document.body.classList.add("mermaid-loading");
   document.getElementById("stage").replaceChildren(deck);
-  runMermaid(bodyEl);
+  runMermaid(bodyEl, theme, token);
 }
 
 // --- live update -----------------------------------------------------------
@@ -195,6 +228,7 @@ async function fetchState() {
   const res = await fetch("./state", { cache: "no-store" });
   if (!res.ok) return;
   const data = await res.json();
+  if (typeof data.theme === "string") deckTheme = normalizeTheme(data.theme);
   if (typeof data.version === "number" && data.version === currentVersion) return;
   currentVersion = typeof data.version === "number" ? data.version : currentVersion;
   renderSlide(typeof data.markdown === "string" ? data.markdown : "");
