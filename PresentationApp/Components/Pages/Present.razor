@@ -1,0 +1,19 @@
+@page "/"
+@rendermode InteractiveServer
+@implements IDisposable
+@inject SlideState State
+
+<div class="stage">
+    <iframe class="slide-frame"
+            src="@($"/slide?v={State.Version}")"
+            title="slide"
+            sandbox="allow-scripts allow-popups allow-forms"></iframe>
+</div>
+
+@code {
+    protected override void OnInitialized() => State.Changed += OnSlideChanged;
+
+    private void OnSlideChanged() => _ = InvokeAsync(StateHasChanged);
+
+    public void Dispose() => State.Changed -= OnSlideChanged;
+}
