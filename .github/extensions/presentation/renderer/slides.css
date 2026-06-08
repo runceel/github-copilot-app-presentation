@@ -40,11 +40,11 @@
     #f25022 0 25%, #7fba00 25% 50%, #00a4ef 50% 75%, #ffb900 75% 100%);
   --kicker-mark:linear-gradient(135deg,var(--accent),var(--accent-strong));
   --cover-bg:
-    radial-gradient(1200px 760px at 50% 32%, #d6ecfb 0%, transparent 70%),
-    linear-gradient(160deg,#eff6fc 0%,#ffffff 58%);
+    radial-gradient(1100px 720px at 50% 26%, #9fd0f4 0%, transparent 72%),
+    linear-gradient(160deg,#bfe1fb 0%,#daeefc 100%);
   --closing-bg:
-    radial-gradient(1100px 720px at 50% 66%, #fde8d6 0%, transparent 70%),
-    linear-gradient(200deg,#ffffff 42%,#fff4ea 100%);
+    radial-gradient(1100px 720px at 50% 74%, #ffc492 0%, transparent 72%),
+    linear-gradient(200deg,#ffe7d1 0%,#ffd4a8 100%);
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
