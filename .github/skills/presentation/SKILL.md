@@ -1,16 +1,16 @@
 ---
 name: presentation
-description: 'Markdown ファイルを使って GitHub Copilot の canvas でスライドプレゼンを行うためのスキル。「slides.md に従ってプレゼンして」「プレゼンを始めて」「このスライドで発表して」など、Markdown を元にスライドを 1 枚ずつ表示しながら発表を進めたいときに使う。元 Markdown のページが自然言語の文章（段落主体）のときは、AI がページごとに自動判定して見出し＋箇条書きのスライド形に要約・整形して表示する。プレゼン開始時に全スライドをまとめて生成し load_deck で一括登録するので、ページ送りは canvas 内のボタン（◀ ▶）・矢印キー・スライド一覧（☰）で完結する（agent の ask_user ループは不要）。スライドは presentation canvas 拡張機能（Node + marked/mermaid）がネイティブ canvas にレンダリングする。Use when the user wants to give a slide presentation driven by a markdown file and shown in the canvas.'
+description: 'Markdown ファイルを使って GitHub Copilot の canvas でスライドプレゼンを行うためのスキル。「slides.md に従ってプレゼンして」「プレゼンを始めて」「このスライドで発表して」など、Markdown を元にスライドを 1 枚ずつ表示しながら発表を進めたいときに使う。元 Markdown のページが自然言語の文章（段落主体）のときは、AI がページごとに自動判定して見出し＋箇条書きのスライド形に要約・整形して表示する。プレゼン開始時に全スライドをまとめて生成し、canvas を開くときに open の input（slides）へ一括で渡すので最初からスライドが表示され（プレースホルダーを挟まない）、ページ送りは canvas 内のボタン（◀ ▶）・矢印キー・スライド一覧（☰）で完結する（agent の ask_user ループは不要）。発表途中の差し替えは load_deck で行う。スライドは presentation canvas 拡張機能（Node + marked/mermaid）がネイティブ canvas にレンダリングする。Use when the user wants to give a slide presentation driven by a markdown file and shown in the canvas.'
 ---
 
 # presentation スキル
 
-Markdown ファイルを元に、**プレゼン開始時に全スライド分の「小さな Markdown 断片」をまとめて生成し、`load_deck` アクションで一括登録**して presentation canvas 拡張機能に表示するスキルです。**登録後のページ送り（次へ / 前へ / 一覧）は canvas（iframe）内のボタン・キーボードだけで完結**するので、agent はスライドを送るための `ask_user` ループを回す必要がありません。
+Markdown ファイルを元に、**プレゼン開始時に全スライド分の「小さな Markdown 断片」をまとめて生成し、canvas を開くときに `open` の `input`（`slides`）へ一括で渡して**最初から presentation canvas 拡張機能に表示するスキルです（「スライド未読込」のプレースホルダーを挟みません）。**登録後のページ送り（次へ / 前へ / 一覧）は canvas（iframe）内のボタン・キーボードだけで完結**するので、agent はスライドを送るための `ask_user` ループを回す必要がありません。発表途中で内容やテーマを差し替えたいときだけ `load_deck` を呼びます。
 
 ## いちばん大事な原則 ⚡
 
 1. **あなた（生成 AI）が書くのは、各スライド 1 枚分の「小さな Markdown 断片」だけ**です。HTML・CSS・テーマ・レイアウト・ページ番号・アニメーションは**すべて拡張機能側（marked）が担当**します。フル HTML を生成しないこと。
-2. **全スライドの生成は、最初にプレゼンを依頼されたときに一度だけ**まとめて行い、`load_deck` で登録します。**ページ送りのたびに Markdown を生成し直さない**こと。
+2. **全スライドの生成は、最初にプレゼンを依頼されたときに一度だけ**まとめて行い、`open_canvas` の `input`（`slides`）で一括登録します（発表途中で内容やテーマを変えるときだけ `load_deck`）。**ページ送りのたびに Markdown を生成し直さない**こと。
 3. **ページ送りは canvas 内の操作で完結**します。`load_deck` で登録したあとは、ユーザーが canvas 内の **◀ / ▶ ボタン**、**矢印キー（← →）**、**スライド一覧（☰）**で自由に移動できます。agent が `ask_user` でページ送りループを回す必要はありません。
 
 スライド 1 枚は、せいぜいこの程度の Markdown です:
@@ -28,16 +28,16 @@ total: 6
 - 箇条書き 2
 ```
 
-この断片を**全ページ分まとめて配列**にして `load_deck` に渡せば、デッキが登録され最初のスライドが表示されます。あとのページ送りは canvas 内の操作（◀ ▶・矢印キー・☰ 一覧）に任せられます。
+この断片を**全ページ分まとめて配列**にして、`open_canvas` の `input`（`slides`）に渡せば、canvas を開いた瞬間に最初のスライドが表示されます。あとのページ送りは canvas 内の操作（◀ ▶・矢印キー・☰ 一覧）に任せられます。
 
 ## 仕組み
 
 ```
 プレゼン開始時（1 回だけ）
   あなた → 全スライド分の小さな Markdown 断片の配列を生成
-                 │ invoke_canvas_action("load_deck", { slides: [...] })
+                 │ open_canvas("presentation", { input: { slides: [...] } })
                  ▼
-   拡張機能がデッキを保持し、先頭スライドを表示
+   拡張機能が open 時にデッキを保持し、最初から先頭スライドを表示
 
 ページ送り（canvas 内で完結）
   ユーザー → ◀ / ▶ ボタン・矢印キー・☰ 一覧 を操作
@@ -49,16 +49,18 @@ total: 6
    ネイティブ canvas の iframe が自動更新（agent の操作不要）
 ```
 
-- **全スライドは最初に 1 回だけ生成**して `load_deck` で登録します。以降のページ送りは canvas 側が担当するため、**Markdown の再生成も agent の操作も不要**です。
+- **全スライドは最初に 1 回だけ生成**して `open_canvas` の `input` で登録します（発表途中の差し替えは `load_deck`）。以降のページ送りは canvas 側が担当するため、**Markdown の再生成も agent の操作も不要**です。
 - レンダリング（HTML 化・装飾・ページ番号・Mermaid 図・絵文字）と**ナビゲーション UI**は **すべて拡張機能側**が担当します。外部サーバーや `localhost` ポートは不要です。
 - 同時に表示するデッキは 1 つ。1 人での発表を前提とします。
 - 拡張機能は `.github/extensions/presentation/` にあります（project スコープ）。
 
 ## 主なアクション
 
+> **プレゼンの開始は、`open_canvas`（`canvasId: "presentation"`）の `input` に `slides`（必要なら `index` / `theme`）を渡してデッキごと開く**のが基本です。こうすると canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。下表のアクションは、開始後の操作・更新に使います。
+
 | アクション | 用途 |
 | --- | --- |
-| `load_deck` | プレゼン全体を一括登録する。`slides`（各スライド 1 枚分の Markdown 断片の配列）、任意の `index`（最初に表示する 0 始まりインデックス、既定 0）、任意の `theme`（デッキ全体の配色テーマ、`dark`/`light`/`microsoft`、既定 `dark`）を渡す。**プレゼン開始時に 1 回だけ**呼ぶ。 |
+| `load_deck` | 登録済みデッキを差し替える / 再ロードする。`slides`（各スライド 1 枚分の Markdown 断片の配列）、任意の `index`（最初に表示する 0 始まりインデックス、既定 0）、任意の `theme`（デッキ全体の配色テーマ、`dark`/`light`/`microsoft`、既定 `dark`）を渡す。**発表途中で内容やテーマを変える**ときに使う（開始時は通常 `open` の `input` で渡す）。 |
 | `goto_slide` | 登録済みデッキ内で表示スライドを切り替える。`index`（0 始まり）を渡す。範囲外は端に丸められる。**通常のページ送りは canvas 内で行われるため不要**だが、ユーザーがチャットで「3 ページ目に飛んで」のように特定ページを指定したときに使う。 |
 | `show_slide` | スライドを 1 枚だけ差し替える。デッキ未登録での単発表示や、その場限りの差し替え用。通常のプレゼンでは使わない。 |
 | `reset` | スライドとデッキをクリアして待機表示に戻す。 |
@@ -141,28 +143,27 @@ flowchart LR
 ### 3. 全スライドの Markdown 断片を一括生成する
 **ここがプレゼン開始時の主作業**です。パースした各ページについて、「スライド断片の生成」のルールに従って**全ページ分の Markdown 断片を生成**し、表示順に並べた**配列**を作ります。各断片には `page` / `total` のフロントマターを正しい値で埋め込みます（`total` は総スライド数、`page` はそのスライドの 1 始まり番号）。
 
-このとき、ユーザーの依頼に**テーマに関わるテイスト**があれば「テーマの選び方」に従って `dark` / `light` / `microsoft` のどれかを決めておき、次の手順 5 で `load_deck` の `theme` に渡します（言及がなければ `dark`）。テーマは各スライドの front matter には書かず、デッキ単位で 1 回指定します。
+このとき、ユーザーの依頼に**テーマに関わるテイスト**があれば「テーマの選び方」に従って `dark` / `light` / `microsoft` のどれかを決めておき、次の手順 4 で `open` の `input` の `theme` に渡します（言及がなければ `dark`）。テーマは各スライドの front matter には書かず、デッキ単位で 1 回指定します。
 
 > この一括生成は**プレゼン開始時に一度だけ**行います。あとのページ送りでは断片を作り直しません。
 > スライド一覧（☰）のタイトルは canvas 側が各断片から自動生成するため、agent が `titles` を会話メモリに保持する必要はありません。現在位置の管理も canvas（拡張機能）が行います。
 
-### 4. canvas を開く
-ネイティブ canvas を開きます: `open_canvas`（`canvasId: "presentation"`, `instanceId: "presentation"`）。URL の指定は不要で、拡張機能が表示先を用意します。外部サーバーの起動や生存確認は不要です。
+### 4. canvas をデッキごと開く（最初からスライドを表示）
+手順 3 で作った配列を、**`open_canvas` の `input` に渡してネイティブ canvas を開きます**。これで canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。`open_canvas` を 1 回呼ぶだけです:
 
-### 5. デッキを一括登録して最初のスライドを表示する
-手順 3 で作った配列を `load_deck` アクションに渡します。`invoke_canvas_action` を 1 回呼ぶだけです:
-
+- `canvasId`: `"presentation"`
 - `instanceId`: `"presentation"`
-- `actionName`: `"load_deck"`
 - `input`: `{ "slides": ["<スライド1>", "<スライド2>", ...], "index": 0, "theme": "dark" }`（`index` は省略可・既定 0、`theme` は省略可・既定 `dark`。手順 3 で決めたテーマを渡す）
 
-これでデッキが登録され、最初のスライドが canvas に表示されます。**以降のページ送りは canvas 内の操作で完結する**ので、agent は通常それ以上の操作をしません（手順 6 を参照）。
+URL の指定は不要で、拡張機能が表示先を用意します。外部サーバーの起動や生存確認は不要です。これでデッキが登録され、最初のスライドが canvas に表示されます。**以降のページ送りは canvas 内の操作で完結する**ので、agent は通常それ以上の操作をしません（次の手順 5 を参照）。
 
-> ⚠️ **`input` は JSON です。** 本文に半角ダブルクォート `"` やバックスラッシュ `\` を含めるときは、必ず `\"` / `\\` にエスケープしてください（下の「JSON 入力の注意」を必ず参照）。素の `"` が 1 つでも混ざると `load_deck` 全体が失敗します。
+> 既に開いている canvas を前面に出したいだけのとき（再フォーカス）は、`input` を**付けずに** `open_canvas` を呼びます。同じデッキで `input` を付け直しても拡張機能側で現在のスライド位置は維持されますが、無用な再登録を避けるため再フォーカス時は `input` を省略してください。
 
-### ⚠️ JSON 入力の注意（最重要・load_deck 失敗の最頻出原因）
+> ⚠️ **`input` は JSON です。** 本文に半角ダブルクォート `"` やバックスラッシュ `\` を含めるときは、必ず `\"` / `\\` にエスケープしてください（下の「JSON 入力の注意」を必ず参照）。素の `"` が 1 つでも混ざると `open`（デッキ登録）全体が失敗します。
 
-`invoke_canvas_action` の `input`（`load_deck` の `slides` 配列要素、`show_slide` の `markdown`）は、**JSON 文字列として渡されます**。つまり、あなたが書く**スライド本文の Markdown はすべて JSON の文字列の中身**になります。ここで JSON のエスケープを誤ると、`input` が壊れてアクションに正しく渡らず、次のようなエラーで**デッキ登録ごと失敗**します。
+### ⚠️ JSON 入力の注意（最重要・デッキ登録失敗の最頻出原因）
+
+`open` の `input`（`slides` 配列要素）や `invoke_canvas_action` の `input`（`load_deck` の `slides` 配列要素、`show_slide` の `markdown`）は、**JSON 文字列として渡されます**。つまり、あなたが書く**スライド本文の Markdown はすべて JSON の文字列の中身**になります。ここで JSON のエスケープを誤ると、`input` が壊れて正しく渡らず、次のようなエラーで**デッキ登録ごと失敗**します。
 
 ```
 CanvasInputInvalidError: Invalid input for action "load_deck" ... (root): must be object
@@ -201,8 +202,8 @@ CanvasInputInvalidError: Invalid input for action "load_deck" ... (root): must b
 
 > どちらでも表示は問題ありません。**まず `「」`/`“”` への置き換えを優先**し、どうしても素の `"` を出したいときだけ `\"` でエスケープしてください。
 
-### 6. ページ送りは canvas 内で完結する
-`load_deck` を呼んだら、**ページ送りはユーザーが canvas 内で直接操作**します。agent が `ask_user` でループを回す必要はありません。canvas には次の操作 UI が用意されています:
+### 5. ページ送りは canvas 内で完結する
+canvas をデッキごと開いたら、**ページ送りはユーザーが canvas 内で直接操作**します。agent が `ask_user` でループを回す必要はありません。canvas には次の操作 UI が用意されています:
 
 - **◀ / ▶ ボタン**（画面下中央のバー）… 前へ / 次へ。端ではボタンが無効化されます。
 - **キーボード** … `→` `PageDown` `Space` = 次へ、`←` `PageUp` = 前へ、`Home` / `End` = 先頭 / 末尾、`O` または `Esc` = スライド一覧の開閉。
@@ -210,7 +211,7 @@ CanvasInputInvalidError: Invalid input for action "load_deck" ... (root): must b
 
 > キーボード操作は iframe にフォーカスがあるときに効きます。canvas をクリックするとフォーカスが移ります。確実なのはボタン操作です。
 
-`load_deck` 直後の agent の案内例:
+プレゼン開始直後の agent の案内例:
 
 > プレゼンを開始しました。スライド送りは canvas 内の **◀ ▶ ボタン**または**矢印キー（← →）**で操作できます。全体は **☰**（または `O` キー）で一覧表示できます。
 
@@ -222,14 +223,14 @@ CanvasInputInvalidError: Invalid input for action "load_deck" ... (root): must b
 #### 内容そのものを変えたいとき
 元 Markdown を編集した・スライドを差し替えたいなど**内容自体**を変える場合のみ、`load_deck` を新しい `slides`（必要なら `index` / `theme`）で呼び直してデッキを更新します。
 
-### 7. 終了処理
+### 6. 終了処理
 - 発表が終わったら、その旨を伝えます。ページ送りループは無いので、特別な終了操作は不要です。
 - canvas はそのまま残しておけます。クリアしたい場合は `reset` アクションを呼ぶと待機表示に戻ります。
 - 停止すべき外部プロセスや一時ファイルはありません。
 
-## スライド断片の生成（load_deck に渡す配列の各要素）
+## スライド断片の生成（open / load_deck に渡す配列の各要素）
 
-各スライドは、フロントマター + 本文 Markdown の**小さなテキスト**です。手順 3 でこれを**全ページ分**作り、配列にまとめて `load_deck` の `slides` 入力に渡します。
+各スライドは、フロントマター + 本文 Markdown の**小さなテキスト**です。手順 3 でこれを**全ページ分**作り、配列にまとめて `open` の `input`（開始時）または `load_deck`（再ロード時）の `slides` 入力に渡します。
 
 配列の各要素はこの程度の Markdown です:
 
@@ -247,7 +248,7 @@ total: 6
 - だから切り替えが **速い** ⚡
 ```
 
-> ファイルへの書き込みは不要です。`load_deck` でデッキ全体を保持し、`goto_slide` でその中を移動するだけなので、画面が真っ白になることはありません。デッキは拡張機能側でも自動保存され、`extensions_reload` などが起きても復元されます。
+> ファイルへの書き込みは不要です。`open`（または `load_deck`）でデッキ全体を保持し、`goto_slide` でその中を移動するだけなので、画面が真っ白になることはありません。デッキは拡張機能側でも自動保存され、`extensions_reload` などが起きても復元されます。
 > 単発でその場限りの 1 枚を出したいときだけ `show_slide`（`input: { markdown }`）を使えますが、通常のプレゼンでは使いません。
 
 ### 元 Markdown とのマッピング
@@ -309,13 +310,13 @@ total: 8
 > 文章を箇条書きへ落とすときは、原文の段落の順序と論点を保つこと。要点を選び、説明文を短いフレーズに言い換えるだけで、新しい内容は加えない。
 
 ## 注意・トラブルシューティング
-- **`load_deck` / `show_slide` が `(root): must be object`（`CanvasInputInvalidError` / `Invalid input`）を返すとき**: スキーマ違反のように見えても、**原因はほぼ常に `input` の JSON が壊れていること**で、**本文中の未エスケープ `"` が最頻出**です。対処:
+- **`open`（`input`）/ `load_deck` / `show_slide` が `(root): must be object`（`CanvasInputInvalidError` / `Invalid input`）を返すとき**: スキーマ違反のように見えても、**原因はほぼ常に `input` の JSON が壊れていること**で、**本文中の未エスケープ `"` が最頻出**です。対処:
   1. スライド本文をスキャンし、素の半角 `"` や `\` を探す → `「」`/`“”` へ置き換える（推奨）か、`\"` / `\\` にエスケープする（→「JSON 入力の注意」参照）。
-  2. 不安なときは、まず**1 枚だけの最小 `load_deck`**（例: `{ "slides": ["# テスト"] }`）で canvas の疎通を確認してから、全デッキを送り直す。
+  2. 不安なときは、まず**1 枚だけの最小デッキ**（例: `open_canvas` の `input: { "slides": ["# テスト"] }`）で canvas の疎通を確認してから、全デッキを送り直す。
   - 補足: `goto_slide` は `{ "index": n }` だけで本文を含まないため、このエラーは起きません。
-- canvas が更新されないとき: `load_deck` / `goto_slide`（または `show_slide`）がエラーなく `{ ok: true, version, ... }` を返しているか確認。表示が崩れたときは canvas の ◀ ▶ で前後のスライドへ移動すると再描画されます。それでも崩れる場合は `open_canvas`（`canvasId: "presentation"`, `instanceId: "presentation"`）を再実行して開き直す。
+- canvas が更新されないとき: `open`（`input`）/ `load_deck` / `goto_slide`（または `show_slide`）がエラーなく `{ ok: true, version, ... }`（`open` は `{ url }`）を返しているか確認。表示が崩れたときは canvas の ◀ ▶ で前後のスライドへ移動すると再描画されます。それでも崩れる場合は `open_canvas`（`canvasId: "presentation"`, `instanceId: "presentation"`）を再実行して開き直す。
 - canvas のボタンやキーが効かないとき: まず canvas をクリックして iframe にフォーカスを当てる（キーボード操作はフォーカスが必要）。ボタンが無効化されているのは先頭/末尾スライドにいるため（仕様）。それでもダメなら canvas を開き直す。
-- 「デッキ未登録」エラー（`goto_slide` が `no_deck` を返す）のとき: 先に `load_deck` でスライド配列を登録する。
+- 「デッキ未登録」エラー（`goto_slide` が `no_deck` を返す）のとき: 先に `open` の `input`（または `load_deck`）でスライド配列を登録する。
 - 拡張機能が見つからない／アクションが無いとき: `.github/extensions/presentation/` が存在するか確認し、必要なら拡張機能を再読み込みする。canvas 一覧に `presentation` が出ていれば利用可能。
 - 画像が出ないとき: ローカル画像はリポジトリ直下の `assets/` に置き、`/assets/...` の絶対パスで参照しているか確認する。
 - Mermaid 図が出ないとき: 記法の誤りがあってもスライドは空白にならず、他の本文はそのまま表示される。記法を見直して再送する。

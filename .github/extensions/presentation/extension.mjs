@@ -228,6 +228,18 @@ async function applyDeckSlide(inst) {
   schedulePersist(inst);
 }
 
+// Replace the whole deck (slides + start position + theme) and show the target
+// slide. Shared by the `load_deck` action and the `open` handler so both paths
+// populate instance state identically. Callers must validate `slides` (a
+// non-empty array of strings) before calling.
+async function applyDeck(inst, { slides, index, theme }) {
+  inst.slides = slides.slice();
+  inst.index = clampIndex(index ?? 0, inst.slides.length);
+  inst.theme = normalizeTheme(theme);
+  inst.deckVersion += 1;
+  await applyDeckSlide(inst);
+}
+
 // Move to targetIndex within the loaded deck. Returns whether the visible slide
 // actually changed: navigating "past" an edge while already on a deck slide is
 // a no-op (no version bump / re-render / disk write), but re-selecting the same
@@ -475,7 +487,31 @@ const session = await joinSession({
       id: "presentation",
       displayName: "Presentation",
       description:
-        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。load_deck で全スライドを一括登録すると、以降のページ送り（◀ ▶・矢印キー・スライド一覧）は canvas 内の操作で完結する。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替えることもできる。",
+        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。open 時に slides/index/theme を渡すと最初からデッキを表示できる（プレースホルダーを挟まない）。発表途中の再ロードや差し替えは load_deck で行う。以降のページ送り（◀ ▶・矢印キー・スライド一覧）は canvas 内の操作で完結する。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替えることもできる。",
+      inputSchema: {
+        type: "object",
+        properties: {
+          slides: {
+            type: "array",
+            items: { type: "string" },
+            minItems: 1,
+            description:
+              "スライド1枚分の Markdown 断片の配列。open と同時に渡すとデッキを登録し、最初のスライドを即座に表示する（プレースホルダーを挟まない）。各要素の先頭に deck/kicker/page/total/title/layout/theme のフロントマターを任意で付けられる。表示順に並べる。",
+          },
+          index: {
+            type: "integer",
+            minimum: 0,
+            description: "最初に表示するスライドの 0 始まりインデックス（省略時は 0）。",
+          },
+          theme: {
+            type: "string",
+            enum: ["dark", "light", "microsoft"],
+            description:
+              "デッキ全体の配色テーマ。dark（既定・ダーク）/ light（明るい中立）/ microsoft（Fluent 配色）。省略時は dark。",
+          },
+        },
+        additionalProperties: false,
+      },
       actions: [
         {
           name: "load_deck",
@@ -524,11 +560,11 @@ const session = await joinSession({
                 "presentation canvas is not open; open it before calling load_deck",
               );
             }
-            inst.slides = slides.slice();
-            inst.index = clampIndex(ctx.input?.index ?? 0, inst.slides.length);
-            inst.theme = normalizeTheme(ctx.input?.theme);
-            inst.deckVersion += 1;
-            await applyDeckSlide(inst);
+            await applyDeck(inst, {
+              slides,
+              index: ctx.input?.index,
+              theme: ctx.input?.theme,
+            });
             return {
               ok: true,
               version: inst.version,
@@ -642,6 +678,36 @@ const session = await joinSession({
       ],
       open: async (ctx) => {
         const inst = await ensureInstance(ctx);
+        // Apply any deck passed to open *before* returning the url. The renderer
+        // only starts after open resolves, so its first /state fetch already
+        // sees the first slide and the "waiting" placeholder never flashes.
+        const input = ctx.input;
+        if (input && typeof input === "object" && "slides" in input) {
+          const slides = input.slides;
+          if (
+            !Array.isArray(slides) ||
+            slides.length === 0 ||
+            !slides.every((s) => typeof s === "string")
+          ) {
+            throw new CanvasError(
+              "invalid_input",
+              "slides must be a non-empty array of strings when provided to open",
+            );
+          }
+          // Idempotency guard: re-opening (focusing) a canvas that already holds
+          // the same deck must not reset the user's current slide back to 0.
+          // Only (re)load when there is no deck yet or the deck actually changed.
+          const sameDeck =
+            inst.slides.length === slides.length &&
+            inst.slides.every((s, i) => s === slides[i]);
+          if (inst.slides.length === 0 || !sameDeck) {
+            await applyDeck(inst, {
+              slides,
+              index: input.index,
+              theme: input.theme,
+            });
+          }
+        }
         return { title: "Presentation", url: inst.url };
       },
       onClose: async (ctx) => {
