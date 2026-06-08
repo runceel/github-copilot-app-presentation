@@ -1,13 +1,16 @@
 // Extension: presentation
 // Markdown スライドをネイティブ canvas に表示するプレゼン拡張機能。
 //
-// The agent drives the deck by calling the `show_slide` action with a small
-// markdown fragment (optional front matter + body) — one slide at a time. Each
-// open canvas instance gets its own loopback HTTP server that serves a tiny
-// iframe shell (renderer/) plus the vendored markdown/diagram libraries
-// (vendor/), exposes the current slide at /state, pushes "changed" nudges over
-// SSE (/events), and serves repo-root images at /assets/*. All slide rendering
-// happens client-side in renderer/renderer.js; this file is just the wiring.
+// The agent loads the whole deck up front by calling the `load_deck` action
+// with an array of small markdown fragments (optional front matter + body), then
+// flips pages by calling `goto_slide` with an index — no per-page markdown
+// regeneration, so navigation is fast. (`show_slide` remains for ad-hoc single
+// slide updates.) Each open canvas instance gets its own loopback HTTP server
+// that serves a tiny iframe shell (renderer/) plus the vendored markdown/diagram
+// libraries (vendor/), exposes the current slide at /state, pushes "changed"
+// nudges over SSE (/events), and serves repo-root images at /assets/*. All slide
+// rendering happens client-side in renderer/renderer.js; this file is just the
+// wiring.
 
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -55,8 +58,20 @@ function dataFileFor(key) {
   return join(DATA_DIR, key.replace(/[^a-zA-Z0-9_.-]/g, "_") + ".json");
 }
 
-// instances: key -> { server, url, version, markdown, clients:Set, assetsRoot, dataFile }
+// instances: key -> { server, url, version, markdown, slides, index, clients:Set, assetsRoot, dataFile }
 const instances = new Map();
+
+// Clamp an arbitrary index into [0, total-1] (or 0 when the deck is empty), so
+// "next past the end" / "prev before the start" simply stay on the edge slide.
+function clampIndex(value, total) {
+  let i = Number(value);
+  if (!Number.isFinite(i)) return 0;
+  i = Math.trunc(i);
+  if (total <= 0) return 0;
+  if (i < 0) return 0;
+  if (i >= total) return total - 1;
+  return i;
+}
 
 let logger = null;
 function log(message, level = "info") {
@@ -157,12 +172,27 @@ async function persist(inst) {
     await mkdir(DATA_DIR, { recursive: true });
     await writeFile(
       inst.dataFile,
-      JSON.stringify({ version: inst.version, markdown: inst.markdown }),
+      JSON.stringify({
+        version: inst.version,
+        markdown: inst.markdown,
+        slides: inst.slides,
+        index: inst.index,
+      }),
       "utf8",
     );
   } catch (e) {
     log(`presentation: persist failed: ${e?.message || e}`, "warning");
   }
+}
+
+// Push the slide at inst.index (from the loaded deck) to the canvas: update the
+// current markdown, bump the monotonic version, nudge connected clients, and
+// persist so a reload can restore the whole deck and position.
+async function applyDeckSlide(inst) {
+  inst.markdown = inst.slides.length ? inst.slides[inst.index] : "";
+  inst.version += 1;
+  broadcast(inst);
+  await persist(inst);
 }
 
 async function startServer(inst) {
@@ -243,15 +273,21 @@ async function ensureInstance(ctx) {
       url: null,
       version: 0,
       markdown: "",
+      slides: [],
+      index: 0,
       clients: new Set(),
       assetsRoot: join(repoRoot, "assets"),
       dataFile: dataFileFor(key),
     };
-    // Rehydrate the last slide (e.g. after extensions_reload) if present.
+    // Rehydrate the last deck (e.g. after extensions_reload) if present.
     try {
       const saved = JSON.parse(await readFile(inst.dataFile, "utf8"));
       if (typeof saved.markdown === "string") inst.markdown = saved.markdown;
       if (typeof saved.version === "number") inst.version = saved.version;
+      if (Array.isArray(saved.slides) && saved.slides.every((s) => typeof s === "string")) {
+        inst.slides = saved.slides;
+      }
+      if (typeof saved.index === "number") inst.index = clampIndex(saved.index, inst.slides.length);
     } catch (_) {
       /* no saved state — start blank */
     }
@@ -271,12 +307,106 @@ const session = await joinSession({
       id: "presentation",
       displayName: "Presentation",
       description:
-        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。show_slide アクションに1枚分の Markdown 断片を渡すと表示が切り替わる。",
+        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。load_deck で全スライドを一括登録し、goto_slide でページをスムーズに切り替える。show_slide で1枚だけ差し替えることもできる。",
       actions: [
+        {
+          name: "load_deck",
+          description:
+            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片（任意のフロントマター + 本文）の配列を渡すと、デッキを保持して index（既定 0）のスライドを表示する。以降のページ送りは goto_slide で行うと、その都度 Markdown を生成し直さずに済むため速い。",
+          inputSchema: {
+            type: "object",
+            properties: {
+              slides: {
+                type: "array",
+                items: { type: "string" },
+                minItems: 1,
+                description:
+                  "スライド1枚分の Markdown 断片の配列。各要素の先頭に deck/kicker/page/total/title/layout のフロントマターを任意で付けられる。表示順に並べる。",
+              },
+              index: {
+                type: "number",
+                description: "最初に表示するスライドの 0 始まりインデックス（省略時は 0）。",
+              },
+            },
+            required: ["slides"],
+            additionalProperties: false,
+          },
+          handler: async (ctx) => {
+            const slides = ctx.input?.slides;
+            if (
+              !Array.isArray(slides) ||
+              slides.length === 0 ||
+              !slides.every((s) => typeof s === "string")
+            ) {
+              throw new CanvasError(
+                "invalid_input",
+                "slides (non-empty array of strings) is required",
+              );
+            }
+            const inst = instances.get(keyOf(ctx));
+            if (!inst) {
+              throw new CanvasError(
+                "canvas_not_open",
+                "presentation canvas is not open; open it before calling load_deck",
+              );
+            }
+            inst.slides = slides.slice();
+            inst.index = clampIndex(ctx.input?.index ?? 0, inst.slides.length);
+            await applyDeckSlide(inst);
+            return {
+              ok: true,
+              version: inst.version,
+              index: inst.index,
+              total: inst.slides.length,
+            };
+          },
+        },
+        {
+          name: "goto_slide",
+          description:
+            "load_deck で登録済みのデッキ内で、表示するスライドを 0 始まりインデックスで切り替える。範囲外の値は端のスライドに丸められる（最後で次へ→据え置き）。Markdown を生成し直さないのでページ送りが速い。",
+          inputSchema: {
+            type: "object",
+            properties: {
+              index: {
+                type: "number",
+                description: "表示するスライドの 0 始まりインデックス。",
+              },
+            },
+            required: ["index"],
+            additionalProperties: false,
+          },
+          handler: async (ctx) => {
+            const inst = instances.get(keyOf(ctx));
+            if (!inst) {
+              throw new CanvasError(
+                "canvas_not_open",
+                "presentation canvas is not open",
+              );
+            }
+            if (!inst.slides.length) {
+              throw new CanvasError(
+                "no_deck",
+                "no deck loaded; call load_deck first",
+              );
+            }
+            if (typeof ctx.input?.index !== "number") {
+              throw new CanvasError("invalid_input", "index (number) is required");
+            }
+            inst.index = clampIndex(ctx.input.index, inst.slides.length);
+            await applyDeckSlide(inst);
+            return {
+              ok: true,
+              version: inst.version,
+              index: inst.index,
+              total: inst.slides.length,
+            };
+          },
+        },
         {
           name: "show_slide",
           description:
-            "現在のスライドを更新する。1枚分の小さな Markdown 断片（任意のフロントマター + 本文）を渡すと canvas が即座に切り替わる。",
+            "現在のスライドを1枚だけ更新する。1枚分の小さな Markdown 断片（任意のフロントマター + 本文）を渡すと canvas が即座に切り替わる。デッキ未登録のときの単発表示や、その場限りの差し替えに使う。",
           inputSchema: {
             type: "object",
             properties: {
@@ -320,6 +450,8 @@ const session = await joinSession({
               );
             }
             inst.markdown = "";
+            inst.slides = [];
+            inst.index = 0;
             inst.version += 1;
             broadcast(inst);
             await persist(inst);

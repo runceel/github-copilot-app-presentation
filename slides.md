@@ -7,9 +7,9 @@ GitHub Copilot とつくる、ライブなスライド発表
 ## このプレゼンの仕組み
 
 - スライドは **Markdown**（このファイル）に書く
-- Copilot は 1 枚ずつ **小さな Markdown 断片**を生成するだけ
+- Copilot は開始時に **全スライドをまとめて生成**して登録
 - **HTML 変換・装飾は presentation canvas 拡張機能**が担当
-- 断片を渡すと **自動でスライドが切り替わる** ⚡
+- ページ送りは **インデックス指定だけ**だから **速い** ⚡
 
 ---
 
@@ -27,12 +27,15 @@ GitHub Copilot とつくる、ライブなスライド発表
 ## コードもきれいに表示
 
 ```js
-await invokeCanvasAction("presentation", "show_slide", {
-  markdown: "## 次のスライド\n\n- 箇条書きも\n- 自由自在",
+// 開始時に全スライドを一括登録
+await invokeCanvasAction("presentation", "load_deck", {
+  slides: [slide1, slide2, slide3],
 });
+// ページ送りはインデックスを渡すだけ
+await invokeCanvasAction("presentation", "goto_slide", { index: 1 });
 ```
 
-`show_slide` に小さな Markdown 断片を渡すだけでスライドが入れ替わります。
+`load_deck` で全スライドを登録し、`goto_slide` でスムーズに切り替えます。
 
 ---
 
