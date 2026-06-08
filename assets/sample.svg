@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="480" height="240" viewBox="0 0 480 240" role="img" aria-label="サンプル画像">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0078d4"/>
+      <stop offset="1" stop-color="#00a4ef"/>
+    </linearGradient>
+  </defs>
+  <rect width="480" height="240" rx="16" fill="url(#g)"/>
+  <g fill="#ffffff" font-family="Segoe UI, sans-serif" text-anchor="middle">
+    <text x="240" y="120" font-size="40" font-weight="700">assets/sample.svg</text>
+    <text x="240" y="170" font-size="22" opacity="0.9">ローカル画像のサンプル</text>
+  </g>
+</svg>

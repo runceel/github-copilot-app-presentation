@@ -130,7 +130,7 @@ public sealed class SlideState : IDisposable
         <title>{{title}}</title>
         <style>{{Css}}</style>
         </head>
-        <body>
+        <body class="mermaid-loading">
           <div class="{{deckClass}}">
             <header>
               {{kickerHtml}}
@@ -140,6 +140,8 @@ public sealed class SlideState : IDisposable
             </div>
             {{footerHtml}}
           </div>
+          <script src="/lib/mermaid/mermaid.min.js"></script>
+          <script>{{MermaidInit}}</script>
         </body>
         </html>
         """;
@@ -195,6 +197,34 @@ public sealed class SlideState : IDisposable
         # 🖥️ プレゼンの準備ができました
 
         スライドの表示をお待ちしています…
+        """;
+
+    // Renders any <pre class="mermaid"> blocks (produced by Markdig's diagram
+    // extension) into SVG using the bundled Mermaid.js. Kept resilient: a slide
+    // with no diagrams, a missing library, or an invalid diagram must never
+    // leave the slide blank, so the body is always revealed in the end.
+    private const string MermaidInit = """
+        (function () {
+          function run() {
+            var reveal = function () { document.body.classList.remove('mermaid-loading'); };
+            var nodes = document.querySelectorAll('pre.mermaid, .mermaid');
+            if (!nodes.length || !window.mermaid) { reveal(); return; }
+            try {
+              mermaid.initialize({ startOnLoad: false, theme: 'neutral', securityLevel: 'strict' });
+              Promise.resolve(mermaid.run({ nodes: nodes }))
+                .catch(function (e) { console.error('Mermaid render failed', e); })
+                .finally(reveal);
+            } catch (e) {
+              console.error('Mermaid init failed', e);
+              reveal();
+            }
+          }
+          if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', run);
+          } else {
+            run();
+          }
+        })();
         """;
 
     private const string Css = """
@@ -261,6 +291,12 @@ public sealed class SlideState : IDisposable
         th,td{border:1px solid var(--border);padding:.55em .8em;text-align:left;}
         th{background:var(--accent-soft);color:var(--accent-strong);font-weight:600;}
         img{max-width:100%;max-height:48vh;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.1);}
+        .body img{display:block;margin:.4em auto;}
+        pre.mermaid{background:none;border:0;border-left:0;border-radius:0;box-shadow:none;
+            padding:0;margin:.4em 0;font-family:inherit;font-size:inherit;line-height:1.3;
+            text-align:center;overflow:auto;}
+        pre.mermaid svg{max-width:100%;height:auto;max-height:44vh;}
+        body.mermaid-loading .mermaid{visibility:hidden;}
         hr{border:0;border-top:1px solid var(--border);margin:.7em 0;}
         footer{flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;
                color:var(--muted);font-size:clamp(12px,1.7vh,16px);

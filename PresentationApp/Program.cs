@@ -1,5 +1,6 @@
 using PresentationApp;
 using PresentationApp.Components;
+using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -19,6 +20,16 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseAntiforgery();
+
+// Serve local image files placed in the repo-root `assets/` folder (sibling of
+// slides.md) at `/assets/...`, so slides can use ![alt](/assets/foo.png).
+var assetsPath = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "assets"));
+Directory.CreateDirectory(assetsPath);
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(assetsPath),
+    RequestPath = "/assets",
+});
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()

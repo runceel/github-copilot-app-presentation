@@ -47,6 +47,22 @@ app.MapGet("/slide", (SlideState s, HttpContext ctx) =>
 
 ---
 
+## 図も画像も使える
+
+```mermaid
+flowchart LR
+    A[Markdown] --> B[Markdig]
+    B --> C[Mermaid.js]
+    C --> D((図 / SVG))
+```
+
+![ローカル画像の例](/assets/sample.svg)
+
+- 図は **Mermaid 記法**（` ```mermaid ` ブロック）でそのまま描ける
+- 画像は **リモート URL** か、`assets/` に置いた**ローカルファイル**で挿入
+
+---
+
 # ありがとうございました
 
 質問やフィードバックをどうぞ！
