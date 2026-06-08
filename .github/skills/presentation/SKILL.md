@@ -1,6 +1,6 @@
 ---
 name: presentation
-description: 'Markdown ファイルを使って GitHub Copilot の canvas でスライドプレゼンを行うためのスキル。「slides.md に従ってプレゼンして」「プレゼンを始めて」「このスライドで発表して」など、Markdown を元にスライドを 1 枚ずつ表示しながら発表を進めたいときに使う。元 Markdown のページが自然言語の文章（段落主体）のときは、AI がページごとに自動判定して見出し＋箇条書きのスライド形に要約・整形して表示する。プレゼン開始時に全スライドをまとめて生成し、canvas を開くときに open の input（slides）へ一括で渡すので最初からスライドが表示され（プレースホルダーを挟まない）、ページ送りは canvas 内のボタン（◀ ▶）・矢印キー・スライド一覧（☰）で完結する（agent の ask_user ループは不要）。発表途中の差し替えは load_deck で行う。スライドは presentation canvas 拡張機能（Node + marked/mermaid）がネイティブ canvas にレンダリングする。Use when the user wants to give a slide presentation driven by a markdown file and shown in the canvas.'
+description: 'Markdown ファイルを使って GitHub Copilot の canvas でスライドプレゼンを行うためのスキル。「slides.md に従ってプレゼンして」「この Markdown をプレゼンして」「@名前.md をプレゼンして」「MS っぽくプレゼンして」「このファイルをスライド化して」など、Markdown を元にスライドを 1 枚ずつ表示しながら発表を進めたいときに使う。元 Markdown のページが自然言語の文章（段落主体）のときは、AI がページごとに自動判定して見出し＋箇条書きのスライド形に要約・整形して表示する。プレゼン開始時に全スライドをまとめて生成し、canvas を開くときに open の input（slides）へ一括で渡すので最初からスライドが表示され（プレースホルダーを挟まない）、ページ送りは canvas 内のボタン（◀ ▶）・矢印キー・スライド一覧（☰）で完結する（agent の ask_user ループは不要）。発表途中の差し替えは load_deck で行う。スライドは presentation canvas 拡張機能（Node + marked/mermaid）がネイティブ canvas にレンダリングする。Use when the user wants to give a slide presentation driven by a markdown file and shown in the canvas.'
 ---
 
 # presentation スキル
