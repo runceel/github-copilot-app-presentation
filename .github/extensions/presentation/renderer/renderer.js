@@ -151,7 +151,9 @@ function renderSlide(markdown) {
   const md = nonEmpty(markdown) ? markdown : PLACEHOLDER;
   const { meta, body } = splitFrontMatter(md);
 
-  const titleSlide = (meta.layout || "").toLowerCase() === "title";
+  const layout = (meta.layout || "").toLowerCase();
+  const titleSlide = layout === "title";
+  const closingSlide = layout === "closing";
   document.title = meta.title || meta.deck || "Slide";
 
   // A slide-level `theme:` overrides the deck theme; set it before building the
@@ -160,7 +162,9 @@ function renderSlide(markdown) {
   document.documentElement.setAttribute("data-theme", theme);
 
   const deck = document.createElement("div");
-  deck.className = titleSlide ? "deck title-slide" : "deck";
+  deck.className = "deck";
+  if (titleSlide) deck.className = "deck title-slide";
+  else if (closingSlide) deck.className = "deck closing-slide";
 
   const header = document.createElement("header");
   if (nonEmpty(meta.kicker)) {

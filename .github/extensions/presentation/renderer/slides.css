@@ -9,6 +9,12 @@
   --glow-1:rgba(56,110,190,.22); --glow-2:rgba(120,86,210,.16);
   --topbar:linear-gradient(90deg,#4ea8ff,#7a5cff);
   --kicker-mark:linear-gradient(135deg,#4ea8ff,#7a5cff);
+  --cover-bg:
+    radial-gradient(1200px 760px at 50% 34%, rgba(78,168,255,.20) 0%, transparent 66%),
+    linear-gradient(160deg,#11203a 0%,#0e1117 60%);
+  --closing-bg:
+    radial-gradient(1100px 720px at 50% 64%, rgba(122,92,255,.22) 0%, transparent 66%),
+    linear-gradient(200deg,#0e1117 38%,#1b1535 100%);
 }
 :root[data-theme="light"]{
   --bg:#ffffff; --fg:#15181f; --muted:#5b6470; --body:#333a44;
@@ -17,6 +23,12 @@
   --glow-1:#eef2ff; --glow-2:#f5f3ff;
   --topbar:linear-gradient(90deg,#4f46e5,#7c3aed);
   --kicker-mark:linear-gradient(135deg,#4f46e5,#7c3aed);
+  --cover-bg:
+    radial-gradient(1200px 760px at 50% 32%, #e0e7ff 0%, transparent 70%),
+    linear-gradient(160deg,#eef2ff 0%,#ffffff 58%);
+  --closing-bg:
+    radial-gradient(1100px 720px at 50% 66%, #f3e8ff 0%, transparent 70%),
+    linear-gradient(200deg,#ffffff 42%,#f6f0ff 100%);
 }
 :root[data-theme="microsoft"]{
   --bg:#ffffff; --fg:#201f1e; --muted:#605e5c; --body:#323130;
@@ -27,6 +39,12 @@
   --topbar:linear-gradient(90deg,
     #f25022 0 25%, #7fba00 25% 50%, #00a4ef 50% 75%, #ffb900 75% 100%);
   --kicker-mark:linear-gradient(135deg,var(--accent),var(--accent-strong));
+  --cover-bg:
+    radial-gradient(1200px 760px at 50% 32%, #d6ecfb 0%, transparent 70%),
+    linear-gradient(160deg,#eff6fc 0%,#ffffff 58%);
+  --closing-bg:
+    radial-gradient(1100px 720px at 50% 66%, #fde8d6 0%, transparent 70%),
+    linear-gradient(200deg,#ffffff 42%,#fff4ea 100%);
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
@@ -39,7 +57,8 @@ body{
   color:var(--fg);
 }
 .deck{position:relative;height:100vh;width:100vw;display:flex;flex-direction:column;
-      padding:clamp(30px,5.5vh,68px) clamp(40px,6.5vw,104px);
+      --deck-pad-y:clamp(30px,5.5vh,68px); --deck-pad-x:clamp(40px,6.5vw,104px);
+      padding:var(--deck-pad-y) var(--deck-pad-x);
       animation:fade .35s ease both;}
 .deck::before{content:"";position:fixed;top:0;left:0;right:0;height:6px;z-index:2;
   background:var(--topbar);}
@@ -97,10 +116,20 @@ footer{flex:0 0 auto;display:flex;justify-content:space-between;align-items:cent
        margin-top:clamp(12px,2.2vh,26px);border-top:1px solid var(--border);padding-top:12px;}
 footer .page{color:var(--accent-strong);font-weight:600;background:var(--accent-soft);
              border:1px solid var(--accent-line);border-radius:999px;padding:.18em .8em;}
-.deck.title-slide{justify-content:center;text-align:center;}
-.deck.title-slide header{display:flex;justify-content:center;}
-.deck.title-slide .body{justify-content:flex-start;}
-.deck.title-slide .kicker{margin-bottom:.7em;}
+/* ===== Cover (title) & closing layouts =====
+   Both center the kicker + body as one block (footer pinned to the bottom via
+   absolute positioning so it doesn't shift the centering), and each gets its
+   own background so the cover and the closing slide are easy to tell apart. */
+.deck.title-slide,.deck.closing-slide{justify-content:center;text-align:center;}
+.deck.title-slide{background:var(--cover-bg,var(--bg));}
+.deck.closing-slide{background:var(--closing-bg,var(--bg));}
+.deck.title-slide>header,.deck.closing-slide>header{display:flex;justify-content:center;}
+.deck.title-slide>.body,.deck.closing-slide>.body{flex:0 1 auto;justify-content:center;
+      max-height:calc(100vh - 2*var(--deck-pad-y));}
+.deck.title-slide>footer,.deck.closing-slide>footer{position:absolute;
+      left:var(--deck-pad-x);right:var(--deck-pad-x);bottom:var(--deck-pad-y);
+      margin-top:0;border-top:0;padding-top:0;}
+.deck.title-slide .kicker,.deck.closing-slide .kicker{margin-bottom:.7em;}
 
 /* ===== In-canvas navigation controls ===== */
 /* An author `display` rule on .nav/.overview would override the UA's
