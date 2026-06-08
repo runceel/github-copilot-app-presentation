@@ -1,15 +1,15 @@
 ---
 name: presentation
-description: 'Markdown ファイルを使って GitHub Copilot の canvas でスライドプレゼンを行うためのスキル。「slides.md に従ってプレゼンして」「プレゼンを始めて」「このスライドで発表して」など、Markdown を元にスライドを 1 枚ずつ表示しながら発表を進めたいときに使う。元 Markdown のページが自然言語の文章（段落主体）のときは、AI がページごとに自動判定して見出し＋箇条書きのスライド形に要約・整形して表示する。スライドは PresentationApp (.NET 10 / ASP.NET Core Blazor + Markdig) が http://localhost:5050 で配信し、ブラウザー canvas に表示する。ページ送りは ask_user ツールで行う。Use when the user wants to give a slide presentation driven by a markdown file and shown in the browser canvas.'
+description: 'Markdown ファイルを使って GitHub Copilot の canvas でスライドプレゼンを行うためのスキル。「slides.md に従ってプレゼンして」「プレゼンを始めて」「このスライドで発表して」など、Markdown を元にスライドを 1 枚ずつ表示しながら発表を進めたいときに使う。元 Markdown のページが自然言語の文章（段落主体）のときは、AI がページごとに自動判定して見出し＋箇条書きのスライド形に要約・整形して表示する。スライドは presentation canvas 拡張機能（Node + marked/mermaid）がネイティブ canvas にレンダリングする。エージェントは show_slide アクションに 1 枚分の Markdown 断片を渡し、ページ送りは ask_user ツールで行う。Use when the user wants to give a slide presentation driven by a markdown file and shown in the canvas.'
 ---
 
 # presentation スキル
 
-Markdown ファイルを元に、**1 スライドずつ「小さな Markdown 断片」を生成して `PresentationApp` に渡し、ブラウザー canvas で表示**しながらプレゼンを進めるスキルです。ページ送りは `ask_user` ツールで操作します。
+Markdown ファイルを元に、**1 スライドずつ「小さな Markdown 断片」を生成して presentation canvas 拡張機能の `show_slide` アクションに渡し、ネイティブ canvas に表示**しながらプレゼンを進めるスキルです。ページ送りは `ask_user` ツールで操作します。
 
 ## いちばん大事な原則 ⚡
 
-**あなた（生成 AI）が書くのは、表示したいスライド 1 枚分の「小さな Markdown 断片」だけ**です。HTML・CSS・テーマ・レイアウト・ページ番号・アニメーションは**すべてアプリ側（Markdig）が担当**します。フル HTML を生成しないこと。これにより 1 枚あたりの生成量がごく小さくなり、ページ切り替えが速くなります。
+**あなた（生成 AI）が書くのは、表示したいスライド 1 枚分の「小さな Markdown 断片」だけ**です。HTML・CSS・テーマ・レイアウト・ページ番号・アニメーションは**すべて拡張機能側（marked）が担当**します。フル HTML を生成しないこと。これにより 1 枚あたりの生成量がごく小さくなり、ページ切り替えが速くなります。
 
 スライド 1 枚は、せいぜいこの程度の Markdown です:
 
@@ -26,27 +26,28 @@ total: 6
 - 箇条書き 2
 ```
 
-これを `PresentationApp/slides/current.md` に書き込むだけで、canvas のスライドが切り替わります。
+これを `show_slide` アクションに渡すだけで、canvas のスライドが切り替わります。
 
 ## 仕組み
 
 ```
-あなた → 小さな Markdown 断片を current.md に書く
-                 │ FileSystemWatcher が検知
+あなた → 小さな Markdown 断片を生成
+                 │ invoke_canvas_action("show_slide", { markdown })
                  ▼
-   アプリが Markdig で HTML 化 + テーマ適用（/slide）
-                 │ SignalR
+   拡張機能が marked で HTML 化 → DOMPurify でサニタイズ → テーマ適用
+                 │ SSE
                  ▼
-   ブラウザー canvas の iframe が自動更新
+   ネイティブ canvas の iframe が自動更新
 ```
 
-- スライド切り替えは **`PresentationApp/slides/current.md` を上書きするだけ**。アプリの再起動は不要です（これがユーザーの言う「動的にページが書き換わる」挙動）。
-- アプリは `http://localhost:5050` で動作し、`/health`（生存確認）と `/slide`（current.md を Markdig でレンダリングしたスライド HTML を no-store で返す）を持ちます。
-- 同時に表示できるデッキは 1 つ（`current.md` は 1 ファイル）。1 人での発表を前提とします。
+- スライド切り替えは **`show_slide` アクションに 1 枚分の Markdown 断片を渡すだけ**。`.NET` アプリや `localhost` ポートは不要です。
+- レンダリング（HTML 化・装飾・ページ番号・Mermaid 図・絵文字）は **すべて拡張機能側**が担当します。
+- 同時に表示するデッキは 1 つ。1 人での発表を前提とします。
+- 拡張機能は `.github/extensions/presentation/` にあります（project スコープ）。
 
-## current.md のフォーマット
+## スライド断片のフォーマット
 
-先頭に **フロントマター**（`---` で囲んだ `key: value`）を置き、その下に**本文の Markdown**を書きます。フロントマターは任意で、使えるキーは次のとおり（すべて省略可）:
+`show_slide` に渡す Markdown は、先頭に **フロントマター**（`---` で囲んだ `key: value`）を置き、その下に**本文の Markdown**を書きます。フロントマターは任意で、使えるキーは次のとおり（すべて省略可）:
 
 | キー | 役割 |
 | --- | --- |
@@ -57,7 +58,7 @@ total: 6
 | `title` | ブラウザータブのタイトル（省略時は `deck`） |
 | `layout` | `title` を指定すると中央寄せの表紙レイアウトになる。通常スライドは省略 |
 
-本文では通常の Markdown が使えます（Markdig の advanced 拡張が有効）:
+本文では通常の Markdown が使えます（GFM 相当: marked + 表）:
 見出し `#`/`##`/`###`、箇条書き `-`/番号付き `1.`、強調 `**太字**`/`*色付き*`、`` `コード` ``、コードブロック ` ``` `、引用 `>`、表 `|...|`、リンク、画像 `![](...)`、Mermaid 図 ` ```mermaid `、絵文字 `:rocket:` など。**HTML エスケープやタグ生成は不要**で、素の Markdown をそのまま書きます。
 
 > 注意: フッターに `page`/`total` を出す場合は、ページ送りのたびに `page` の値を更新すること。
@@ -74,7 +75,7 @@ flowchart LR
 ```
 ````
 
-- Mermaid.js はアプリに**同梱**（`PresentationApp/wwwroot/lib/mermaid/`）。オフラインでも描画されます。
+- Mermaid.js は拡張機能に**同梱**（`.github/extensions/presentation/vendor/`）。オフラインでも描画されます。
 - 記法に誤りがあってもスライドは**空白になりません**。エラー表示と他の本文はそのまま表示されます。
 
 ### 画像
@@ -94,49 +95,46 @@ flowchart LR
 - 各スライドの**タイトル**（一覧表示用）は、最初の見出し行、無ければ最初の非空行の先頭 40 文字程度を使います。
 - デッキ全体のタイトルは、先頭 front matter の `title`、無ければ最初のスライドの見出しを使います。
 
-### 3. デッキ状態を保存する（中断への保険）
-パース後、以下を `PresentationApp/slides/` に保存します。
-- `deck.json`: `{ "source": "<md パス>", "title": "<デッキ名>", "count": N, "titles": ["…", …] }`
-- `state.json`: `{ "index": 0 }`（現在のスライド番号。0 始まり）
+### 3. デッキ状態を保持する
+スライド配列（各スライドの本文）と現在の index、`titles`（一覧表示用）を**会話メモリで保持**します。ページ送りのたびに index を更新します。中断後に再開する場合は、元 Markdown を読み直して再パースします。
 
-進行中はスライド配列と現在 index を会話メモリで保持しつつ、ページ送りのたびに `state.json` を更新します。中断時はこの 2 ファイルと元 Markdown から再開できます。
+> 表示中のスライドは拡張機能側でも自動保存されるため、`extensions_reload` などが起きても直近の 1 枚は復元されます。手動のファイル保存は不要です。
 
-### 4. アプリを起動して canvas を開く
-1. 生存確認: `Invoke-WebRequest http://localhost:5050/health` が成功すれば起動済み。**二重起動しない**こと。
-2. 起動していなければ `PresentationApp` で次を **detach した非同期プロセス**として起動します（`powershell` ツールを `mode="async"`, `detach: true`）:
-   ```
-   dotnet run --urls http://localhost:5050
-   ```
-3. `/health` が `{"ok":true,...}` を返すまでポーリング（最大 ~30 秒）。
-4. ブラウザー canvas を開く: `open_canvas`（`canvasId: "browser"`, `instanceId: "presentation"`, `input: { "url": "http://localhost:5050", "title": "プレゼン" }`）。
+### 4. canvas を開く
+ネイティブ canvas を開きます: `open_canvas`（`canvasId: "presentation"`, `instanceId: "presentation"`）。URL の指定は不要で、拡張機能が表示先を用意します。`.NET` アプリの起動や生存確認は不要です。
 
 ### 5. 最初のスライドを表示する
-`state.json` の index のスライドを「スライド断片の生成」に従って `current.md` に書き込みます。canvas が自動更新されます。
+現在 index のスライドを「スライド断片の生成」に従って `show_slide` アクションに渡します。canvas が自動更新されます。
 
 ### 6. ページ送りループ（ask_user）
 `ask_user` ツールで次の選択肢を提示します:
 
 - **次へ ▶** … index を +1（最後なら据え置き）。
 - **◀ 前へ** … index を -1（先頭なら据え置き）。
-- **スライド一覧 ☰** … `ask_user` を再度呼び、`deck.json` の `titles` を「1. タイトル」「2. タイトル」… の選択肢として提示。選ばれたスライドへジャンプ。
+- **スライド一覧 ☰** … `ask_user` を再度呼び、`titles` を「1. タイトル」「2. タイトル」… の選択肢として提示。選ばれたスライドへジャンプ。
 - **再読み込み ↻** … 現在のスライドを生成し直す（表示が崩れたときの保険）。
 - **終了 ✖** … ループを抜ける。
 
-選択のたびに、対象スライドの**小さな Markdown 断片を生成して `current.md` を上書き** → `state.json` を更新 → ループ継続。**終了が選ばれるまで繰り返す**。
+選択のたびに、対象スライドの**小さな Markdown 断片を生成して `show_slide` アクションに渡す** → index を更新 → ループ継続。**終了が選ばれるまで繰り返す**。
 
 ### 7. 終了処理
 - ループを抜けたら発表が終わった旨を伝えます。
-- アプリは基本そのまま動かしておきます（次の発表でそのまま使えます）。ユーザーが停止を望む場合のみ、起動した `dotnet` プロセスを `Stop-Process -Id <PID>` で停止します。
-- `slides/` に残った一時ファイルがあれば削除します。
+- canvas はそのまま残しておけます。クリアしたい場合は `reset` アクションを呼ぶと待機表示に戻ります。
+- 停止すべき外部プロセスや一時ファイルはありません。
 
-## スライド断片の生成（current.md への書き込み）
+## スライド断片の生成（show_slide の呼び出し）
 
-各スライドは、フロントマター + 本文 Markdown の**小さなテキスト**です。これを `PresentationApp/slides/current.md` に **UTF-8** で書き込みます。
+各スライドは、フロントマター + 本文 Markdown の**小さなテキスト**です。これを `show_slide` アクションの `markdown` 入力に渡します。
 
-最速かつ確実な方法は、`powershell` ツールでの 1 回の書き込みです（here-string を使う）:
+`invoke_canvas_action` を 1 回呼ぶだけです:
 
-```powershell
-$md = @'
+- `instanceId`: `"presentation"`
+- `actionName`: `"show_slide"`
+- `input`: `{ "markdown": "<スライド 1 枚分の Markdown>" }`
+
+例（`input.markdown` に渡す中身）:
+
+```markdown
 ---
 deck: Copilot canvas でプレゼンしよう
 kicker: Copilot Presentation
@@ -146,16 +144,14 @@ total: 6
 ## このプレゼンの仕組み
 
 - スライドは **Markdown** の小さな断片だけ
-- 変換・装飾・ページ番号は **アプリ側**が担当
+- 変換・装飾・ページ番号は **拡張機能側**が担当
 - だから切り替えが **速い** ⚡
-'@
-Set-Content -Path "PresentationApp\slides\current.md" -Value $md -Encoding UTF8
 ```
 
-> `/slide` エンドポイントには再試行と直前スライドの保持があるため、書き込み途中でも画面が真っ白にはなりません。原子的にしたい場合は、`.render.md` に書いてから `Move-Item -Force .render.md current.md` で差し替えてもよいです。
+> ファイルへの書き込みは不要です。`show_slide` を呼ぶたびに、拡張機能が直前のスライドを保持したまま新しいスライドへ差し替えるので、画面が真っ白になることはありません。
 
 ### 元 Markdown とのマッピング
-元ファイル（例 `slides.md`）の各スライドは、**ページごとに内容を判定**してから `current.md` に書き込みます。
+元ファイル（例 `slides.md`）の各スライドは、**ページごとに内容を判定**してから `show_slide` に渡します。
 
 - **スライド的なページ**（見出し・箇条書き・番号付きリスト・コードブロック・表・Mermaid 図・画像が主体）は、その本文を**ほぼそのまま使い**、先頭に `deck` / `kicker` / `page` / `total`（必要なら `layout: title`）のフロントマターを付けるだけです。
 - **自然言語の文章ページ**（段落主体のプローズ）は、そのまま貼らずに **AI が見出し＋箇条書きのスライド形に要約・整形**してから書き込みます。詳しくは次節を参照。
@@ -164,7 +160,7 @@ Set-Content -Path "PresentationApp\slides\current.md" -Value $md -Encoding UTF8
 
 ### 自然言語の文章をスライド化する
 
-元ページが**普通の文章（段落主体）**のときは、その文章をそのまま画面に流し込むのではなく、**スライドとして読みやすい形に組み立て直して**から `current.md` に書き込みます。
+元ページが**普通の文章（段落主体）**のときは、その文章をそのまま画面に流し込むのではなく、**スライドとして読みやすい形に組み立て直して**から `show_slide` に渡します。
 
 **ページの判定（自動）**
 
@@ -213,7 +209,7 @@ total: 8
 > 文章を箇条書きへ落とすときは、原文の段落の順序と論点を保つこと。要点を選び、説明文を短いフレーズに言い換えるだけで、新しい内容は加えない。
 
 ## 注意・トラブルシューティング
-- canvas が更新されないとき: `/health` の `version` が増えているか確認。増えていなければ `current.md` の書き込み先パスを確認。`version` は増えているのに表示が変わらないときは「再読み込み ↻」を選ぶ。
-- サーバーが落ちた／接続拒否のとき: `dotnet run` を起動し直し、現在のスライドを `current.md` に書き直す。canvas は `open_canvas` を再実行して開き直す。
-- ポート 5050 が使用中のとき: 既に同アプリが起動している可能性が高い。`/health` が応答すればそれを使う。別プロセスが占有している場合は別ポート（例 5051）で起動し、canvas の URL もそれに合わせる。
-- 文字化けするとき: ファイルは必ず UTF-8 で書き込む。
+- canvas が更新されないとき: `show_slide` がエラーなく `{ ok: true, version }` を返しているか確認。`version` は増えているのに表示が変わらないときは「再読み込み ↻」を選ぶ（同じ断片を再送）。それでも崩れる場合は `open_canvas`（`canvasId: "presentation"`, `instanceId: "presentation"`）を再実行して開き直す。
+- 拡張機能が見つからない／アクションが無いとき: `.github/extensions/presentation/` が存在するか確認し、必要なら拡張機能を再読み込みする。canvas 一覧に `presentation` が出ていれば利用可能。
+- 画像が出ないとき: ローカル画像はリポジトリ直下の `assets/` に置き、`/assets/...` の絶対パスで参照しているか確認する。
+- Mermaid 図が出ないとき: 記法の誤りがあってもスライドは空白にならず、他の本文はそのまま表示される。記法を見直して再送する。
