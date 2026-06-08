@@ -175,17 +175,19 @@ function broadcast(inst) {
   }
 }
 
-async function persist(inst) {
+async function persistNow(inst) {
   try {
     await mkdir(DATA_DIR, { recursive: true });
     await writeFile(
       inst.dataFile,
       JSON.stringify({
         version: inst.version,
+        deckVersion: inst.deckVersion,
         markdown: inst.markdown,
         slides: inst.slides,
         index: inst.index,
         theme: inst.theme,
+        mode: inst.mode,
       }),
       "utf8",
     );
@@ -194,14 +196,88 @@ async function persist(inst) {
   }
 }
 
+// Coalesced, serialized persistence. Rapid navigation can fire many state
+// changes; rather than awaiting each write (and risking an older write landing
+// after a newer one), we mark the instance dirty and run a single writer loop
+// that always flushes the *latest* snapshot. Fire-and-forget by design.
+function schedulePersist(inst) {
+  inst._persistDirty = true;
+  if (inst._persisting) return;
+  inst._persisting = true;
+  (async () => {
+    try {
+      while (inst._persistDirty) {
+        inst._persistDirty = false;
+        await persistNow(inst);
+      }
+    } finally {
+      inst._persisting = false;
+    }
+  })();
+}
+
 // Push the slide at inst.index (from the loaded deck) to the canvas: update the
-// current markdown, bump the monotonic version, nudge connected clients, and
-// persist so a reload can restore the whole deck and position.
+// current markdown, mark the deck as the active source, bump the monotonic
+// version, nudge connected clients, and persist so a reload can restore the
+// whole deck and position.
 async function applyDeckSlide(inst) {
   inst.markdown = inst.slides.length ? inst.slides[inst.index] : "";
+  inst.mode = "deck";
   inst.version += 1;
   broadcast(inst);
-  await persist(inst);
+  schedulePersist(inst);
+}
+
+// Move to targetIndex within the loaded deck. Returns whether the visible slide
+// actually changed: navigating "past" an edge while already on a deck slide is
+// a no-op (no version bump / re-render / disk write), but re-selecting the same
+// index while in ad-hoc mode does re-render (it resumes the deck).
+async function applyNavigation(inst, targetIndex) {
+  const next = clampIndex(targetIndex, inst.slides.length);
+  if (next === inst.index && inst.mode === "deck") return false;
+  inst.index = next;
+  await applyDeckSlide(inst);
+  return true;
+}
+
+// Read and JSON-parse a small request body, defending the loopback server
+// against oversized or malformed payloads.
+function readJsonBody(req, limit = 4096) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    let settled = false;
+    const chunks = [];
+    const settle = (fn, arg) => {
+      if (settled) return;
+      settled = true;
+      fn(arg);
+    };
+    req.on("data", (chunk) => {
+      if (settled) return;
+      size += chunk.length;
+      if (size > limit) {
+        // Stop accumulating but don't destroy the socket, so the handler can
+        // still send a clean 413 response.
+        settle(reject, new Error("payload_too_large"));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (settled) return;
+      const raw = Buffer.concat(chunks).toString("utf8").trim();
+      if (!raw) {
+        settle(resolve, {});
+        return;
+      }
+      try {
+        settle(resolve, JSON.parse(raw));
+      } catch (_) {
+        settle(reject, new Error("invalid_json"));
+      }
+    });
+    req.on("error", (e) => settle(reject, e));
+  });
 }
 
 async function startServer(inst) {
@@ -229,7 +305,84 @@ async function startServer(inst) {
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
-      res.end(JSON.stringify({ version: inst.version, markdown: inst.markdown, theme: inst.theme }));
+      res.end(
+        JSON.stringify({
+          version: inst.version,
+          deckVersion: inst.deckVersion,
+          markdown: inst.markdown,
+          index: inst.index,
+          total: inst.slides.length,
+          theme: inst.theme,
+          mode: inst.mode,
+        }),
+      );
+      return;
+    }
+    // The full deck is served separately so the polling /state stays small; the
+    // client refetches /deck only when deckVersion changes (rebuilding the
+    // slide-list overview). slides carry the markdown the client derives titles
+    // from.
+    if (pathname === "/deck") {
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(JSON.stringify({ deckVersion: inst.deckVersion, slides: inst.slides }));
+      return;
+    }
+    // In-canvas navigation: the renderer POSTs an absolute { index } or a
+    // relative { delta }; the server stays authoritative so every connected
+    // client converges via the SSE nudge.
+    if (pathname === "/navigate") {
+      if (req.method !== "POST") {
+        res.statusCode = 405;
+        res.setHeader("Allow", "POST");
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (e) {
+        const tooLarge = e?.message === "payload_too_large";
+        res.statusCode = tooLarge ? 413 : 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        // The request body may not be fully consumed (e.g. too large); close the
+        // connection so we don't leave a partially-read keep-alive socket.
+        res.setHeader("Connection", "close");
+        res.end(JSON.stringify({ ok: false, error: e?.message || "bad_request" }));
+        return;
+      }
+      const hasIndex = typeof body.index === "number" && Number.isFinite(body.index);
+      const hasDelta = typeof body.delta === "number" && Number.isFinite(body.delta);
+      if (hasIndex === hasDelta) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(
+          JSON.stringify({ ok: false, error: "exactly one of index or delta is required" }),
+        );
+        return;
+      }
+      if (!inst.slides.length) {
+        res.statusCode = 409;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "no_deck" }));
+        return;
+      }
+      const target = hasIndex ? body.index : inst.index + body.delta;
+      const changed = await applyNavigation(inst, target);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.end(
+        JSON.stringify({
+          ok: true,
+          changed,
+          version: inst.version,
+          index: inst.index,
+          total: inst.slides.length,
+          mode: inst.mode,
+        }),
+      );
       return;
     }
     if (pathname === "/events") {
@@ -281,9 +434,11 @@ async function ensureInstance(ctx) {
       server: null,
       url: null,
       version: 0,
+      deckVersion: 0,
       markdown: "",
       slides: [],
       index: 0,
+      mode: "deck",
       clients: new Set(),
       assetsRoot: join(repoRoot, "assets"),
       dataFile: dataFileFor(key),
@@ -294,11 +449,13 @@ async function ensureInstance(ctx) {
       const saved = JSON.parse(await readFile(inst.dataFile, "utf8"));
       if (typeof saved.markdown === "string") inst.markdown = saved.markdown;
       if (typeof saved.version === "number") inst.version = saved.version;
+      if (typeof saved.deckVersion === "number") inst.deckVersion = saved.deckVersion;
       if (Array.isArray(saved.slides) && saved.slides.every((s) => typeof s === "string")) {
         inst.slides = saved.slides;
       }
       if (typeof saved.index === "number") inst.index = clampIndex(saved.index, inst.slides.length);
       if (typeof saved.theme === "string") inst.theme = normalizeTheme(saved.theme);
+      if (saved.mode === "adhoc" || saved.mode === "deck") inst.mode = saved.mode;
     } catch (_) {
       /* no saved state — start blank */
     }
@@ -318,12 +475,12 @@ const session = await joinSession({
       id: "presentation",
       displayName: "Presentation",
       description:
-        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。load_deck で全スライドを一括登録し、goto_slide でページをスムーズに切り替える。show_slide で1枚だけ差し替えることもできる。",
+        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。load_deck で全スライドを一括登録すると、以降のページ送り（◀ ▶・矢印キー・スライド一覧）は canvas 内の操作で完結する。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替えることもできる。",
       actions: [
         {
           name: "load_deck",
           description:
-            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片（任意のフロントマター + 本文）の配列を渡すと、デッキを保持して index（既定 0）のスライドを表示する。任意の theme（dark/light/microsoft、既定 dark）でデッキ全体の配色を指定できる。以降のページ送りは goto_slide で行うと、その都度 Markdown を生成し直さずに済むため速い。",
+            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片（任意のフロントマター + 本文）の配列を渡すと、デッキを保持して index（既定 0）のスライドを表示する。任意の theme（dark/light/microsoft、既定 dark）でデッキ全体の配色を指定できる。登録後のページ送りは canvas 内の操作（◀ ▶・矢印キー・一覧）で完結するので、通常は goto_slide を繰り返し呼ぶ必要はない。",
           inputSchema: {
             type: "object",
             properties: {
@@ -370,6 +527,7 @@ const session = await joinSession({
             inst.slides = slides.slice();
             inst.index = clampIndex(ctx.input?.index ?? 0, inst.slides.length);
             inst.theme = normalizeTheme(ctx.input?.theme);
+            inst.deckVersion += 1;
             await applyDeckSlide(inst);
             return {
               ok: true,
@@ -383,7 +541,7 @@ const session = await joinSession({
         {
           name: "goto_slide",
           description:
-            "load_deck で登録済みのデッキ内で、表示するスライドを 0 始まりインデックスで切り替える。範囲外の値は端のスライドに丸められる（最後で次へ→据え置き）。Markdown を生成し直さないのでページ送りが速い。",
+            "load_deck で登録済みのデッキ内で、表示するスライドを 0 始まりインデックスで切り替える。通常のページ送りは canvas 内の操作で行われるため不要だが、チャットから特定ページへ飛びたいときに使う。範囲外の値は端のスライドに丸められる（最後で次へ→据え置き）。戻り値の changed は実際に表示が変わったかを示す。",
           inputSchema: {
             type: "object",
             properties: {
@@ -412,10 +570,10 @@ const session = await joinSession({
             if (typeof ctx.input?.index !== "number") {
               throw new CanvasError("invalid_input", "index (number) is required");
             }
-            inst.index = clampIndex(ctx.input.index, inst.slides.length);
-            await applyDeckSlide(inst);
+            const changed = await applyNavigation(inst, ctx.input.index);
             return {
               ok: true,
+              changed,
               version: inst.version,
               index: inst.index,
               total: inst.slides.length,
@@ -451,9 +609,10 @@ const session = await joinSession({
               );
             }
             inst.markdown = markdown;
+            inst.mode = "adhoc";
             inst.version += 1;
             broadcast(inst);
-            await persist(inst);
+            schedulePersist(inst);
             return { ok: true, version: inst.version };
           },
         },
@@ -472,9 +631,11 @@ const session = await joinSession({
             inst.slides = [];
             inst.index = 0;
             inst.theme = DEFAULT_THEME;
+            inst.mode = "deck";
+            inst.deckVersion += 1;
             inst.version += 1;
             broadcast(inst);
-            await persist(inst);
+            schedulePersist(inst);
             return { ok: true, version: inst.version };
           },
         },

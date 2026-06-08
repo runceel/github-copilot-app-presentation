@@ -219,19 +219,264 @@ function renderSlide(markdown) {
 }
 
 // --- live update -----------------------------------------------------------
-// /state is the single source of truth (it always returns the latest slide and
-// a monotonic version). SSE is just a low-latency "version changed" nudge, and
-// a slow poll is a safety net for missed ticks / SSE drops.
+// /state is the single source of truth for *what to show* (latest slide markdown
+// + a monotonic version + the deck position). SSE is just a low-latency "version
+// changed" nudge, and a slow poll is a safety net for missed ticks / SSE drops.
+// The full deck (for the overview / titles) is fetched separately from /deck and
+// only when deckVersion changes, so the polling /state stays small.
 let currentVersion = -1;
+let knownDeckVersion = -1;
+let deckSlides = [];
+let deckTitles = [];
+let navIndex = 0;
+let navTotal = 0;
+let navMode = "deck";
+let overviewOpen = false;
+
+// Derive a short overview title from a slide fragment: first heading, else first
+// non-empty body line, trimmed. Mirrors the skill's title rule.
+function deriveTitle(md) {
+  const { body } = splitFrontMatter(typeof md === "string" ? md : "");
+  const lines = body.split("\n");
+  let fallback = "";
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    const heading = line.match(/^#{1,6}\s+(.*\S)\s*$/);
+    if (heading) return trimTitle(heading[1]);
+    if (!fallback) fallback = line;
+  }
+  return fallback ? trimTitle(fallback) : "（無題）";
+}
+
+function trimTitle(text) {
+  const stripped = text
+    .replace(/[*_`>#~]/g, "")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .trim();
+  return stripped.length > 40 ? stripped.slice(0, 40) + "…" : stripped || "（無題）";
+}
+
+async function fetchDeck() {
+  try {
+    const res = await fetch("./deck", { cache: "no-store" });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (Array.isArray(data.slides)) {
+      deckSlides = data.slides;
+      deckTitles = deckSlides.map(deriveTitle);
+    }
+    if (typeof data.deckVersion === "number") knownDeckVersion = data.deckVersion;
+    buildOverview();
+  } catch (_) {
+    /* keep last known deck */
+  }
+}
 
 async function fetchState() {
   const res = await fetch("./state", { cache: "no-store" });
   if (!res.ok) return;
   const data = await res.json();
   if (typeof data.theme === "string") deckTheme = normalizeTheme(data.theme);
-  if (typeof data.version === "number" && data.version === currentVersion) return;
+  // Refresh the deck (titles for the overview) when its content changed.
+  if (typeof data.deckVersion === "number" && data.deckVersion !== knownDeckVersion) {
+    await fetchDeck();
+  }
+  // Skip stale or already-applied versions so an out-of-order /state response
+  // can't roll the slide backward, and our own POST→fetch + the SSE echo don't
+  // double-render (which would re-trigger the mermaid loading veil).
+  if (typeof data.version === "number" && data.version <= currentVersion) return;
   currentVersion = typeof data.version === "number" ? data.version : currentVersion;
+  if (typeof data.index === "number") navIndex = data.index;
+  if (typeof data.total === "number") navTotal = data.total;
+  navMode = data.mode === "adhoc" ? "adhoc" : "deck";
   renderSlide(typeof data.markdown === "string" ? data.markdown : "");
+  updateNav();
+}
+
+// --- navigation ------------------------------------------------------------
+// Server-authoritative: every nav action POSTs to /navigate, then immediately
+// re-fetches /state for an instant update (without waiting for the SSE nudge).
+async function navigate(payload) {
+  try {
+    const res = await fetch("./navigate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) await fetchState();
+  } catch (_) {
+    /* ignore; the safety poll will resync */
+  }
+}
+
+function goNext() {
+  navigate({ delta: 1 });
+}
+function goPrev() {
+  navigate({ delta: -1 });
+}
+function goToIndex(i) {
+  navigate({ index: i });
+  closeOverview();
+}
+
+function updateNav() {
+  const nav = document.getElementById("nav");
+  if (!nav) return;
+  nav.hidden = navTotal <= 0;
+  const counter = document.getElementById("navCounter");
+  if (counter) {
+    counter.textContent =
+      navMode === "adhoc" ? "—" : navTotal ? `${navIndex + 1} / ${navTotal}` : "";
+  }
+  const prev = document.getElementById("navPrev");
+  const next = document.getElementById("navNext");
+  // In ad-hoc mode the buttons stay enabled so the user can resume the deck.
+  if (prev) prev.disabled = navMode === "deck" && navIndex <= 0;
+  if (next) next.disabled = navMode === "deck" && navIndex >= navTotal - 1;
+  highlightOverview();
+}
+
+// --- overview --------------------------------------------------------------
+function buildOverview() {
+  const list = document.getElementById("overviewList");
+  if (!list) return;
+  list.replaceChildren();
+  deckTitles.forEach((title, i) => {
+    const li = document.createElement("li");
+    li.className = "overview-item";
+    li.dataset.index = String(i);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "overview-link";
+    const num = document.createElement("span");
+    num.className = "overview-num";
+    num.textContent = String(i + 1);
+    const label = document.createElement("span");
+    label.className = "overview-label";
+    label.textContent = title;
+    btn.appendChild(num);
+    btn.appendChild(label);
+    btn.addEventListener("click", () => goToIndex(i));
+    li.appendChild(btn);
+    list.appendChild(li);
+  });
+  highlightOverview();
+}
+
+function highlightOverview() {
+  const list = document.getElementById("overviewList");
+  if (!list) return;
+  list.querySelectorAll(".overview-item").forEach((li) => {
+    const isCurrent = navMode === "deck" && Number(li.dataset.index) === navIndex;
+    li.classList.toggle("current", isCurrent);
+  });
+}
+
+function openOverview() {
+  if (!deckTitles.length) return;
+  overviewOpen = true;
+  const el = document.getElementById("overview");
+  if (el) el.hidden = false;
+  highlightOverview();
+  const current = document.querySelector(".overview-item.current .overview-link");
+  if (current) current.focus();
+}
+
+function closeOverview() {
+  overviewOpen = false;
+  const el = document.getElementById("overview");
+  if (el) el.hidden = true;
+}
+
+function toggleOverview() {
+  if (overviewOpen) closeOverview();
+  else openOverview();
+}
+
+// --- input wiring ----------------------------------------------------------
+function wireControls() {
+  const bind = (id, fn) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("click", () => {
+      fn();
+      // Drop focus so a follow-up Space/Enter doesn't re-trigger the button on
+      // top of the global keyboard handler.
+      el.blur();
+    });
+  };
+  bind("navPrev", goPrev);
+  bind("navNext", goNext);
+  bind("navList", toggleOverview);
+  bind("overviewClose", closeOverview);
+
+  const overview = document.getElementById("overview");
+  if (overview) {
+    // Click on the dimmed backdrop (outside the panel) closes the overview.
+    overview.addEventListener("click", (e) => {
+      if (e.target === overview) closeOverview();
+    });
+  }
+
+  // The iframe must be focused to receive key events; grab focus up front and
+  // whenever the user interacts with it.
+  const grabFocus = () => {
+    try {
+      window.focus();
+    } catch (_) {}
+  };
+  grabFocus();
+  window.addEventListener("pointerdown", grabFocus);
+
+  document.addEventListener("keydown", (e) => {
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    // When a button (◀ ▶ ☰ ✕ or an overview link) has focus, let the browser's
+    // native Space/Enter activation run instead of hijacking it for "next".
+    const onButton = !!(t && (t.tagName === "BUTTON" || t.getAttribute?.("role") === "button"));
+    switch (e.key) {
+      case " ":
+      case "Spacebar":
+        if (onButton) break;
+        goNext();
+        e.preventDefault();
+        break;
+      case "ArrowRight":
+      case "PageDown":
+        goNext();
+        e.preventDefault();
+        break;
+      case "ArrowLeft":
+      case "PageUp":
+        goPrev();
+        e.preventDefault();
+        break;
+      case "Home":
+        navigate({ index: 0 });
+        e.preventDefault();
+        break;
+      case "End":
+        if (navTotal > 0) navigate({ index: navTotal - 1 });
+        e.preventDefault();
+        break;
+      case "o":
+      case "O":
+        toggleOverview();
+        e.preventDefault();
+        break;
+      case "Escape":
+        if (overviewOpen) {
+          closeOverview();
+          e.preventDefault();
+        }
+        break;
+      default:
+        break;
+    }
+  });
 }
 
 function connectEvents() {
@@ -251,6 +496,8 @@ function init() {
   try {
     window.mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "strict" });
   } catch (_) {}
+
+  wireControls();
 
   fetchState()
     .catch(() => {})

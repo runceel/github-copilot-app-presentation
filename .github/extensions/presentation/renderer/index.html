@@ -6,8 +6,28 @@
   <title>presentation</title>
   <link rel="stylesheet" href="./renderer/slides.css">
 </head>
-<body class="mermaid-loading">
+<body class="mermaid-loading" tabindex="-1">
   <div id="stage"></div>
+
+  <!-- In-canvas navigation controls (persist across slide re-renders). -->
+  <nav id="nav" class="nav" hidden aria-label="スライド操作">
+    <button id="navPrev" class="nav-btn" type="button" title="前へ (←)" aria-label="前のスライド">&#9664;</button>
+    <span id="navCounter" class="nav-counter" aria-live="polite"></span>
+    <button id="navNext" class="nav-btn" type="button" title="次へ (→)" aria-label="次のスライド">&#9654;</button>
+    <button id="navList" class="nav-btn" type="button" title="スライド一覧 (O)" aria-label="スライド一覧">&#9776;</button>
+  </nav>
+
+  <!-- Slide-list overview overlay, toggled from the control bar / keyboard. -->
+  <div id="overview" class="overview" hidden>
+    <div class="overview-panel" role="dialog" aria-modal="true" aria-label="スライド一覧">
+      <div class="overview-head">
+        <span>スライド一覧</span>
+        <button id="overviewClose" class="nav-btn" type="button" title="閉じる (Esc)" aria-label="閉じる">&#10005;</button>
+      </div>
+      <ol id="overviewList" class="overview-list"></ol>
+    </div>
+  </div>
+
   <script src="./vendor/marked.min.js"></script>
   <script src="./vendor/purify.min.js"></script>
   <script src="./vendor/mermaid.min.js"></script>
