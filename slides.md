@@ -1,69 +1,184 @@
-# Copilot canvas で<br>プレゼンしよう
+# なんコパ2周年🎉<br>祝電アプリの裏側
 
-GitHub Copilot とつくる、ライブなスライド発表
+～ 祝電アプリを、開発者の目で覗いてみた ～
 
----
-
-## このプレゼンの仕組み
-
-- スライドは **Markdown**（このファイル）に書く
-- Copilot は開始時に **全スライドをまとめて生成**して登録
-- **HTML 変換・装飾は presentation canvas 拡張機能**が担当
-- ページ送りは **インデックス指定だけ**だから **速い** ⚡
+なんでもCopilot #83 ／ Kazuki Ota（@okazuki）
 
 ---
 
-## ページ送りは ask_user で
+## 自己紹介
 
-- **次へ ▶** / **◀ 前へ** で 1 枚ずつ移動
-- **スライド一覧 ☰** から任意のスライドへジャンプ
-- **再読み込み ↻** で表示を作り直し
-- **終了 ✖** で発表を終える
+- 大田 一希 (Kazuki Ota)
+- Microsoft ／ Cloud Solution Architect & Evangelist
+- 好きなもの: **C#** ／ **.NET** ／ **GitHub Copilot**
+- X: **@okazuki**
+- zenn: https://zenn.dev/okazuki
 
-> 発表者は選択肢を選ぶだけ。スライドは Copilot が生成します。
-
----
-
-## コードもきれいに表示
-
-```js
-// 開始時に全スライドを一括登録
-await invokeCanvasAction("presentation", "load_deck", {
-  slides: [slide1, slide2, slide3],
-});
-// ページ送りはインデックスを渡すだけ
-await invokeCanvasAction("presentation", "goto_slide", { index: 1 });
-```
-
-`load_deck` で全スライドを登録し、`goto_slide` でスムーズに切り替えます。
+![](/assets/profile.jpg)
 
 ---
 
-## はじめかた
+## 今日のはなし 🎯
 
-1. このリポジトリで Copilot にこう伝える:
-   - 「**slides.md に従ってプレゼンしてください**」
-2. canvas にスライドが表示される
-3. あとは選択肢でページを送るだけ 🎉
+- AI コーディングでサクッと完成した祝電アプリ
+- 今年はサクッとできたので記憶に残ってないレベル
+    - 1 年前は何日もかけたのに凄い進化
+- アプリを開発者目線で裏側を除いてみる
 
 ---
 
-## 図も画像も使える
+## 主役：2周年祝電アプリ 🎂
+
+- なんコパ 2 周年の **お祝いメッセージボード**
+- メッセージを投稿 → **コルクボードにふわふわ表示**
+- 投稿数に応じて **称号バッジ**（無印 → 🌟 なんコパビギナー → …）
+- 紙吹雪・パーティクル・X シェアまで完備 🎊
+
+https://gray-hill-0599a9a00.7.azurestaticapps.net/
+
+---
+
+## AI でサクッと作成 🤖
+
+- **Azure Static Web Apps** + **Azure Functions** + **Cosmos DB**
+- フロントは **Vanilla JS**（GSAP / canvas-confetti / html2canvas）
+- 見た目もアニメも完成度が高い。**普通に良いアプリ** 👏
+
+---
+
+## 処理の流れ 🧐
 
 ```mermaid
 flowchart LR
-    A[Markdown] --> B[marked]
-    B --> C[Mermaid.js]
-    C --> D((図 / SVG))
+    subgraph Client[クライアント]
+        U[利用者]
+        B[ブラウザ / JS]
+    end
+
+    subgraph Server[サーバー]
+        API[API サーバー]
+        DB[(ストレージ)]
+    end
+
+    U --> B
+    B -->|入力・称号候補| API
+    API -->|保存| DB
 ```
 
-![ローカル画像の例](/assets/sample.svg)
-
-- 図は **Mermaid 記法**（` ```mermaid ` ブロック）でそのまま描ける
-- 画像は **リモート URL** か、`assets/` に置いた**ローカルファイル**で挿入
+- **クライアント** は、利用者が直接触る場所 (ブラウザ)
+- **サーバー** は、クライアントからのリクエストを処理してデータを保存する場所
 
 ---
 
-# ありがとうございました
+## 危険なポイント
 
-質問やフィードバックをどうぞ！
+- **入力値チェック・連打防止・称号判定** がクライアント側にある
+- → **画面意外から API を直接叩くとやりたい放題**
+
+```mermaid
+flowchart LR
+    subgraph Client[クライアント]
+        U[利用者]
+        B[ブラウザ / JS]
+        C[入力値チェック]
+        R[連打防止]
+        T[称号判定]
+    end
+
+    subgraph Server[サーバー]
+        API[API サーバー]
+        DB[(ストレージ)]
+    end
+
+    U --> B --> C --> R --> T --> API
+    API -->|保存| DB
+
+    style C fill:#d83b01,color:#fff,stroke:#a4262c,stroke-width:3px
+    style R fill:#d83b01,color:#fff,stroke:#a4262c,stroke-width:3px
+    style T fill:#d83b01,color:#fff,stroke:#a4262c,stroke-width:3px
+```
+
+---
+
+## 問題点① 投稿数を一気に増やせる 🚀
+
+- 連打防止は **JS の 3 秒クールダウンだけ**（`SUBMIT_COOLDOWN: 3000`）
+- ログイン不要・サーバー側のレート制限なし
+- → コンソールから **API を直接連打** すれば投稿数が一気に増やせる (これは、やると危ないのでやらない！)
+- 投稿数カウントもブラウザに保存されている
+    - 開発者ツールで書き換え可能
+    - → 次の投稿で一発最高の称号ゲット！
+
+> 🎬 デモ
+
+---
+
+## 問題点② 称号に好きな文字列 🏷️
+
+- 称号バッジは **ブラウザが作成 → そのまま送信**
+- サーバーは投稿数を検証せず、受け取った文字列を **保存＆表示**
+- → 開発者ツール **Network タブ** でリクエストを書き換えれば好きな称号を名乗れる
+
+> 🎬 デモ
+
+---
+
+## 犯行の例
+
+![](/assets/kazuki-san-post.png)
+
+---
+
+## 問題の原因：クライアントを信じすぎ 🫠
+
+- **検証・認可・レート制限・称号判定** が、ぜんぶ **ブラウザ側** で実装
+- → **サーバー側での検証が必要**
+
+---
+
+## 対処方法 🛠️
+
+```mermaid
+flowchart LR
+    subgraph Client[クライアント]
+        U[利用者]
+        B[ブラウザ / JS]
+    end
+
+    subgraph Server[サーバー]
+        V[検証]
+        A[認可 / レート制限]
+        S[保存]
+    end
+
+    U --> B
+    B -->|投稿データ| V
+    V -->|OK| A --> S
+    V -->|NG| X[拒否]
+    
+    style X fill:#d83b01,color:#fff,stroke:#a4262c,stroke-width:3px
+```
+
+- **サーバー側で確認**：検証・認可・レート制限
+- 称号は **サーバーが投稿数を数えて** 判定（クライアントを信じない）
+    - 今回のようなアプリならクライアント側でやるという割り切りも有り
+- 「クライアントから来る値は **すべて疑う**」が基本
+
+---
+
+## まとめ 🎉
+
+- AI で「動くもの」は一瞬で作れる、最高の時代
+- 今回抜けていたものサーバー側の検証処理
+- 全体を通して問題がないかどうかは見逃しがち
+    - AI で作ったものは人間で確認するか、そうならないように skill などで指示をしておく
+
+---
+
+# ありがとう<br/>ございました 🙌
+
+～ 祝電アプリを、開発者の目で覗いてみた ～
+
+なんコパ 3 年目突入おめでとうございます🎉
+
+Kazuki Ota ／ X: **@okazuki** ／ zenn: https://zenn.dev/okazuki
