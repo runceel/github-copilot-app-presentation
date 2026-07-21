@@ -18,6 +18,7 @@ extension.mjs（Node / @github/copilot-sdk）
   ▼
 canvas iframe（renderer/）
   │ marked で本文を HTML 化 → DOMPurify でサニタイズ
+  │ highlight.js で言語付きコードフェンスをシンタックスハイライト
   │ ```mermaid を図に変換 → mermaid.run
   │ ◀ ▶ ボタン・矢印キー・☰ 一覧でページ送り（canvas 内で完結）
   ▼
@@ -28,6 +29,7 @@ canvas iframe（renderer/）
 - 配色は **dark（既定）/ light / microsoft** の 3 テーマ。`open` の `input` または `load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。
 - ナビゲーション UI（操作バー・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
+- コードフェンスに `csharp` / `json` / `diff` などの言語名を付けると、highlight.js がシンタックスハイライトします。
 
 ## アクション
 
@@ -62,6 +64,8 @@ canvas iframe（renderer/）
   vendor/
     marked.min.js          # Markdown レンダラー
     purify.min.js          # DOMPurify（HTML サニタイズ）
+    highlight.min.js       # コードのシンタックスハイライト
+    highlight.LICENSE      # highlight.js の MIT ライセンス
     mermaid.min.js          # 図のレンダリング
 ```
 
@@ -71,6 +75,7 @@ canvas iframe（renderer/）
 
 - **marked** — MIT License © 2011-2024 Christopher Jeffrey 他 — https://github.com/markedjs/marked
 - **DOMPurify** — Apache-2.0 / MPL-2.0 © Cure53 他 — https://github.com/cure53/DOMPurify
+- **highlight.js** — MIT License © 2006 Ivan Sagalaev — https://github.com/highlightjs/highlight.js
 - **Mermaid** — MIT License © 2014-2024 Knut Sveidqvist 他 — https://github.com/mermaid-js/mermaid
 
 > 補足: `mermaid.min.js` は約 3MB のため、gist 共有（1 ファイル ~1MB 上限）には乗りません。ローカル利用・リポジトリへのコミットには影響しません。

@@ -116,6 +116,21 @@ function applyEmojiShortcodes(root) {
   }
 }
 
+// --- syntax highlighting ----------------------------------------------------
+// Highlight fenced code blocks after marked + DOMPurify have produced a safe
+// DOM. Mermaid fences are converted separately and must not be highlighted.
+function applySyntaxHighlighting(root) {
+  if (!window.hljs) return;
+  root.querySelectorAll("pre code").forEach((code) => {
+    if (code.classList.contains("language-mermaid")) return;
+    try {
+      window.hljs.highlightElement(code);
+    } catch (e) {
+      console.error("Syntax highlighting failed", e);
+    }
+  });
+}
+
 // --- mermaid ---------------------------------------------------------------
 // Render every <pre class="mermaid"> in `scope` to SVG. Resilient: a slide with
 // no diagrams, a missing library, or an invalid diagram must never leave the
@@ -192,6 +207,7 @@ function renderSlide(markdown) {
     graph.textContent = code.textContent;
     target.replaceWith(graph);
   });
+  applySyntaxHighlighting(bodyEl);
   deck.appendChild(bodyEl);
 
   // Footer: only shown when there's a deck name and/or a page/total pair,
