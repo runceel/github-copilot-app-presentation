@@ -14,6 +14,7 @@ extension.mjs（Node / @github/copilot-sdk）
   │ open 時に input.slides を受け取り、URL を返す前にデッキを適用（プレースホルダーを挟まない）
   │ デッキ（全スライド）と現在 index を保持し、/state に現在スライドを公開
   │ canvas からの POST /navigate でページ送りを受け付ける
+  │ Windows では Surface Pen の Win+F20 / Win+F18 ショートカットを監視
   │ /events(SSE) で更新を通知
   ▼
 canvas iframe（renderer/）
@@ -26,10 +27,19 @@ canvas iframe（renderer/）
 ```
 
 - **全スライドはプレゼン開始時に `open_canvas` の `input`（`slides`）で一括登録**します。open ハンドラーが URL を返す前にデッキを適用するため、canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。発表途中の差し替え・テーマ変更は `load_deck` で行います。**ページ送りは canvas 内のボタン（◀ ▶）・矢印キー・スライド一覧（☰）で完結**し、その操作は拡張機能のループバックサーバー（`POST /navigate`）に送られて全クライアントへ反映されます。外部サーバーや `localhost` ポートの手動起動は不要です。
+- Windows では、**Surface Pen の末尾ボタンを 1 回押すと次へ、長押しすると前へ**移動します。末尾ボタンが生成する `Win+F20`（1 回押し）と `Win+F18`（長押し）を小さな Windows PowerShell ヘルパーのキーボードフックで受け取り、既存のナビゲーション処理へ渡します。公式 `PenButtonListener` に必要なアプリのパッケージ ID には依存しません。
 - 配色は **dark（既定）/ light / microsoft** の 3 テーマ。`open` の `input` または `load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。
 - ナビゲーション UI（操作バー・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
 - コードフェンスに `csharp` / `json` / `diff` などの言語名を付けると、highlight.js がシンタックスハイライトします。
+
+## Surface Pen でページを送る
+
+1. Surface Pen を Windows と Bluetooth でペアリングします。
+2. presentation canvas を開きます。
+3. 末尾ボタンの **1 回押しで次へ**、**長押しで前へ**移動します。
+
+「アプリによるショートカットボタン動作の上書き」設定はオンのままで構いませんが、この実装は `PenButtonListener` ではなく Windows のペンショートカットを直接受け取ります。ペン操作を利用できない場合も、canvas の ◀ ▶ ボタンとキーボード操作はそのまま使えます。
 
 ## アクション
 
@@ -57,6 +67,8 @@ canvas iframe（renderer/）
 .github/extensions/presentation/
   extension.mjs            # canvas 宣言・ループバックサーバー・アクション
   copilot-extension.json   # gist 共有用マニフェスト
+  windows/
+    pen-button-listener.ps1 # Surface Pen の Win+F20 / Win+F18 を Node へ中継
   renderer/
     index.html             # iframe シェル・操作バー・スライド一覧オーバーレイ
     slides.css             # 3 テーマ（dark/light/microsoft）の配色定義・ナビ UI のスタイル

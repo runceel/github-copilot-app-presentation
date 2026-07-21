@@ -9,8 +9,8 @@
 // that serves a tiny iframe shell (renderer/) plus the vendored markdown/diagram
 // libraries (vendor/), exposes the current slide at /state, pushes "changed"
 // nudges over SSE (/events), and serves repo-root images at /assets/*. All slide
-// rendering happens client-side in renderer/renderer.js; this file is just the
-// wiring.
+// rendering happens client-side in renderer/renderer.js. On Windows, this file
+// also owns one optional native Surface Pen tail-button listener.
 
 import { createServer } from "node:http";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
@@ -18,10 +18,12 @@ import { existsSync } from "node:fs";
 import { join, normalize, sep, dirname, resolve, extname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { createInterface } from "node:readline";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
+const PEN_LISTENER_SCRIPT = join(EXT_DIR, "windows", "pen-button-listener.ps1");
 // Rehydrate state lives outside the committed extension source so reloads can
 // restore the last slide without polluting (or depending on writability of)
 // the extension folder.
@@ -60,6 +62,11 @@ function dataFileFor(key) {
 
 // instances: key -> { server, url, version, markdown, slides, index, clients:Set, assetsRoot, dataFile }
 const instances = new Map();
+let activeInstanceKey = null;
+let penListenerProcess = null;
+let penListenerSupported = null;
+let penListenerStopping = false;
+let penNavigationQueue = Promise.resolve();
 
 // Clamp an arbitrary index into [0, total-1] (or 0 when the deck is empty), so
 // "next past the end" / "prev before the start" simply stay on the edge slide.
@@ -87,6 +94,160 @@ function log(message, level = "info") {
     logger?.(message, { level });
   } catch (_) {
     /* never let logging throw */
+  }
+}
+
+function activateInstance(inst) {
+  activeInstanceKey = inst?.key || null;
+}
+
+function getActiveInstance() {
+  if (activeInstanceKey) {
+    const active = instances.get(activeInstanceKey);
+    if (active) return active;
+  }
+  const fallback = [...instances.values()].at(-1) || null;
+  activeInstanceKey = fallback?.key || null;
+  return fallback;
+}
+
+function queuePenNavigation(delta) {
+  penNavigationQueue = penNavigationQueue
+    .then(async () => {
+      const inst = getActiveInstance();
+      if (!inst?.slides.length) return;
+      await applyNavigation(inst, inst.index + delta);
+    })
+    .catch((e) => {
+      log(`presentation: Surface Pen navigation failed: ${e?.message || e}`, "warning");
+    });
+}
+
+function handlePenListenerMessage(child, line) {
+  if (penListenerProcess !== child || !line.trim()) return;
+  let message;
+  try {
+    message = JSON.parse(line);
+  } catch (_) {
+    log(`presentation: ignored invalid Surface Pen listener output: ${line}`, "warning");
+    return;
+  }
+
+  if (message.type === "navigate") {
+    if (message.action === "next") {
+      queuePenNavigation(1);
+    } else if (message.action === "previous") {
+      queuePenNavigation(-1);
+    } else {
+      log(
+        `presentation: ignored unknown Surface Pen action: ${message.action}`,
+        "warning",
+      );
+    }
+    return;
+  }
+
+  if (message.type === "status" && typeof message.supported === "boolean") {
+    if (penListenerSupported !== message.supported) {
+      penListenerSupported = message.supported;
+      log(
+        message.supported
+          ? "presentation: Surface Pen tail-button navigation is ready"
+          : "presentation: Surface Pen tail-button listener is unavailable; canvas controls remain enabled",
+      );
+    }
+    return;
+  }
+
+  if (message.type === "error") {
+    log(
+      `presentation: Surface Pen listener error: ${message.message || "unknown error"}`,
+      "warning",
+    );
+  }
+}
+
+function startPenListener() {
+  if (process.platform !== "win32" || penListenerProcess || instances.size === 0) return;
+
+  const systemRoot = process.env.SystemRoot || process.env.WINDIR || "C:\\Windows";
+  const powershell = join(
+    systemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe",
+  );
+  if (!existsSync(powershell) || !existsSync(PEN_LISTENER_SCRIPT)) {
+    log(
+      "presentation: Surface Pen listener could not start because Windows PowerShell or its helper script is missing",
+      "warning",
+    );
+    return;
+  }
+
+  penListenerStopping = false;
+  const child = spawn(
+    powershell,
+    [
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-File",
+      PEN_LISTENER_SCRIPT,
+      "-ParentProcessId",
+      String(process.pid),
+    ],
+    {
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
+  penListenerProcess = child;
+  penListenerSupported = null;
+
+  const stdout = createInterface({ input: child.stdout });
+  stdout.on("line", (line) => handlePenListenerMessage(child, line));
+
+  const stderr = createInterface({ input: child.stderr });
+  stderr.on("line", (line) => {
+    if (penListenerProcess === child && line.trim()) {
+      log(`presentation: Surface Pen listener: ${line}`, "warning");
+    }
+  });
+
+  child.once("error", (e) => {
+    if (penListenerProcess === child) {
+      log(`presentation: Surface Pen listener failed to start: ${e?.message || e}`, "warning");
+    }
+  });
+  child.once("close", (code, signal) => {
+    if (penListenerProcess !== child) return;
+    penListenerProcess = null;
+    penListenerSupported = null;
+    if (!penListenerStopping && instances.size > 0) {
+      const reason = signal || (code ?? "unknown");
+      log(
+        `presentation: Surface Pen listener stopped unexpectedly (${reason})`,
+        "warning",
+      );
+    }
+  });
+}
+
+function stopPenListener() {
+  penListenerStopping = true;
+  const child = penListenerProcess;
+  penListenerProcess = null;
+  penListenerSupported = null;
+  if (child && child.exitCode === null && !child.killed) {
+    try {
+      child.kill();
+    } catch (e) {
+      log(`presentation: Surface Pen listener cleanup failed: ${e?.message || e}`, "warning");
+    }
   }
 }
 
@@ -381,6 +542,7 @@ async function startServer(inst) {
         res.end(JSON.stringify({ ok: false, error: "no_deck" }));
         return;
       }
+      activateInstance(inst);
       const target = hasIndex ? body.index : inst.index + body.delta;
       const changed = await applyNavigation(inst, target);
       res.statusCode = 200;
@@ -443,6 +605,7 @@ async function ensureInstance(ctx) {
   if (!inst) {
     const repoRoot = resolveRepoRoot(ctx.session?.workingDirectory);
     inst = {
+      key,
       server: null,
       url: null,
       version: 0,
@@ -478,6 +641,8 @@ async function ensureInstance(ctx) {
     inst.server = server;
     inst.url = url;
   }
+  activateInstance(inst);
+  startPenListener();
   return inst;
 }
 
@@ -487,7 +652,7 @@ const session = await joinSession({
       id: "presentation",
       displayName: "Presentation",
       description:
-        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。open 時に slides/index/theme を渡すと最初からデッキを表示できる（プレースホルダーを挟まない）。発表途中の再ロードや差し替えは load_deck で行う。以降のページ送り（◀ ▶・矢印キー・スライド一覧）は canvas 内の操作で完結する。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替えることもできる。",
+        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。open 時に slides/index/theme を渡すと最初からデッキを表示できる（プレースホルダーを挟まない）。発表途中の再ロードや差し替えは load_deck で行う。以降のページ送りは canvas 内の ◀ ▶・矢印キー・スライド一覧、対応する Windows 環境では Surface Pen の末尾ボタンで完結する。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替えることもできる。",
       inputSchema: {
         type: "object",
         properties: {
@@ -516,7 +681,7 @@ const session = await joinSession({
         {
           name: "load_deck",
           description:
-            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片（任意のフロントマター + 本文）の配列を渡すと、デッキを保持して index（既定 0）のスライドを表示する。任意の theme（dark/light/microsoft、既定 dark）でデッキ全体の配色を指定できる。登録後のページ送りは canvas 内の操作（◀ ▶・矢印キー・一覧）で完結するので、通常は goto_slide を繰り返し呼ぶ必要はない。",
+            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片（任意のフロントマター + 本文）の配列を渡すと、デッキを保持して index（既定 0）のスライドを表示する。任意の theme（dark/light/microsoft、既定 dark）でデッキ全体の配色を指定できる。登録後のページ送りは canvas 内の操作（◀ ▶・矢印キー・一覧）と対応環境の Surface Pen で完結するので、通常は goto_slide を繰り返し呼ぶ必要はない。",
           inputSchema: {
             type: "object",
             properties: {
@@ -560,6 +725,7 @@ const session = await joinSession({
                 "presentation canvas is not open; open it before calling load_deck",
               );
             }
+            activateInstance(inst);
             await applyDeck(inst, {
               slides,
               index: ctx.input?.index,
@@ -606,6 +772,7 @@ const session = await joinSession({
             if (typeof ctx.input?.index !== "number") {
               throw new CanvasError("invalid_input", "index (number) is required");
             }
+            activateInstance(inst);
             const changed = await applyNavigation(inst, ctx.input.index);
             return {
               ok: true,
@@ -644,6 +811,7 @@ const session = await joinSession({
                 "presentation canvas is not open; open it before calling show_slide",
               );
             }
+            activateInstance(inst);
             inst.markdown = markdown;
             inst.mode = "adhoc";
             inst.version += 1;
@@ -663,6 +831,7 @@ const session = await joinSession({
                 "presentation canvas is not open",
               );
             }
+            activateInstance(inst);
             inst.markdown = "";
             inst.slides = [];
             inst.index = 0;
@@ -723,6 +892,10 @@ const session = await joinSession({
         }
         inst.clients.clear();
         instances.delete(key);
+        if (activeInstanceKey === key) {
+          activateInstance([...instances.values()].at(-1) || null);
+        }
+        if (instances.size === 0) stopPenListener();
         if (inst.server) {
           const server = inst.server;
           inst.server = null;
@@ -735,3 +908,4 @@ const session = await joinSession({
 });
 
 logger = (message, opts) => session.log(message, opts);
+process.once("exit", stopPenListener);

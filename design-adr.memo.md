@@ -239,6 +239,8 @@ kicker: ARCHITECTURE DECISION RECORD
 - Mermaid は別の描画経路なので、コードハイライト対象外
 - 表紙とクロージングは専用レイアウトを使う
 - Microsoft テーマでは表紙の kicker に 4 色マークが付く
+- Windows では、Surface Pen の末尾ボタンを 1 回押すと次へ、長押しすると前へ進む
+- Pen 操作は、Bluetooth ペアリングされたペンが生成する `Win+F20` / `Win+F18` を presentation 拡張が受け取る
 
 関連ファイル:
 
@@ -247,6 +249,7 @@ kicker: ARCHITECTURE DECISION RECORD
 - `.github/extensions/presentation/renderer/slides.css`
 - `.github/extensions/presentation/vendor/highlight.min.js`
 - `.github/extensions/presentation/vendor/highlight.LICENSE`
+- `.github/extensions/presentation/windows/pen-button-listener.ps1`
 
 ## 今後の編集で崩さないこと
 

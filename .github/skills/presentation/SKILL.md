@@ -1,17 +1,17 @@
 ---
 name: presentation
-description: 'Markdown ファイルを使って GitHub Copilot の canvas でスライドプレゼンを行うためのスキル。「slides.md に従ってプレゼンして」「この Markdown をプレゼンして」「@名前.md をプレゼンして」「MS っぽくプレゼンして」「このファイルをスライド化して」など、Markdown を元にスライドを 1 枚ずつ表示しながら発表を進めたいときに使う。元 Markdown のページが自然言語の文章（段落主体）のときは、AI がページごとに自動判定して見出し＋箇条書きのスライド形に要約・整形して表示する。プレゼン開始時に全スライドをまとめて生成し、canvas を開くときに open の input（slides）へ一括で渡すので最初からスライドが表示され（プレースホルダーを挟まない）、ページ送りは canvas 内のボタン（◀ ▶）・矢印キー・スライド一覧（☰）で完結する（agent の ask_user ループは不要）。発表途中の差し替えは load_deck で行う。スライドは presentation canvas 拡張機能（Node + marked/mermaid）がネイティブ canvas にレンダリングする。Use when the user wants to give a slide presentation driven by a markdown file and shown in the canvas.'
+description: 'Markdown ファイルを使って GitHub Copilot の canvas でスライドプレゼンを行うためのスキル。「slides.md に従ってプレゼンして」「この Markdown をプレゼンして」「@名前.md をプレゼンして」「MS っぽくプレゼンして」「このファイルをスライド化して」など、Markdown を元にスライドを 1 枚ずつ表示しながら発表を進めたいときに使う。元 Markdown のページが自然言語の文章（段落主体）のときは、AI がページごとに自動判定して見出し＋箇条書きのスライド形に要約・整形して表示する。プレゼン開始時に全スライドをまとめて生成し、canvas を開くときに open の input（slides）へ一括で渡すので最初からスライドが表示され（プレースホルダーを挟まない）、ページ送りは canvas 内のボタン（◀ ▶）・矢印キー・スライド一覧（☰）、対応する Windows 環境では Surface Pen の末尾ボタンで完結する（agent の ask_user ループは不要）。発表途中の差し替えは load_deck で行う。スライドは presentation canvas 拡張機能（Node + marked/mermaid）がネイティブ canvas にレンダリングする。Use when the user wants to give a slide presentation driven by a markdown file and shown in the canvas.'
 ---
 
 # presentation スキル
 
-Markdown ファイルを元に、**プレゼン開始時に全スライド分の「小さな Markdown 断片」をまとめて生成し、canvas を開くときに `open` の `input`（`slides`）へ一括で渡して**最初から presentation canvas 拡張機能に表示するスキルです（「スライド未読込」のプレースホルダーを挟みません）。**登録後のページ送り（次へ / 前へ / 一覧）は canvas（iframe）内のボタン・キーボードだけで完結**するので、agent はスライドを送るための `ask_user` ループを回す必要がありません。発表途中で内容やテーマを差し替えたいときだけ `load_deck` を呼びます。
+Markdown ファイルを元に、**プレゼン開始時に全スライド分の「小さな Markdown 断片」をまとめて生成し、canvas を開くときに `open` の `input`（`slides`）へ一括で渡して**最初から presentation canvas 拡張機能に表示するスキルです（「スライド未読込」のプレースホルダーを挟みません）。**登録後のページ送り（次へ / 前へ / 一覧）は canvas のボタン・キーボード、対応環境では Surface Pen で完結**するので、agent はスライドを送るための `ask_user` ループを回す必要がありません。発表途中で内容やテーマを差し替えたいときだけ `load_deck` を呼びます。
 
 ## いちばん大事な原則 ⚡
 
 1. **あなた（生成 AI）が書くのは、各スライド 1 枚分の「小さな Markdown 断片」だけ**です。HTML・CSS・テーマ・レイアウト・ページ番号・アニメーションは**すべて拡張機能側（marked）が担当**します。フル HTML を生成しないこと。
 2. **全スライドの生成は、最初にプレゼンを依頼されたときに一度だけ**まとめて行い、`open_canvas` の `input`（`slides`）で一括登録します（発表途中で内容やテーマを変えるときだけ `load_deck`）。**ページ送りのたびに Markdown を生成し直さない**こと。
-3. **ページ送りは canvas 内の操作で完結**します。`load_deck` で登録したあとは、ユーザーが canvas 内の **◀ / ▶ ボタン**、**矢印キー（← →）**、**スライド一覧（☰）**で自由に移動できます。agent が `ask_user` でページ送りループを回す必要はありません。
+3. **ページ送りは canvas と入力デバイスの操作で完結**します。`load_deck` で登録したあとは、ユーザーが canvas 内の **◀ / ▶ ボタン**、**矢印キー（← →）**、**スライド一覧（☰）**で自由に移動できます。対応する Windows 環境では **Surface Pen の末尾ボタン**も使えます。agent が `ask_user` でページ送りループを回す必要はありません。
 
 スライド 1 枚は、せいぜいこの程度の Markdown です:
 
@@ -204,18 +204,19 @@ CanvasInputInvalidError: Invalid input for action "load_deck" ... (root): must b
 
 > どちらでも表示は問題ありません。**まず `「」`/`“”` への置き換えを優先**し、どうしても素の `"` を出したいときだけ `\"` でエスケープしてください。
 
-### 5. ページ送りは canvas 内で完結する
-canvas をデッキごと開いたら、**ページ送りはユーザーが canvas 内で直接操作**します。agent が `ask_user` でループを回す必要はありません。canvas には次の操作 UI が用意されています:
+### 5. ページ送りはユーザー操作で完結する
+canvas をデッキごと開いたら、**ページ送りはユーザーが canvas または対応入力デバイスから直接操作**します。agent が `ask_user` でループを回す必要はありません。次の操作が使えます:
 
 - **◀ / ▶ ボタン**（画面下中央のバー）… 前へ / 次へ。端ではボタンが無効化されます。
 - **キーボード** … `→` `PageDown` `Space` = 次へ、`←` `PageUp` = 前へ、`Home` / `End` = 先頭 / 末尾、`O` または `Esc` = スライド一覧の開閉。
+- **Surface Pen（Windows）** … 末尾ボタンの 1 回押し = 次へ、長押し = 前へ。Bluetooth ペアリングされたペンが生成する `Win+F20` / `Win+F18` を拡張機能が受け取る。利用できない環境では通常の操作へ自動的にフォールバック。
 - **☰ スライド一覧** … 全スライドのタイトル一覧を開き、クリックしたページへジャンプ（現在位置はハイライト表示）。
 
 > キーボード操作は iframe にフォーカスがあるときに効きます。canvas をクリックするとフォーカスが移ります。確実なのはボタン操作です。
 
 プレゼン開始直後の agent の案内例:
 
-> プレゼンを開始しました。スライド送りは canvas 内の **◀ ▶ ボタン**または**矢印キー（← →）**で操作できます。全体は **☰**（または `O` キー）で一覧表示できます。
+> プレゼンを開始しました。スライド送りは canvas 内の **◀ ▶ ボタン**、**矢印キー（← →）**、対応環境では **Surface Pen の末尾ボタン**で操作できます。全体は **☰**（または `O` キー）で一覧表示できます。
 
 そのうえで agent はユーザーの次の指示を待ちます。ページ送りのために `ask_user` を繰り返し呼ばないでください。
 
