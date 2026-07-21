@@ -22,7 +22,7 @@ kicker: ARCHITECTURE DECISION RECORD
 
 ## AI を使って開発していると…
 
-過去の経緯が書かれている設計書が出来上がる。
+### 過去の経緯が書かれている設計書が出来上がる。
 
 ```markdown
 ### SharePoint Indexer
@@ -41,9 +41,9 @@ AI Search へ登録する。
 
 ---
 
-## こうあってほしい設計書
+## こう書いてほしい
 
-###現状の最新の情報だけ書いておいてほしい。
+### 現状の最新の情報だけ書いておいてほしい。
 
 ```markdown
 ### SharePoint Indexer
@@ -57,11 +57,11 @@ AI Search へ登録する。
 
 ---
 
-## でも、AIに書いてもらうと
+## 特に指示をせずにAIに書いてもらうと…
 
 ### 過去の経緯まで一緒に残る
 
-ドキュメントやソースコードのコメントなどが読みにくくなる。
+ドキュメントが読みにくくなる。
 
 ---
 
@@ -78,10 +78,27 @@ AI Search へ登録する。
 
 ## ただ、コードには
 
+### 過去の問題と対応がドキュメントコメントに残った
+
 ```csharp
-// 以前はDataGridを使っていた。
-// COM例外が発生したためListViewへ変更した。
-var containersView = new ListView();
+/// <remarks>
+/// Issue #187 — 生成中セッション切替時の送信不能問題対応。
+/// <para>
+/// 各送信は PendingSend としてセッション ID 単位で追跡される。
+/// _isSending は「Active Session に進行中の送信があるか」を表す
+/// 派生状態であり、セッション切替時は再計算される。
+/// </para>
+/// <para>
+/// セッション切替時、旧セッションのストリーミングは
+/// サーバ側でキャンセルしない（stale 化方針）。
+/// バックグラウンドで完了させて履歴に永続化させ、
+/// Active Session 側の UI には混入させない。
+/// </para>
+/// </remarks>
+public partial class ChatPage(
+    IChatService chatService, ISnackbar snackbar, ICurrentUser currentUser,
+    IJSRuntime jsRuntime, BrowserTimeZoneProvider timeZoneProvider,
+    TimeProvider timeProvider, ILogger<ChatPage> logger) { /* ... */ }
 ```
 
 ---
@@ -89,6 +106,10 @@ var containersView = new ListView();
 ## そこで
 
 # コード用のSKILLも<br>別に用意した
+
+---
+
+# 🎉問題解決🎉
 
 ---
 
@@ -285,7 +306,7 @@ ADR-0003  Timer定期クロールへ変更
 
 ## 全体を見ながら
 
-# マージを判断する人が<br>必要かもしれない
+# マージを判断する人が必要
 
 ---
 
