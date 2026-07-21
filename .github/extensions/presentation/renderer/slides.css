@@ -1,8 +1,9 @@
 /* ===== Themes =====
    Default (and explicit dark) live on :root; light/microsoft override.
-   data-theme is set on <html> by the renderer from the deck theme. */
+   data-theme is set on <html> and each .deck so print pages can vary themes. */
 :root,
-:root[data-theme="dark"]{
+:root[data-theme="dark"],
+.deck[data-theme="dark"]{
   --bg:#0e1117; --fg:#f0f4fa; --muted:#8b95a3; --body:#c9d2dd;
   --accent:#4ea8ff; --accent-strong:#79c0ff; --accent-soft:rgba(78,168,255,.14); --accent-line:rgba(78,168,255,.4);
   --surface:#161b22; --code:#1b2330; --code-fg:#a9c7ff; --border:#2a313c;
@@ -20,8 +21,12 @@
   --closing-bg:
     radial-gradient(1100px 720px at 50% 64%, rgba(122,92,255,.22) 0%, transparent 66%),
     linear-gradient(200deg,#0e1117 38%,#1b1535 100%);
+  --print-slide-bg:#0e1117;
+  --print-cover-bg:linear-gradient(160deg,#11203a 0%,#0e1117 60%);
+  --print-closing-bg:linear-gradient(200deg,#0e1117 38%,#1b1535 100%);
 }
-:root[data-theme="light"]{
+:root[data-theme="light"],
+.deck[data-theme="light"]{
   --bg:#ffffff; --fg:#15181f; --muted:#5b6470; --body:#333a44;
   --accent:#4f46e5; --accent-strong:#4338ca; --accent-soft:#eef2ff; --accent-line:#c7d2fe;
   --surface:#ffffff; --code:#f3f4f6; --code-fg:#3730a3; --border:#e5e7eb;
@@ -39,8 +44,12 @@
   --closing-bg:
     radial-gradient(1100px 720px at 50% 66%, #f3e8ff 0%, transparent 70%),
     linear-gradient(200deg,#ffffff 42%,#f6f0ff 100%);
+  --print-slide-bg:#ffffff;
+  --print-cover-bg:linear-gradient(160deg,#e0e7ff 0%,#eef2ff 45%,#ffffff 100%);
+  --print-closing-bg:linear-gradient(200deg,#ffffff 20%,#f6f0ff 72%,#f3e8ff 100%);
 }
-:root[data-theme="microsoft"]{
+:root[data-theme="microsoft"],
+.deck[data-theme="microsoft"]{
   --bg:#ffffff; --fg:#201f1e; --muted:#605e5c; --body:#323130;
   --accent:#0078d4; --accent-strong:#106ebe; --accent-soft:#eff6fc; --accent-line:#cfe4f7;
   --surface:#ffffff; --code:#f3f2f1; --code-fg:#0b3a66; --border:#e1dfdd;
@@ -60,6 +69,9 @@
   --closing-bg:
     radial-gradient(1100px 720px at 50% 74%, #ffc492 0%, transparent 72%),
     linear-gradient(200deg,#ffe7d1 0%,#ffd4a8 100%);
+  --print-slide-bg:#ffffff;
+  --print-cover-bg:linear-gradient(160deg,#a7d4f5 0%,#b7dcf7 55%,#d1e9fa 100%);
+  --print-closing-bg:linear-gradient(200deg,#ffe7d1 0%,#ffd4a8 100%);
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
@@ -103,7 +115,7 @@ body{
         text-transform:uppercase;font-size:clamp(12px,1.6vh,16px);margin-bottom:.55em;}
 .kicker::before{content:"";flex:0 0 auto;width:1.05em;height:1.05em;border-radius:3px;
   background:var(--kicker-mark);}
-:root[data-theme="microsoft"] .kicker::before{border-radius:0;
+.deck[data-theme="microsoft"] .kicker::before{border-radius:0;
   background:
     linear-gradient(var(--ms-red),var(--ms-red)) left top/47% 47% no-repeat,
     linear-gradient(var(--ms-green),var(--ms-green)) right top/47% 47% no-repeat,
@@ -244,3 +256,38 @@ footer .page{color:var(--accent-strong);font-weight:600;background:var(--accent-
 .overview-item.current .overview-num{color:var(--fg);background:var(--accent);
      border-color:var(--accent);}
 .overview-item.current .overview-label{color:var(--fg);font-weight:600;}
+
+/* ===== Headless PDF export ===== */
+@page{size:13.333333in 7.5in;margin:0;}
+@media print{
+  html,body{width:13.333333in;height:auto;}
+  body.print-mode{
+    overflow:visible;background:none;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;
+  }
+  body.print-mode #stage{display:block;width:13.333333in;}
+  body.print-mode .deck{
+    width:13.333333in;height:7.5in;min-height:7.5in;max-height:7.5in;
+    --deck-pad-y:40px;--deck-pad-x:84px;
+    --slide-h1-size:48px;--slide-h2-size:36px;--slide-h3-size:24px;
+    --slide-body-size:22px;--slide-code-size:15px;
+    overflow:hidden;animation:none;break-after:page;page-break-after:always;
+  }
+  body.print-mode .deck.size-large{
+    --slide-h1-size:53px;--slide-h2-size:42px;--slide-h3-size:29px;
+    --slide-body-size:25px;--slide-code-size:17px;
+  }
+  body.print-mode .deck.size-xlarge{
+    --slide-h1-size:60px;--slide-h2-size:48px;--slide-h3-size:33px;
+    --slide-body-size:28px;--slide-code-size:19px;
+  }
+  body.print-mode .deck:not(.title-slide):not(.closing-slide){
+    background:var(--print-slide-bg,var(--bg));
+  }
+  body.print-mode .deck.title-slide{background:var(--print-cover-bg,var(--cover-bg));}
+  body.print-mode .deck.closing-slide{background:var(--print-closing-bg,var(--closing-bg));}
+  body.print-mode .deck:last-child{break-after:auto;page-break-after:auto;}
+  body.print-mode .deck::before{position:absolute;}
+  body.print-mode .body{overflow:hidden;}
+  body.print-mode .nav,body.print-mode .overview{display:none!important;}
+}

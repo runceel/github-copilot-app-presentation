@@ -63,9 +63,11 @@ total: 6
 | `load_deck` | 登録済みデッキを差し替える / 再ロードする。`slides`（各スライド 1 枚分の Markdown 断片の配列）、任意の `index`（最初に表示する 0 始まりインデックス、既定 0）、任意の `theme`（デッキ全体の配色テーマ、`dark`/`light`/`microsoft`、既定 `dark`）を渡す。**発表途中で内容やテーマを変える**ときに使う（開始時は通常 `open` の `input` で渡す）。 |
 | `goto_slide` | 登録済みデッキ内で表示スライドを切り替える。`index`（0 始まり）を渡す。範囲外は端に丸められる。**通常のページ送りは canvas 内で行われるため不要**だが、ユーザーがチャットで「3 ページ目に飛んで」のように特定ページを指定したときに使う。 |
 | `show_slide` | スライドを 1 枚だけ差し替える。デッキ未登録での単発表示や、その場限りの差し替え用。通常のプレゼンでは使わない。 |
+| `export_pdf` | 表示中のデッキを16:9 PDFへ書き出すAI専用action。任意の `outputPath` はworkspaceからの相対 `.pdf` パス、省略時は `presentation.pdf`。任意の `theme`（`dark`/`light`/`microsoft`）はPDFだけに適用し、canvas表示は変えない。1スライド1ページで、背景・画像・コード強調・Mermaidを含む。`show_slide` による現在ページの一時差し替えも反映する。 |
 | `reset` | スライドとデッキをクリアして待機表示に戻す。 |
 
 > `load_deck` / `goto_slide` は結果に `{ ok, version, index, total }` を返します（`goto_slide` は `changed` も返し、表示が実際に変わったかを示します）。`index` は現在表示中の 0 始まりインデックス、`total` は総スライド数です。
+> `export_pdf` は `{ ok, path, total, theme, bytes }` を返します。PDFを書き出す前に、元Markdownが更新されている場合は最新の全スライドを `load_deck` で再登録してください。
 
 ## スライド断片のフォーマット
 

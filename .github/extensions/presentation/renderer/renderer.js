@@ -227,15 +227,17 @@ function applySyntaxHighlighting(root) {
 // no diagrams, a missing library, or an invalid diagram must never leave the
 // slide blank, so the body is always revealed in the end. The mermaid theme is
 // matched to the slide theme, re-initialized only when it actually changes.
-function runMermaid(scope, theme, token) {
+function runMermaid(scope, theme, token, revealWhenDone = true) {
   // Only the latest render may lift the loading veil; a stale finish is ignored.
   const reveal = () => {
-    if (token === renderToken) document.body.classList.remove("mermaid-loading");
+    if (revealWhenDone && token === renderToken) {
+      document.body.classList.remove("mermaid-loading");
+    }
   };
   const nodes = scope.querySelectorAll("pre.mermaid, .mermaid");
   if (!nodes.length || !window.mermaid) {
     reveal();
-    return;
+    return Promise.resolve();
   }
   try {
     const wanted = MERMAID_THEME[theme] || "neutral";
@@ -243,17 +245,18 @@ function runMermaid(scope, theme, token) {
       window.mermaid.initialize({ startOnLoad: false, theme: wanted, securityLevel: "strict" });
       lastMermaidTheme = wanted;
     }
-    Promise.resolve(window.mermaid.run({ nodes }))
+    return Promise.resolve(window.mermaid.run({ nodes }))
       .catch((e) => console.error("Mermaid render failed", e))
       .finally(reveal);
   } catch (e) {
     console.error("Mermaid init failed", e);
     reveal();
+    return Promise.resolve();
   }
 }
 
 // --- slide rendering -------------------------------------------------------
-function renderSlide(markdown) {
+function createSlide(markdown, fallbackTheme) {
   const md = nonEmpty(markdown) ? markdown : PLACEHOLDER;
   const { meta, body: rawBody } = splitFrontMatter(md);
   const directive = extractSlideSizeDirective(rawBody);
@@ -263,15 +266,14 @@ function renderSlide(markdown) {
   const titleSlide = layout === "title";
   const closingSlide = layout === "closing";
   const sizeMode = normalizeSizeMode(meta.size || directive.size);
-  document.title = meta.title || meta.deck || "Slide";
 
-  // A slide-level `theme:` overrides the deck theme; set it before building the
-  // DOM so the new slide never flashes the previous theme's colors.
-  const theme = normalizeTheme(meta.theme || deckTheme);
-  document.documentElement.setAttribute("data-theme", theme);
+  // A slide-level `theme:` overrides the deck theme. Keep it on the deck element
+  // as well as <html> so print mode can render differently themed pages together.
+  const theme = normalizeTheme(meta.theme || fallbackTheme);
 
   const deck = document.createElement("div");
   deck.className = "deck";
+  deck.dataset.theme = theme;
   if (titleSlide) deck.className = "deck title-slide";
   else if (closingSlide) deck.className = "deck closing-slide";
   if (sizeMode !== "auto") setSizeLevel(deck, sizeMode);
@@ -327,17 +329,118 @@ function renderSlide(markdown) {
     deck.appendChild(footer);
   }
 
+  return {
+    deck,
+    bodyEl,
+    theme,
+    sizeMode,
+    titleSlide,
+    closingSlide,
+    title: meta.title || meta.deck || "Slide",
+  };
+}
+
+function renderSlide(markdown) {
+  const slide = createSlide(markdown, deckTheme);
+  document.title = slide.title;
+  document.documentElement.setAttribute("data-theme", slide.theme);
+
   const token = ++renderToken;
   document.body.classList.add("mermaid-loading");
-  document.getElementById("stage").replaceChildren(deck);
+  document.getElementById("stage").replaceChildren(slide.deck);
   if (autoSizeFrame) {
     cancelAnimationFrame(autoSizeFrame);
     autoSizeFrame = 0;
   }
   autoSizeTarget =
-    sizeMode === "auto" && !titleSlide && !closingSlide ? { deck, bodyEl } : null;
+    slide.sizeMode === "auto" && !slide.titleSlide && !slide.closingSlide
+      ? { deck: slide.deck, bodyEl: slide.bodyEl }
+      : null;
   scheduleAutoSize();
-  runMermaid(bodyEl, theme, token);
+  runMermaid(slide.bodyEl, slide.theme, token);
+}
+
+function afterLayout() {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+}
+
+function waitForImages(root) {
+  const pending = [...root.querySelectorAll("img")]
+    .filter((image) => !image.complete)
+    .map(
+      (image) =>
+        new Promise((resolve) => {
+          image.addEventListener("load", resolve, { once: true });
+          image.addEventListener("error", resolve, { once: true });
+        }),
+    );
+  return Promise.all(pending);
+}
+
+async function reportPrintStatus(token, status, error = "") {
+  const response = await fetch(`./export-status?token=${encodeURIComponent(token)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status, error }),
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error(`Could not report print status (${response.status}).`);
+}
+
+async function renderPrintDeck(slides, theme) {
+  deckTheme = normalizeTheme(theme);
+  document.documentElement.setAttribute("data-theme", deckTheme);
+  document.body.classList.add("print-mode", "mermaid-loading");
+  const rendered = slides.map((markdown) => createSlide(markdown, deckTheme));
+  const stage = document.getElementById("stage");
+  stage.replaceChildren(...rendered.map((slide) => slide.deck));
+  document.title = rendered[0]?.title || "Presentation";
+
+  if (document.fonts?.ready) await document.fonts.ready;
+  await afterLayout();
+  for (const slide of rendered) {
+    if (slide.sizeMode === "auto" && !slide.titleSlide && !slide.closingSlide) {
+      applyAutoSize(slide.deck, slide.bodyEl);
+    }
+  }
+  for (const slide of rendered) {
+    await runMermaid(slide.bodyEl, slide.theme, renderToken, false);
+  }
+  await waitForImages(stage);
+  await afterLayout();
+
+  document.body.classList.remove("mermaid-loading");
+  document.documentElement.setAttribute("data-print-ready", "true");
+  window.__presentationPrintReady = true;
+}
+
+async function initPrint(params) {
+  const token = params.get("token") || "";
+  if (!token) throw new Error("Missing PDF export token.");
+  try {
+    const response = await fetch(`./export-data?token=${encodeURIComponent(token)}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`Could not load PDF export data (${response.status}).`);
+    const data = await response.json();
+    if (
+      !Array.isArray(data.slides) ||
+      data.slides.length === 0 ||
+      !data.slides.every((slide) => typeof slide === "string")
+    ) {
+      throw new Error("PDF export data does not contain a valid deck.");
+    }
+    await renderPrintDeck(data.slides, data.theme);
+    await reportPrintStatus(token, "ready");
+  } catch (error) {
+    const message = error?.message || "Print rendering failed.";
+    console.error(message);
+    document.body.classList.remove("mermaid-loading");
+    document.documentElement.setAttribute("data-print-error", "true");
+    await reportPrintStatus(token, "error", message).catch(() => {});
+  }
 }
 
 // --- live update -----------------------------------------------------------
@@ -618,6 +721,12 @@ function init() {
   try {
     window.mermaid.initialize({ startOnLoad: false, theme: "neutral", securityLevel: "strict" });
   } catch (_) {}
+
+  const params = new URLSearchParams(window.location.search);
+  if (params.get("print") === "1") {
+    initPrint(params);
+    return;
+  }
 
   wireControls();
   window.addEventListener("resize", scheduleAutoSize);

@@ -13,12 +13,33 @@
 // also owns one optional native Surface Pen tail-button listener.
 
 import { createServer } from "node:http";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import {
+  readFile,
+  writeFile,
+  mkdir,
+  mkdtemp,
+  open,
+  realpath,
+  rename,
+  rm,
+  stat,
+} from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, normalize, sep, dirname, resolve, extname } from "node:path";
+import {
+  basename,
+  join,
+  normalize,
+  sep,
+  dirname,
+  resolve,
+  extname,
+  relative,
+  isAbsolute,
+} from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { execFileSync, spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 
@@ -28,6 +49,8 @@ const PEN_LISTENER_SCRIPT = join(EXT_DIR, "windows", "pen-button-listener.ps1");
 // restore the last slide without polluting (or depending on writability of)
 // the extension folder.
 const DATA_DIR = join(tmpdir(), "copilot-presentation-canvas");
+const DEFAULT_PDF_NAME = "presentation.pdf";
+const PDF_RENDER_TIMEOUT_MS = 60_000;
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -86,6 +109,409 @@ const DEFAULT_THEME = "dark";
 function normalizeTheme(value) {
   const t = typeof value === "string" ? value.trim().toLowerCase() : "";
   return THEMES.has(t) ? t : DEFAULT_THEME;
+}
+
+function findExecutableOnPath(names) {
+  const locator = process.platform === "win32" ? "where.exe" : "which";
+  for (const name of names) {
+    try {
+      const output = execFileSync(locator, [name], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true,
+      });
+      const candidate = output
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .find((line) => line && existsSync(line));
+      if (candidate) return candidate;
+    } catch (_) {
+      // Try the next browser name.
+    }
+  }
+  return null;
+}
+
+function findPdfBrowser() {
+  const candidates = [];
+  if (process.platform === "win32") {
+    for (const base of [
+      process.env.ProgramFiles,
+      process.env["ProgramFiles(x86)"],
+      process.env.LOCALAPPDATA,
+    ]) {
+      if (!base) continue;
+      candidates.push(
+        join(base, "Microsoft", "Edge", "Application", "msedge.exe"),
+        join(base, "Google", "Chrome", "Application", "chrome.exe"),
+      );
+    }
+  } else if (process.platform === "darwin") {
+    candidates.push(
+      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+      "/Applications/Chromium.app/Contents/MacOS/Chromium",
+    );
+  } else {
+    candidates.push(
+      "/usr/bin/microsoft-edge",
+      "/usr/bin/microsoft-edge-stable",
+      "/usr/bin/google-chrome",
+      "/usr/bin/google-chrome-stable",
+      "/usr/bin/chromium",
+      "/usr/bin/chromium-browser",
+    );
+  }
+
+  const direct = candidates.find((candidate) => existsSync(candidate));
+  if (direct) return direct;
+  return findExecutableOnPath([
+    "msedge",
+    "microsoft-edge",
+    "microsoft-edge-stable",
+    "google-chrome",
+    "google-chrome-stable",
+    "chrome",
+    "chromium",
+    "chromium-browser",
+  ]);
+}
+
+function resolvePdfOutputPath(inst, requestedPath) {
+  const workspaceRoot = resolve(inst.workspaceRoot);
+  const requested =
+    typeof requestedPath === "string" && requestedPath.trim()
+      ? requestedPath.trim()
+      : DEFAULT_PDF_NAME;
+  if (requested.includes("\0")) {
+    throw new CanvasError("invalid_output_path", "PDF output path contains an invalid character.");
+  }
+
+  const outputPath = resolve(workspaceRoot, requested);
+  const workspaceRelative = relative(workspaceRoot, outputPath);
+  if (
+    workspaceRelative === "" ||
+    workspaceRelative === ".." ||
+    workspaceRelative.startsWith(`..${sep}`) ||
+    isAbsolute(workspaceRelative)
+  ) {
+    throw new CanvasError(
+      "invalid_output_path",
+      "PDF output path must be a file inside the current workspace.",
+    );
+  }
+  if (extname(outputPath).toLowerCase() !== ".pdf") {
+    throw new CanvasError("invalid_output_path", "PDF output path must end with .pdf.");
+  }
+  return outputPath;
+}
+
+function getExportSlides(inst) {
+  if (inst.slides.length) {
+    const slides = [...inst.slides];
+    if (inst.mode === "adhoc" && typeof inst.markdown === "string") {
+      slides[clampIndex(inst.index, slides.length)] = inst.markdown;
+    }
+    return slides;
+  }
+  if (inst.mode === "adhoc" && typeof inst.markdown === "string") {
+    return [inst.markdown];
+  }
+  return [];
+}
+
+function isPathInside(root, candidate) {
+  const rootRelative = relative(root, candidate);
+  return (
+    rootRelative === "" ||
+    (!rootRelative.startsWith(`..${sep}`) &&
+      rootRelative !== ".." &&
+      !isAbsolute(rootRelative))
+  );
+}
+
+async function preparePdfOutputDirectory(inst, outputPath) {
+  const workspaceRoot = resolve(inst.workspaceRoot);
+  const canonicalWorkspaceRoot = await realpath(workspaceRoot);
+  const outputParent = dirname(outputPath);
+  const relativeParent = relative(workspaceRoot, outputParent);
+  let current = workspaceRoot;
+
+  for (const segment of relativeParent.split(sep).filter(Boolean)) {
+    current = join(current, segment);
+    try {
+      await mkdir(current);
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+    }
+    const canonicalCurrent = await realpath(current);
+    if (!isPathInside(canonicalWorkspaceRoot, canonicalCurrent)) {
+      throw new CanvasError(
+        "invalid_output_path",
+        "PDF output path must not traverse a link outside the current workspace.",
+      );
+    }
+    const info = await stat(current);
+    if (!info.isDirectory()) {
+      throw new CanvasError(
+        "invalid_output_path",
+        "PDF output parent must be a directory inside the current workspace.",
+      );
+    }
+  }
+
+  return outputParent;
+}
+
+function waitForChildExit(child, timeoutMs) {
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return Promise.resolve(true);
+  }
+  return new Promise((resolvePromise) => {
+    let settled = false;
+    const finish = (exited) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.off("exit", onExit);
+      resolvePromise(exited);
+    };
+    const onExit = () => finish(true);
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    child.once("exit", onExit);
+  });
+}
+
+function runTerminationCommand(executable, args, timeoutMs) {
+  return new Promise((resolvePromise) => {
+    const killer = spawn(executable, args, {
+      windowsHide: true,
+      stdio: "ignore",
+    });
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolvePromise();
+    };
+    const timer = setTimeout(() => {
+      try {
+        killer.kill();
+      } catch (_) {
+        // The termination helper may already have exited.
+      }
+      finish();
+    }, timeoutMs);
+    killer.once("error", finish);
+    killer.once("exit", finish);
+  });
+}
+
+async function terminateProcessTree(child) {
+  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
+
+  if (process.platform === "win32") {
+    const systemRoot = process.env.SystemRoot || process.env.WINDIR || "C:\\Windows";
+    const taskkill = join(systemRoot, "System32", "taskkill.exe");
+    if (existsSync(taskkill)) {
+      await runTerminationCommand(taskkill, ["/PID", String(child.pid), "/T", "/F"], 5_000);
+    } else {
+      try {
+        child.kill();
+      } catch (_) {
+        // Fall through to the bounded exit wait.
+      }
+    }
+    await waitForChildExit(child, 5_000);
+    return;
+  }
+
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch (_) {
+    try {
+      child.kill("SIGTERM");
+    } catch (_) {
+      // Fall through to the bounded exit wait.
+    }
+  }
+  if (await waitForChildExit(child, 3_000)) return;
+
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch (_) {
+    try {
+      child.kill("SIGKILL");
+    } catch (_) {
+      // The process may already have exited.
+    }
+  }
+  await waitForChildExit(child, 2_000);
+}
+
+async function runPdfBrowser(browser, pageUrl, outputPath, profileDir) {
+  const args = [
+    "--headless=new",
+    "--disable-gpu",
+    "--disable-background-networking",
+    "--disable-component-update",
+    "--disable-default-apps",
+    "--disable-extensions",
+    "--force-color-profile=srgb",
+    "--hide-scrollbars",
+    "--no-first-run",
+    "--no-pdf-header-footer",
+    "--print-to-pdf-no-header",
+    "--run-all-compositor-stages-before-draw",
+    "--virtual-time-budget=12000",
+    `--user-data-dir=${profileDir}`,
+    `--print-to-pdf=${outputPath}`,
+    pageUrl,
+  ];
+  if (process.platform !== "win32" && typeof process.getuid === "function" && process.getuid() === 0) {
+    args.unshift("--no-sandbox");
+  }
+
+  await new Promise((resolvePromise, rejectPromise) => {
+    const child = spawn(browser, args, {
+      detached: process.platform !== "win32",
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let diagnostics = "";
+    let settled = false;
+    let timedOut = false;
+    const appendDiagnostics = (chunk) => {
+      diagnostics = `${diagnostics}${chunk.toString()}`.slice(-12_000);
+    };
+    child.stdout.on("data", appendDiagnostics);
+    child.stderr.on("data", appendDiagnostics);
+
+    const settle = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) rejectPromise(error);
+      else resolvePromise();
+    };
+    const timer = setTimeout(async () => {
+      if (settled) return;
+      timedOut = true;
+      await terminateProcessTree(child);
+      settle(new Error(`Browser PDF rendering timed out after ${PDF_RENDER_TIMEOUT_MS / 1000}s.`));
+    }, PDF_RENDER_TIMEOUT_MS);
+
+    child.once("error", (error) => {
+      if (!timedOut) settle(error);
+    });
+    child.once("exit", (code, signal) => {
+      if (timedOut) return;
+      if (code === 0) {
+        settle();
+        return;
+      }
+      const detail = diagnostics.trim();
+      settle(
+        new Error(
+          `Browser PDF rendering failed (${signal ? `signal ${signal}` : `exit ${code}`})${
+            detail ? `: ${detail}` : "."
+          }`,
+        ),
+      );
+    });
+  });
+}
+
+async function verifyPdf(outputPath) {
+  const info = await stat(outputPath);
+  if (!info.isFile() || info.size < 5) {
+    throw new Error("The browser did not create a valid PDF file.");
+  }
+  const handle = await open(outputPath, "r");
+  try {
+    const header = Buffer.alloc(5);
+    const { bytesRead } = await handle.read(header, 0, header.length, 0);
+    if (bytesRead !== header.length || header.toString("ascii") !== "%PDF-") {
+      throw new Error("The generated file does not have a PDF header.");
+    }
+  } finally {
+    await handle.close();
+  }
+  return info.size;
+}
+
+async function exportPdf(inst, requestedPath, requestedTheme) {
+  if (inst.exporting) {
+    throw new CanvasError("export_in_progress", "A PDF export is already running for this canvas.");
+  }
+  inst.exporting = true;
+  let token = "";
+  let profileDir = "";
+  let temporaryOutputPath = "";
+
+  try {
+    const snapshot = {
+      slides: getExportSlides(inst),
+      theme: requestedTheme === undefined ? inst.theme : normalizeTheme(requestedTheme),
+    };
+    if (!snapshot.slides.length) {
+      throw new CanvasError("no_deck", "No slides are loaded. Load a deck before exporting PDF.");
+    }
+
+    const browser = findPdfBrowser();
+    if (!browser) {
+      throw new CanvasError(
+        "pdf_browser_not_found",
+        "PDF export requires Microsoft Edge, Google Chrome, or Chromium.",
+      );
+    }
+
+    const outputPath = resolvePdfOutputPath(inst, requestedPath);
+    const outputParent = await preparePdfOutputDirectory(inst, outputPath);
+    token = randomUUID();
+    profileDir = await mkdtemp(join(tmpdir(), "copilot-presentation-pdf-"));
+    const outputBase = basename(outputPath, extname(outputPath)) || "presentation";
+    temporaryOutputPath = join(outputParent, `.${outputBase}.${token}.tmp.pdf`);
+    inst.exportJobs.set(token, {
+      slides: snapshot.slides,
+      theme: snapshot.theme,
+      status: "pending",
+      error: "",
+    });
+
+    const pageUrl = `${inst.url}?print=1&token=${encodeURIComponent(token)}`;
+    await runPdfBrowser(browser, pageUrl, temporaryOutputPath, profileDir);
+    const exportJob = inst.exportJobs.get(token);
+    if (exportJob?.status !== "ready") {
+      throw new Error(
+        exportJob?.error || "The print renderer did not finish before the browser exited.",
+      );
+    }
+    const bytes = await verifyPdf(temporaryOutputPath);
+    await rename(temporaryOutputPath, outputPath);
+    temporaryOutputPath = "";
+    log(`presentation: exported ${snapshot.slides.length} slides to ${outputPath}`);
+    return {
+      ok: true,
+      path: outputPath,
+      total: snapshot.slides.length,
+      theme: snapshot.theme,
+      bytes,
+    };
+  } catch (error) {
+    if (error instanceof CanvasError) throw error;
+    throw new CanvasError("pdf_export_failed", error?.message || "PDF export failed.");
+  } finally {
+    if (token) inst.exportJobs.delete(token);
+    if (temporaryOutputPath) {
+      await rm(temporaryOutputPath, { force: true }).catch(() => {});
+    }
+    inst.exporting = false;
+    if (profileDir) {
+      await rm(profileDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
 }
 
 let logger = null;
@@ -461,9 +887,11 @@ async function startServer(inst) {
       res.end();
       return;
     }
+    let requestUrl;
     let pathname = "/";
     try {
-      pathname = decodeURIComponent(new URL(req.url, "http://127.0.0.1").pathname);
+      requestUrl = new URL(req.url, "http://127.0.0.1");
+      pathname = decodeURIComponent(requestUrl.pathname);
     } catch (_) {
       res.statusCode = 400;
       res.end("Bad request");
@@ -500,6 +928,54 @@ async function startServer(inst) {
       res.setHeader("Content-Type", "application/json; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
       res.end(JSON.stringify({ deckVersion: inst.deckVersion, slides: inst.slides }));
+      return;
+    }
+    if (pathname === "/export-data") {
+      const token = requestUrl.searchParams.get("token") || "";
+      const snapshot = inst.exportJobs.get(token);
+      if (!snapshot) {
+        res.statusCode = 404;
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        res.end("Export snapshot not found");
+        return;
+      }
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(JSON.stringify({ slides: snapshot.slides, theme: snapshot.theme }));
+      return;
+    }
+    if (pathname === "/export-status") {
+      if (req.method !== "POST") {
+        res.statusCode = 405;
+        res.setHeader("Allow", "POST");
+        res.end("Method not allowed");
+        return;
+      }
+      const token = requestUrl.searchParams.get("token") || "";
+      const snapshot = inst.exportJobs.get(token);
+      if (!snapshot) {
+        res.statusCode = 404;
+        res.end("Export snapshot not found");
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        res.statusCode = error?.message === "payload_too_large" ? 413 : 400;
+        res.end("Invalid export status");
+        return;
+      }
+      if (body.status !== "ready" && body.status !== "error") {
+        res.statusCode = 400;
+        res.end("Invalid export status");
+        return;
+      }
+      snapshot.status = body.status;
+      snapshot.error = typeof body.error === "string" ? body.error.slice(0, 2_000) : "";
+      res.statusCode = 204;
+      res.end();
       return;
     }
     // In-canvas navigation: the renderer POSTs an absolute { index } or a
@@ -616,8 +1092,11 @@ async function ensureInstance(ctx) {
       mode: "deck",
       clients: new Set(),
       assetsRoot: join(repoRoot, "assets"),
+      workspaceRoot: repoRoot,
       dataFile: dataFileFor(key),
       theme: DEFAULT_THEME,
+      exportJobs: new Map(),
+      exporting: false,
     };
     // Rehydrate the last deck (e.g. after extensions_reload) if present.
     try {
@@ -652,7 +1131,7 @@ const session = await joinSession({
       id: "presentation",
       displayName: "Presentation",
       description:
-        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。open 時に slides/index/theme を渡すと最初からデッキを表示できる（プレースホルダーを挟まない）。発表途中の再ロードや差し替えは load_deck で行う。以降のページ送りは canvas 内の ◀ ▶・矢印キー・スライド一覧、対応する Windows 環境では Surface Pen の末尾ボタンで完結する。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替えることもできる。",
+        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。open 時に slides/index/theme を渡すと最初からデッキを表示できる（プレースホルダーを挟まない）。発表途中の再ロードや差し替えは load_deck で行う。以降のページ送りは canvas 内の ◀ ▶・矢印キー・スライド一覧、対応する Windows 環境では Surface Pen の末尾ボタンで完結する。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替え、export_pdf で表示中のデッキを16:9 PDFへ書き出せる。",
       inputSchema: {
         type: "object",
         properties: {
@@ -821,6 +1300,39 @@ const session = await joinSession({
           },
         },
         {
+          name: "export_pdf",
+          description:
+            "表示中のデッキを16:9のPDFへ書き出すAI用アクション。1スライドを1ページとして、背景・画像・コード強調・Mermaidを含む現在の表示を出力する。show_slide で現在ページだけ差し替えている場合も、その差し替えをPDFへ反映する。UIは追加しない。",
+          inputSchema: {
+            type: "object",
+            properties: {
+              outputPath: {
+                type: "string",
+                description:
+                  "workspaceからの相対PDFパス。省略時は presentation.pdf。workspace外と.pdf以外は拒否する。",
+              },
+              theme: {
+                type: "string",
+                enum: ["dark", "light", "microsoft"],
+                description:
+                  "PDFに適用するテーマ。省略時は表示中のデッキテーマ。指定してもcanvasの表示テーマは変更しない。",
+              },
+            },
+            additionalProperties: false,
+          },
+          handler: async (ctx) => {
+            const inst = instances.get(keyOf(ctx));
+            if (!inst) {
+              throw new CanvasError(
+                "canvas_not_open",
+                "presentation canvas is not open; open it before exporting PDF",
+              );
+            }
+            activateInstance(inst);
+            return exportPdf(inst, ctx.input?.outputPath, ctx.input?.theme);
+          },
+        },
+        {
           name: "reset",
           description: "スライドをクリアし、待機中のプレースホルダー表示に戻す。",
           handler: async (ctx) => {
@@ -891,6 +1403,7 @@ const session = await joinSession({
           }
         }
         inst.clients.clear();
+        inst.exportJobs.clear();
         instances.delete(key);
         if (activeInstanceKey === key) {
           activateInstance([...instances.values()].at(-1) || null);
