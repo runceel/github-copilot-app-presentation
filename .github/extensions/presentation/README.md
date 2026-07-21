@@ -29,9 +29,31 @@ canvas iframe（renderer/）
 - **全スライドはプレゼン開始時に `open_canvas` の `input`（`slides`）で一括登録**します。open ハンドラーが URL を返す前にデッキを適用するため、canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。発表途中の差し替え・テーマ変更は `load_deck` で行います。**ページ送りは canvas 内のボタン（◀ ▶）・矢印キー・スライド一覧（☰）で完結**し、その操作は拡張機能のループバックサーバー（`POST /navigate`）に送られて全クライアントへ反映されます。外部サーバーや `localhost` ポートの手動起動は不要です。
 - Windows では、**Surface Pen の末尾ボタンを 1 回押すと次へ、長押しすると前へ**移動します。末尾ボタンが生成する `Win+F20`（1 回押し）と `Win+F18`（長押し）を小さな Windows PowerShell ヘルパーのキーボードフックで受け取り、既存のナビゲーション処理へ渡します。公式 `PenButtonListener` に必要なアプリのパッケージ ID には依存しません。
 - 配色は **dark（既定）/ light / microsoft** の 3 テーマ。`open` の `input` または `load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。
+- コンテンツサイズは **auto（既定）/ normal / large / xlarge** の4段階。`auto` はコード・表・画像・Mermaidを含まない通常スライドを計測し、余白が大きい場合だけ安全な範囲で拡大します。
 - ナビゲーション UI（操作バー・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
 - コードフェンスに `csharp` / `json` / `diff` などの言語名を付けると、highlight.js がシンタックスハイライトします。
+
+## コンテンツサイズ
+
+元 Markdown の各スライド先頭では、コメントでサイズを指定できます。
+
+```markdown
+<!-- slide-size: large -->
+
+## 強調したいスライド
+```
+
+canvas に直接渡すスライド断片では front matter を使います。
+
+```markdown
+---
+size: xlarge
+---
+## 強調したいスライド
+```
+
+指定値は `auto` / `normal` / `large` / `xlarge`。front matter とコメントの両方がある場合は front matter が優先されます。`layout: title` と `layout: closing` は専用レイアウトを維持し、自動拡大の対象外です。
 
 ## Surface Pen でページを送る
 
@@ -49,7 +71,7 @@ canvas iframe（renderer/）
 | --- | --- | --- |
 | `load_deck` | `{ slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft" }` | 登録済みデッキを差し替える / 再ロードする（発表途中の内容・テーマ変更用）。`index`（既定 0）のスライドを表示し、`theme` でデッキ全体の配色（既定 `dark`）を指定。各要素はフロントマター＋本文 Markdown。戻り値 `{ ok, version, index, total, theme }`。 |
 | `goto_slide` | `{ index: number }` | 登録済みデッキ内で表示スライドを 0 始まりインデックスで切り替える。範囲外は端に丸める。通常のページ送りは canvas 内で行われるため不要だが、チャットからの指定に使う。戻り値 `{ ok, changed, version, index, total }`。 |
-| `show_slide` | `{ markdown: string }` | 現在のスライドを1枚だけ差し替える（単発表示・その場限りの差し替え用）。フロントマター（`deck`/`kicker`/`page`/`total`/`title`/`layout`/`theme`）＋本文 Markdown。`theme` 省略時は現在のデッキテーマを引き継ぐ。 |
+| `show_slide` | `{ markdown: string }` | 現在のスライドを1枚だけ差し替える（単発表示・その場限りの差し替え用）。フロントマター（`deck`/`kicker`/`page`/`total`/`title`/`layout`/`size`/`theme`）＋本文 Markdown。`theme` 省略時は現在のデッキテーマを引き継ぐ。 |
 | `reset` | なし | スライドとデッキをクリアして待機プレースホルダーに戻す。 |
 
 ### canvas が内部で使う HTTP エンドポイント（renderer 専用）

@@ -57,15 +57,106 @@ function nonEmpty(value) {
 const THEMES = new Set(["dark", "light", "microsoft"]);
 const DEFAULT_THEME = "dark";
 const MERMAID_THEME = { dark: "dark", light: "default", microsoft: "neutral" };
+const SIZE_MODES = new Set(["auto", "normal", "large", "xlarge"]);
+const DEFAULT_SIZE_MODE = "auto";
 let deckTheme = DEFAULT_THEME;
 // Bumped on every render so a late mermaid finish from a previous slide can't
 // reveal a newer, still-rendering one.
 let renderToken = 0;
 let lastMermaidTheme = null;
+let autoSizeTarget = null;
+let autoSizeFrame = 0;
 
 function normalizeTheme(value) {
   const t = typeof value === "string" ? value.trim().toLowerCase() : "";
   return THEMES.has(t) ? t : DEFAULT_THEME;
+}
+
+function normalizeSizeMode(value) {
+  const size = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return SIZE_MODES.has(size) ? size : DEFAULT_SIZE_MODE;
+}
+
+function extractSlideSizeDirective(body) {
+  const match = body.match(
+    /^\s*<!--\s*slide-size\s*:\s*(auto|normal|large|xlarge)\s*-->\s*/i,
+  );
+  if (!match) return { body, size: "" };
+  return {
+    body: body.slice(match[0].length),
+    size: match[1].toLowerCase(),
+  };
+}
+
+function setSizeLevel(deck, level) {
+  deck.classList.remove("size-large", "size-xlarge");
+  if (level === "large" || level === "xlarge") {
+    deck.classList.add(`size-${level}`);
+  }
+}
+
+function measureBodyContent(bodyEl) {
+  const container = bodyEl.getBoundingClientRect();
+  if (container.width <= 0 || container.height <= 0) return null;
+
+  const children = [...bodyEl.children].filter((child) => {
+    const rect = child.getBoundingClientRect();
+    return rect.width > 0 || rect.height > 0;
+  });
+  if (!children.length) return null;
+
+  let top = Number.POSITIVE_INFINITY;
+  let bottom = Number.NEGATIVE_INFINITY;
+  for (const child of children) {
+    const rect = child.getBoundingClientRect();
+    top = Math.min(top, rect.top);
+    bottom = Math.max(bottom, rect.bottom);
+  }
+
+  return {
+    contentHeight: bottom - top,
+    containerHeight: container.height,
+    fits:
+      bodyEl.scrollHeight <= bodyEl.clientHeight + 1 &&
+      bodyEl.scrollWidth <= bodyEl.clientWidth + 1,
+  };
+}
+
+function canUseSizeLevel(bodyEl) {
+  const metrics = measureBodyContent(bodyEl);
+  if (!metrics || !metrics.fits) return false;
+  return metrics.contentHeight <= metrics.containerHeight * 0.86;
+}
+
+function applyAutoSize(deck, bodyEl) {
+  setSizeLevel(deck, "normal");
+  if (
+    !bodyEl.textContent.trim() ||
+    bodyEl.querySelector("pre, table, img, .mermaid, svg, video, iframe")
+  ) {
+    return;
+  }
+
+  let accepted = "normal";
+  for (const candidate of ["large", "xlarge"]) {
+    setSizeLevel(deck, candidate);
+    if (!canUseSizeLevel(bodyEl)) {
+      setSizeLevel(deck, accepted);
+      break;
+    }
+    accepted = candidate;
+  }
+}
+
+function scheduleAutoSize() {
+  if (!autoSizeTarget) return;
+  if (autoSizeFrame) cancelAnimationFrame(autoSizeFrame);
+  autoSizeFrame = requestAnimationFrame(() => {
+    autoSizeFrame = 0;
+    const target = autoSizeTarget;
+    if (!target || !target.deck.isConnected) return;
+    applyAutoSize(target.deck, target.bodyEl);
+  });
 }
 
 // --- emoji shortcodes ------------------------------------------------------
@@ -164,11 +255,14 @@ function runMermaid(scope, theme, token) {
 // --- slide rendering -------------------------------------------------------
 function renderSlide(markdown) {
   const md = nonEmpty(markdown) ? markdown : PLACEHOLDER;
-  const { meta, body } = splitFrontMatter(md);
+  const { meta, body: rawBody } = splitFrontMatter(md);
+  const directive = extractSlideSizeDirective(rawBody);
+  const body = directive.body;
 
   const layout = (meta.layout || "").toLowerCase();
   const titleSlide = layout === "title";
   const closingSlide = layout === "closing";
+  const sizeMode = normalizeSizeMode(meta.size || directive.size);
   document.title = meta.title || meta.deck || "Slide";
 
   // A slide-level `theme:` overrides the deck theme; set it before building the
@@ -180,6 +274,7 @@ function renderSlide(markdown) {
   deck.className = "deck";
   if (titleSlide) deck.className = "deck title-slide";
   else if (closingSlide) deck.className = "deck closing-slide";
+  if (sizeMode !== "auto") setSizeLevel(deck, sizeMode);
 
   const header = document.createElement("header");
   if (nonEmpty(meta.kicker)) {
@@ -235,6 +330,13 @@ function renderSlide(markdown) {
   const token = ++renderToken;
   document.body.classList.add("mermaid-loading");
   document.getElementById("stage").replaceChildren(deck);
+  if (autoSizeFrame) {
+    cancelAnimationFrame(autoSizeFrame);
+    autoSizeFrame = 0;
+  }
+  autoSizeTarget =
+    sizeMode === "auto" && !titleSlide && !closingSlide ? { deck, bodyEl } : null;
+  scheduleAutoSize();
   runMermaid(bodyEl, theme, token);
 }
 
@@ -518,6 +620,10 @@ function init() {
   } catch (_) {}
 
   wireControls();
+  window.addEventListener("resize", scheduleAutoSize);
+  if (document.fonts?.ready) {
+    document.fonts.ready.then(scheduleAutoSize).catch(() => {});
+  }
 
   fetchState()
     .catch(() => {})
