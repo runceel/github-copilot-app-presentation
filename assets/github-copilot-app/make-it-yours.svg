@@ -1,0 +1,67 @@
+<svg width="1200" height="520" viewBox="0 0 1200 520" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <filter id="tile-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#000" flood-opacity=".3"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="520" rx="30" fill="#0D1117"/>
+
+  <g filter="url(#tile-shadow)">
+    <rect x="48" y="48" width="340" height="180" rx="24" fill="#161B22" stroke="#30363D" stroke-width="2"/>
+    <circle cx="102" cy="102" r="26" fill="#1F6FEB" fill-opacity=".24" stroke="#58A6FF"/>
+    <path d="M90 89H108L116 97V116H90Z" fill="none" stroke="#79C0FF" stroke-width="3" stroke-linejoin="round"/>
+    <path d="M108 89V98H116M96 105H110M96 111H106" stroke="#79C0FF" stroke-width="3" stroke-linecap="round"/>
+    <text x="146" y="111" fill="#F0F6FC" font-size="27" font-weight="800" font-family="Segoe UI, Yu Gothic, sans-serif">Instructions</text>
+    <text x="78" y="164" fill="#C9D1D9" font-size="20" font-family="Segoe UI, Yu Gothic, sans-serif">チームのルールや前提を</text>
+    <text x="78" y="194" fill="#8C959F" font-size="18" font-family="Segoe UI, Yu Gothic, sans-serif">毎回のセッションへ引き継ぐ</text>
+  </g>
+
+  <g filter="url(#tile-shadow)">
+    <rect x="430" y="48" width="340" height="180" rx="24" fill="#161B22" stroke="#30363D" stroke-width="2"/>
+    <circle cx="484" cy="102" r="26" fill="#8957E5" fill-opacity=".24" stroke="#BC8CFF"/>
+    <path d="M475 115L494 88M474 93L500 111M492 88L500 96M472 106L480 114" stroke="#D2A8FF" stroke-width="3" stroke-linecap="round"/>
+    <text x="528" y="111" fill="#F0F6FC" font-size="27" font-weight="800" font-family="Segoe UI, Yu Gothic, sans-serif">Skills</text>
+    <text x="460" y="164" fill="#C9D1D9" font-size="20" font-family="Segoe UI, Yu Gothic, sans-serif">よく使う手順を</text>
+    <text x="460" y="194" fill="#8C959F" font-size="18" font-family="Segoe UI, Yu Gothic, sans-serif">再利用できる能力にする</text>
+  </g>
+
+  <g filter="url(#tile-shadow)">
+    <rect x="812" y="48" width="340" height="180" rx="24" fill="#161B22" stroke="#30363D" stroke-width="2"/>
+    <circle cx="866" cy="102" r="26" fill="#238636" fill-opacity=".25" stroke="#3FB950"/>
+    <path d="M852 102H861M871 102H880M861 94V110M871 94V110M861 102H871" stroke="#56D364" stroke-width="3" stroke-linecap="round"/>
+    <text x="910" y="111" fill="#F0F6FC" font-size="27" font-weight="800" font-family="Segoe UI, Yu Gothic, sans-serif">MCP</text>
+    <text x="842" y="164" fill="#C9D1D9" font-size="20" font-family="Segoe UI, Yu Gothic, sans-serif">外部ツールやデータへ</text>
+    <text x="842" y="194" fill="#8C959F" font-size="18" font-family="Segoe UI, Yu Gothic, sans-serif">安全に接続する</text>
+  </g>
+
+  <g filter="url(#tile-shadow)">
+    <rect x="48" y="272" width="340" height="180" rx="24" fill="#161B22" stroke="#30363D" stroke-width="2"/>
+    <circle cx="102" cy="326" r="26" fill="#DB6D28" fill-opacity=".22" stroke="#F0883E"/>
+    <circle cx="94" cy="326" r="5" fill="#FFA657"/>
+    <circle cx="110" cy="326" r="5" fill="#FFA657"/>
+    <path d="M85 313C91 302 113 302 119 313M85 339C91 350 113 350 119 339" fill="none" stroke="#FFA657" stroke-width="3" stroke-linecap="round"/>
+    <text x="146" y="335" fill="#F0F6FC" font-size="27" font-weight="800" font-family="Segoe UI, Yu Gothic, sans-serif">Models</text>
+    <text x="78" y="388" fill="#C9D1D9" font-size="20" font-family="Segoe UI, Yu Gothic, sans-serif">タスクに合わせてモデルと</text>
+    <text x="78" y="418" fill="#8C959F" font-size="18" font-family="Segoe UI, Yu Gothic, sans-serif">推論量を選ぶ</text>
+  </g>
+
+  <g filter="url(#tile-shadow)">
+    <rect x="430" y="272" width="340" height="180" rx="24" fill="#161B22" stroke="#30363D" stroke-width="2"/>
+    <circle cx="484" cy="326" r="26" fill="#D29922" fill-opacity=".22" stroke="#E3B341"/>
+    <circle cx="484" cy="326" r="14" fill="none" stroke="#F2CC60" stroke-width="3"/>
+    <path d="M484 317V326L491 332M484 298V304M484 348V354" fill="none" stroke="#F2CC60" stroke-width="3" stroke-linecap="round"/>
+    <text x="528" y="335" fill="#F0F6FC" font-size="27" font-weight="800" font-family="Segoe UI, Yu Gothic, sans-serif">Automations</text>
+    <text x="460" y="388" fill="#C9D1D9" font-size="20" font-family="Segoe UI, Yu Gothic, sans-serif">定型作業をスケジュールし</text>
+    <text x="460" y="418" fill="#8C959F" font-size="18" font-family="Segoe UI, Yu Gothic, sans-serif">ローカル／クラウドで実行</text>
+  </g>
+
+  <g filter="url(#tile-shadow)">
+    <rect x="812" y="272" width="340" height="180" rx="24" fill="#161B22" stroke="#30363D" stroke-width="2"/>
+    <circle cx="866" cy="326" r="26" fill="#BF4B8A" fill-opacity=".22" stroke="#DB61A2"/>
+    <rect x="851" y="311" width="30" height="30" rx="4" fill="none" stroke="#F778BA" stroke-width="3"/>
+    <path d="M851 321H881M861 311V341" stroke="#F778BA" stroke-width="3"/>
+    <text x="910" y="335" fill="#F0F6FC" font-size="27" font-weight="800" font-family="Segoe UI, Yu Gothic, sans-serif">Canvases</text>
+    <text x="842" y="388" fill="#C9D1D9" font-size="20" font-family="Segoe UI, Yu Gothic, sans-serif">人と Agent が同じ画面で</text>
+    <text x="842" y="418" fill="#8C959F" font-size="18" font-family="Segoe UI, Yu Gothic, sans-serif">成果物を見て、直す</text>
+  </g>
+</svg>

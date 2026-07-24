@@ -1,0 +1,52 @@
+<svg width="1200" height="500" viewBox="0 0 1200 500" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="autonomy" x1="210" y1="0" x2="990" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#58A6FF"/>
+      <stop offset=".5" stop-color="#A371F7"/>
+      <stop offset="1" stop-color="#3FB950"/>
+    </linearGradient>
+    <filter id="mode-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="9" stdDeviation="11" flood-color="#000" flood-opacity=".32"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="500" rx="30" fill="#0D1117"/>
+
+  <g filter="url(#mode-shadow)">
+    <rect x="55" y="54" width="330" height="320" rx="26" fill="#161B22" stroke="#30363D" stroke-width="2"/>
+    <circle cx="220" cy="126" r="42" fill="#1F6FEB" fill-opacity=".24" stroke="#58A6FF" stroke-width="2"/>
+    <path d="M196 112H233C241 112 247 118 247 126V134C247 142 241 148 233 148H218L206 159V148H203C195 148 189 142 189 134V126C189 118 195 112 203 112" fill="none" stroke="#79C0FF" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="220" y="211" text-anchor="middle" fill="#F0F6FC" font-size="31" font-weight="800" font-family="Segoe UI, Yu Gothic, sans-serif">Interactive</text>
+    <text x="220" y="251" text-anchor="middle" fill="#79C0FF" font-size="25" font-weight="700" font-family="Segoe UI, Yu Gothic, sans-serif">一緒に進める</text>
+    <text x="220" y="294" text-anchor="middle" fill="#8C959F" font-size="19" font-family="Segoe UI, Yu Gothic, sans-serif">対話しながら調整</text>
+    <text x="220" y="326" text-anchor="middle" fill="#8C959F" font-size="19" font-family="Segoe UI, Yu Gothic, sans-serif">細かく方向を変えられる</text>
+  </g>
+
+  <g filter="url(#mode-shadow)">
+    <rect x="435" y="54" width="330" height="320" rx="26" fill="#161B22" stroke="#30363D" stroke-width="2"/>
+    <circle cx="600" cy="126" r="42" fill="#8957E5" fill-opacity=".24" stroke="#BC8CFF" stroke-width="2"/>
+    <rect x="580" y="101" width="40" height="50" rx="5" fill="none" stroke="#D2A8FF" stroke-width="4"/>
+    <path d="M590 114H610M590 126H610M590 138H603" stroke="#D2A8FF" stroke-width="4" stroke-linecap="round"/>
+    <text x="600" y="211" text-anchor="middle" fill="#F0F6FC" font-size="31" font-weight="800" font-family="Segoe UI, Yu Gothic, sans-serif">Plan</text>
+    <text x="600" y="251" text-anchor="middle" fill="#D2A8FF" font-size="25" font-weight="700" font-family="Segoe UI, Yu Gothic, sans-serif">先に合意する</text>
+    <text x="600" y="294" text-anchor="middle" fill="#8C959F" font-size="19" font-family="Segoe UI, Yu Gothic, sans-serif">計画を確認して承認</text>
+    <text x="600" y="326" text-anchor="middle" fill="#8C959F" font-size="19" font-family="Segoe UI, Yu Gothic, sans-serif">実行前にスコープを揃える</text>
+  </g>
+
+  <g filter="url(#mode-shadow)">
+    <rect x="815" y="54" width="330" height="320" rx="26" fill="#161B22" stroke="#30363D" stroke-width="2"/>
+    <circle cx="980" cy="126" r="42" fill="#238636" fill-opacity=".25" stroke="#3FB950" stroke-width="2"/>
+    <path d="M980 96C996 108 1004 122 1004 139L990 145L980 160L970 145L956 139C956 122 964 108 980 96Z" fill="none" stroke="#56D364" stroke-width="4" stroke-linejoin="round"/>
+    <circle cx="980" cy="125" r="6" fill="#56D364"/>
+    <text x="980" y="211" text-anchor="middle" fill="#F0F6FC" font-size="31" font-weight="800" font-family="Segoe UI, Yu Gothic, sans-serif">Autopilot</text>
+    <text x="980" y="251" text-anchor="middle" fill="#56D364" font-size="25" font-weight="700" font-family="Segoe UI, Yu Gothic, sans-serif">まとめて任せる</text>
+    <text x="980" y="294" text-anchor="middle" fill="#8C959F" font-size="19" font-family="Segoe UI, Yu Gothic, sans-serif">実装・テスト・修正まで</text>
+    <text x="980" y="326" text-anchor="middle" fill="#8C959F" font-size="19" font-family="Segoe UI, Yu Gothic, sans-serif">自律的に進める</text>
+  </g>
+
+  <text x="120" y="435" fill="#8C959F" font-size="19" font-family="Segoe UI, Yu Gothic, sans-serif">一緒に</text>
+  <rect x="210" y="420" width="780" height="14" rx="7" fill="url(#autonomy)"/>
+  <circle cx="220" cy="427" r="15" fill="#58A6FF" stroke="#0D1117" stroke-width="5"/>
+  <circle cx="600" cy="427" r="15" fill="#A371F7" stroke="#0D1117" stroke-width="5"/>
+  <circle cx="980" cy="427" r="15" fill="#3FB950" stroke="#0D1117" stroke-width="5"/>
+  <text x="1030" y="435" fill="#8C959F" font-size="19" font-family="Segoe UI, Yu Gothic, sans-serif">任せる</text>
+</svg>

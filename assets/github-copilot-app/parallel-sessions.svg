@@ -1,0 +1,59 @@
+<svg width="1200" height="520" viewBox="0 0 1200 520" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="user" x1="34" y1="176" x2="178" y2="344" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#A371F7"/>
+      <stop offset="1" stop-color="#58A6FF"/>
+    </linearGradient>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#6E7681"/>
+    </marker>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000" flood-opacity=".35"/>
+    </filter>
+  </defs>
+  <rect width="1200" height="520" rx="30" fill="#0D1117"/>
+  <rect x="412" y="28" width="376" height="54" rx="27" fill="#161B22" stroke="#30363D"/>
+  <text x="600" y="63" text-anchor="middle" fill="#F0F6FC" font-size="28" font-weight="700" font-family="Segoe UI, Yu Gothic, sans-serif">3つの仕事を、同時に</text>
+
+  <circle cx="110" cy="260" r="72" fill="url(#user)" filter="url(#shadow)"/>
+  <circle cx="110" cy="260" r="56" fill="#0D1117" fill-opacity=".78" stroke="#C9D1D9" stroke-opacity=".45"/>
+  <text x="110" y="253" text-anchor="middle" fill="#F0F6FC" font-size="25" font-weight="800" font-family="Segoe UI, Yu Gothic, sans-serif">YOU</text>
+  <text x="110" y="284" text-anchor="middle" fill="#C9D1D9" font-size="20" font-family="Segoe UI, Yu Gothic, sans-serif">あなた</text>
+
+  <path d="M185 230C230 180 245 174 290 174" fill="none" stroke="#6E7681" stroke-width="4" marker-end="url(#arrow)"/>
+  <path d="M185 260H590" fill="none" stroke="#6E7681" stroke-width="4" marker-end="url(#arrow)"/>
+  <path d="M185 290C230 340 545 346 890 346" fill="none" stroke="#6E7681" stroke-width="4" marker-end="url(#arrow)"/>
+
+  <g filter="url(#shadow)">
+    <rect x="300" y="110" width="250" height="230" rx="22" fill="#161B22" stroke="#30363D" stroke-width="2"/>
+    <rect x="300" y="110" width="250" height="8" rx="4" fill="#58A6FF"/>
+    <circle cx="340" cy="158" r="14" fill="#1F6FEB"/>
+    <text x="370" y="166" fill="#8C959F" font-size="18" font-weight="700" font-family="Segoe UI, Yu Gothic, sans-serif">ISSUE #245</text>
+    <text x="330" y="213" fill="#F0F6FC" font-size="27" font-weight="700" font-family="Segoe UI, Yu Gothic, sans-serif">ログイン失敗を調査</text>
+    <rect x="330" y="241" width="104" height="34" rx="17" fill="#1F6FEB" fill-opacity=".22" stroke="#58A6FF"/>
+    <text x="382" y="265" text-anchor="middle" fill="#79C0FF" font-size="18" font-weight="700" font-family="Segoe UI, Yu Gothic, sans-serif">調査中</text>
+    <text x="330" y="312" fill="#8C959F" font-size="16" font-family="Segoe UI, Yu Gothic, sans-serif">Agent A · branch + worktree</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="600" y="145" width="250" height="230" rx="22" fill="#161B22" stroke="#30363D" stroke-width="2"/>
+    <rect x="600" y="145" width="250" height="8" rx="4" fill="#A371F7"/>
+    <circle cx="640" cy="193" r="14" fill="#8957E5"/>
+    <text x="670" y="201" fill="#8C959F" font-size="18" font-weight="700" font-family="Segoe UI, Yu Gothic, sans-serif">FEATURE</text>
+    <text x="630" y="248" fill="#F0F6FC" font-size="27" font-weight="700" font-family="Segoe UI, Yu Gothic, sans-serif">OAuth 対応を実装</text>
+    <rect x="630" y="276" width="104" height="34" rx="17" fill="#8957E5" fill-opacity=".24" stroke="#BC8CFF"/>
+    <text x="682" y="300" text-anchor="middle" fill="#D2A8FF" font-size="18" font-weight="700" font-family="Segoe UI, Yu Gothic, sans-serif">実装中</text>
+    <text x="630" y="347" fill="#8C959F" font-size="16" font-family="Segoe UI, Yu Gothic, sans-serif">Agent B · branch + worktree</text>
+  </g>
+
+  <g filter="url(#shadow)">
+    <rect x="900" y="180" width="250" height="230" rx="22" fill="#161B22" stroke="#30363D" stroke-width="2"/>
+    <rect x="900" y="180" width="250" height="8" rx="4" fill="#3FB950"/>
+    <circle cx="940" cy="228" r="14" fill="#238636"/>
+    <text x="970" y="236" fill="#8C959F" font-size="18" font-weight="700" font-family="Segoe UI, Yu Gothic, sans-serif">RELEASE</text>
+    <text x="930" y="283" fill="#F0F6FC" font-size="27" font-weight="700" font-family="Segoe UI, Yu Gothic, sans-serif">リリース前を確認</text>
+    <rect x="930" y="311" width="104" height="34" rx="17" fill="#238636" fill-opacity=".26" stroke="#3FB950"/>
+    <text x="982" y="335" text-anchor="middle" fill="#56D364" font-size="18" font-weight="700" font-family="Segoe UI, Yu Gothic, sans-serif">テスト中</text>
+    <text x="930" y="382" fill="#8C959F" font-size="16" font-family="Segoe UI, Yu Gothic, sans-serif">Agent C · branch + worktree</text>
+  </g>
+</svg>
