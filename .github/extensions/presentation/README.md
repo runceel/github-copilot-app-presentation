@@ -14,7 +14,7 @@ extension.mjs（Node / @github/copilot-sdk）
   │ open 時に input.slides を受け取り、URL を返す前にデッキを適用（プレースホルダーを挟まない）
   │ デッキ（全スライド）と現在 index を保持し、/state に現在スライドを公開
   │ canvas からの POST /navigate でページ送りを受け付ける
-  │ Windows では Surface Pen の Win+F20 / Win+F18 ショートカットを監視
+  │ Windows では Surface Pen の Win+F20 / Win+F19 / Win+F18 ショートカットを監視
   │ /events(SSE) で更新を通知
   ▼
 canvas iframe（renderer/）
@@ -28,12 +28,12 @@ canvas iframe（renderer/）
 ```
 
 - **全スライドはプレゼン開始時に `open_canvas` の `input`（`slides`）で一括登録**します。open ハンドラーが URL を返す前にデッキを適用するため、canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。発表途中の差し替え・テーマ変更は `load_deck` で行います。**ページ送りは canvas 内のボタン（◀ ▶）・矢印キー・スライド一覧（☰）で完結**し、その操作は拡張機能のループバックサーバー（`POST /navigate`）に送られて全クライアントへ反映されます。外部サーバーや `localhost` ポートの手動起動は不要です。
-- Windows では、**Surface Pen の末尾ボタンを 1 回押すと次へ、長押しすると前へ**移動します。末尾ボタンが生成する `Win+F20`（1 回押し）と `Win+F18`（長押し）を小さな Windows PowerShell ヘルパーのキーボードフックで受け取り、既存のナビゲーション処理へ渡します。公式 `PenButtonListener` に必要なアプリのパッケージ ID には依存しません。
+- Windows では、**Surface Pen の末尾ボタンを 1 回押すと次へ、長押しすると前へ**移動し、**2 回押し（ダブルクリック）で外部プレゼン画面を起動 / 終了**します。末尾ボタンが生成する `Win+F20`（1 回押し）・`Win+F19`（2 回押し）・`Win+F18`（長押し）を小さな Windows PowerShell ヘルパーのキーボードフックで受け取り、既存のナビゲーション処理と外部プレゼン画面の制御へ渡します。ジェスチャーの判定は Windows 側が行い、2 回押しのときに 1 回押しの `Win+F20` は送られないため、ページ送りの応答が遅くなることはありません。公式 `PenButtonListener` に必要なアプリのパッケージ ID には依存しません。
 - 配色は **dark（既定）/ light / microsoft** の 3 テーマ。`open` の `input` または `load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。
 - コンテンツサイズは **auto（既定）/ normal / large / xlarge** の4段階。`auto` はコード・表・画像・Mermaidを含まない通常スライドを計測し、余白が大きい場合だけ安全な範囲で拡大します。
 - ナビゲーション UI（操作バー・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
 - **PDF Export はUIを追加せず、AIから `export_pdf` actionを呼ぶ**と実行されます。現在のデッキをhidden print modeで全ページ描画し、headless Edge/Chromeで背景・画像・コード強調・Mermaidを含む16:9 PDFへ変換します。PDFビューアー間で透過グラデーションの色が変わらないよう、印刷時の背景は同系色の不透明sRGBグラデーションを使います。
-- **外部プレゼン画面**は canvas の ⛶ ボタンまたは `open_presenter` action で起動します。Edge / Chrome / Chromium を専用の一時プロファイルで app mode + fullscreen 起動し、同じ `/state`・`/navigate`・SSE を使うため、canvas・キーボード・Surface Pen のページ位置が同期します。外部ウィンドウを閉じるには `Alt+F4`、AIから閉じるには `close_presenter` を使います。canvas を閉じた場合も自動終了します。
+- **外部プレゼン画面**は canvas の ⛶ ボタン、`open_presenter` action、または **Surface Pen の末尾ボタン 2 回押し**で起動します。Edge / Chrome / Chromium を専用の一時プロファイルで app mode + fullscreen 起動し、同じ `/state`・`/navigate`・SSE を使うため、canvas・キーボード・Surface Pen のページ位置が同期します。外部ウィンドウを閉じるには **もう一度ペンを 2 回押し**、`Alt+F4`、または AI から `close_presenter` を使います。canvas を閉じた場合も自動終了します。
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
 - コードフェンスに `csharp` / `json` / `diff` などの言語名を付けると、highlight.js がシンタックスハイライトします。
 
@@ -58,13 +58,21 @@ size: xlarge
 
 指定値は `auto` / `normal` / `large` / `xlarge`。front matter とコメントの両方がある場合は front matter が優先されます。`layout: title` と `layout: closing` は専用レイアウトを維持し、自動拡大の対象外です。
 
-## Surface Pen でページを送る
+## Surface Pen で操作する
 
 1. Surface Pen を Windows と Bluetooth でペアリングします。
 2. presentation canvas を開きます。
-3. 末尾ボタンの **1 回押しで次へ**、**長押しで前へ**移動します。
+3. 末尾ボタンを次のように使います。
 
-「アプリによるショートカットボタン動作の上書き」設定はオンのままで構いませんが、この実装は `PenButtonListener` ではなく Windows のペンショートカットを直接受け取ります。ペン操作を利用できない場合も、canvas の ◀ ▶ ボタンとキーボード操作はそのまま使えます。
+| ジェスチャー | Windows のショートカット | 動作 |
+| --- | --- | --- |
+| 1 回押し | `Win+F20` | 次のスライドへ |
+| 長押し | `Win+F18` | 前のスライドへ |
+| 2 回押し | `Win+F19` | 外部プレゼン画面を起動 / 終了（トグル） |
+
+2 回押しは、外部プレゼン画面が起動していなければ起動し、起動中であれば終了します。デッキ未ロードや Edge / Chrome / Chromium が見つからない場合は警告ログのみを残し、表示は変わりません。
+
+「アプリによるショートカットボタン動作の上書き」設定はオンのままで構いませんが、この実装は `PenButtonListener` ではなく Windows のペンショートカットを直接受け取ります。3 つのショートカットはフックで抑止するため、Windows Ink 側の既定動作（画面領域切り取りなど）は同時に発火しません。ペン操作を利用できない場合も、canvas の ◀ ▶ ⛶ ボタンとキーボード操作はそのまま使えます。
 
 ## アクション
 
@@ -75,8 +83,8 @@ size: xlarge
 | `load_deck` | `{ slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft" }` | 登録済みデッキを差し替える / 再ロードする（発表途中の内容・テーマ変更用）。`index`（既定 0）のスライドを表示し、`theme` でデッキ全体の配色（既定 `dark`）を指定。各要素はフロントマター＋本文 Markdown。戻り値 `{ ok, version, index, total, theme }`。 |
 | `goto_slide` | `{ index: number }` | 登録済みデッキ内で表示スライドを 0 始まりインデックスで切り替える。範囲外は端に丸める。通常のページ送りは canvas 内で行われるため不要だが、チャットからの指定に使う。戻り値 `{ ok, changed, version, index, total }`。 |
 | `show_slide` | `{ markdown: string }` | 現在のスライドを1枚だけ差し替える（単発表示・その場限りの差し替え用）。フロントマター（`deck`/`kicker`/`page`/`total`/`title`/`layout`/`size`/`theme`）＋本文 Markdown。`theme` 省略時は現在のデッキテーマを引き継ぐ。 |
-| `open_presenter` | なし | 同期された外部プレゼン画面を Edge / Chrome / Chromium の app mode + fullscreen で起動する。既に起動中なら新しいウィンドウは増やさない。戻り値 `{ ok, started, alreadyRunning, browser?, pid? }`。 |
-| `close_presenter` | なし | 外部プレゼン画面を終了し、専用の一時ブラウザープロファイルを削除する。戻り値 `{ ok, stopped }`。 |
+| `open_presenter` | なし | 同期された外部プレゼン画面を Edge / Chrome / Chromium の app mode + fullscreen で起動する。既に起動中なら新しいウィンドウは増やさない。Surface Pen の末尾ボタン 2 回押しでも同じトグルができる。戻り値 `{ ok, started, alreadyRunning, browser?, pid? }`。 |
+| `close_presenter` | なし | 外部プレゼン画面を終了し、専用の一時ブラウザープロファイルを削除する。Surface Pen の末尾ボタン 2 回押しでも終了できる。戻り値 `{ ok, stopped }`。 |
 | `export_pdf` | `{ outputPath?: string, theme?: "dark"｜"light"｜"microsoft" }` | 表示中のデッキを1スライド1ページの16:9 PDFへ書き出すAI専用action。相対パスはworkspace基準、省略時は `presentation.pdf`。`theme` はPDFだけに適用し、canvasの表示テーマは変えない。workspace外と `.pdf` 以外は拒否する。`show_slide` による現在ページの一時差し替えも反映する。戻り値 `{ ok, path, total, theme, bytes }`。Microsoft Edge / Google Chrome / Chromiumのいずれかが必要。 |
 | `reset` | なし | スライドとデッキをクリアして待機プレースホルダーに戻す。 |
 
@@ -99,7 +107,7 @@ size: xlarge
   extension.mjs            # canvas 宣言・ループバックサーバー・アクション
   copilot-extension.json   # gist 共有用マニフェスト
   windows/
-    pen-button-listener.ps1 # Surface Pen の Win+F20 / Win+F18 を Node へ中継
+    pen-button-listener.ps1 # Surface Pen の Win+F20 / Win+F19 / Win+F18 を Node へ中継
   renderer/
     index.html             # iframe シェル・操作バー・スライド一覧オーバーレイ
     slides.css             # 3 テーマ（dark/light/microsoft）の配色定義・ナビ UI のスタイル

@@ -89,7 +89,9 @@ let activeInstanceKey = null;
 let penListenerProcess = null;
 let penListenerSupported = null;
 let penListenerStopping = false;
-let penNavigationQueue = Promise.resolve();
+// Serializes every Surface Pen gesture (navigation *and* the presenter toggle)
+// so a burst of presses can't interleave a launch with a page change.
+let penActionQueue = Promise.resolve();
 
 // Clamp an arbitrary index into [0, total-1] (or 0 when the deck is empty), so
 // "next past the end" / "prev before the start" simply stay on the edge slide.
@@ -734,16 +736,41 @@ function getActiveInstance() {
   return fallback;
 }
 
-function queuePenNavigation(delta) {
-  penNavigationQueue = penNavigationQueue
+function queuePenAction(label, run) {
+  penActionQueue = penActionQueue
     .then(async () => {
       const inst = getActiveInstance();
-      if (!inst?.slides.length) return;
-      await applyNavigation(inst, inst.index + delta);
+      if (!inst) return;
+      await run(inst);
     })
     .catch((e) => {
-      log(`presentation: Surface Pen navigation failed: ${e?.message || e}`, "warning");
+      log(`presentation: Surface Pen ${label} failed: ${e?.message || e}`, "warning");
     });
+}
+
+function queuePenNavigation(delta) {
+  queuePenAction("navigation", async (inst) => {
+    if (!inst.slides.length) return;
+    await applyNavigation(inst, inst.index + delta);
+  });
+}
+
+// Surface Pen double click toggles the external presenter window: start it when
+// it isn't running, close it when it is. Failures (no deck loaded, no Chromium
+// browser installed) stay warnings so a stray press never breaks the session.
+function queuePenPresenterToggle() {
+  queuePenAction("presenter toggle", async (inst) => {
+    if (isProcessRunning(inst.presenterProcess)) {
+      await stopPresenter(inst);
+      log("presentation: external presenter closed by Surface Pen double click");
+    } else {
+      await launchPresenter(inst);
+      log("presentation: external presenter opened by Surface Pen double click");
+    }
+    // Nudge connected clients so the ⛶ button reflects presenterRunning without
+    // waiting for the renderer's slow safety poll.
+    broadcast(inst);
+  });
 }
 
 function handlePenListenerMessage(child, line) {
@@ -770,12 +797,24 @@ function handlePenListenerMessage(child, line) {
     return;
   }
 
+  if (message.type === "command") {
+    if (message.action === "toggle-presenter") {
+      queuePenPresenterToggle();
+    } else {
+      log(
+        `presentation: ignored unknown Surface Pen command: ${message.action}`,
+        "warning",
+      );
+    }
+    return;
+  }
+
   if (message.type === "status" && typeof message.supported === "boolean") {
     if (penListenerSupported !== message.supported) {
       penListenerSupported = message.supported;
       log(
         message.supported
-          ? "presentation: Surface Pen tail-button navigation is ready"
+          ? "presentation: Surface Pen tail-button controls are ready"
           : "presentation: Surface Pen tail-button listener is unavailable; canvas controls remain enabled",
       );
     }
@@ -1386,7 +1425,7 @@ const session = await joinSession({
       id: "presentation",
       displayName: "Presentation",
       description:
-        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。open 時に slides/index/theme を渡すと最初からデッキを表示できる（プレースホルダーを挟まない）。発表途中の再ロードや差し替えは load_deck で行う。以降のページ送りは canvas 内の ◀ ▶・矢印キー・スライド一覧、対応する Windows 環境では Surface Pen の末尾ボタンで完結する。open_presenter で同期された外部全画面ウィンドウを起動できる。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替え、export_pdf で表示中のデッキを16:9 PDFへ書き出せる。",
+        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。open 時に slides/index/theme を渡すと最初からデッキを表示できる（プレースホルダーを挟まない）。発表途中の再ロードや差し替えは load_deck で行う。以降のページ送りは canvas 内の ◀ ▶・矢印キー・スライド一覧、対応する Windows 環境では Surface Pen の末尾ボタン（1回押しで次へ、長押しで前へ、2回押しで外部プレゼン画面の起動・終了）で完結する。open_presenter で同期された外部全画面ウィンドウを起動できる。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替え、export_pdf で表示中のデッキを16:9 PDFへ書き出せる。",
       inputSchema: {
         type: "object",
         properties: {
@@ -1557,7 +1596,7 @@ const session = await joinSession({
         {
           name: "open_presenter",
           description:
-            "表示中のデッキを同期した外部プレゼン画面として開く。Microsoft Edge / Google Chrome / Chromium を専用プロファイルの app mode + fullscreen で起動し、canvas と同じページ位置・キーボード操作・Surface Pen 操作を共有する。既に起動中なら新しいウィンドウは増やさない。",
+            "表示中のデッキを同期した外部プレゼン画面として開く。Microsoft Edge / Google Chrome / Chromium を専用プロファイルの app mode + fullscreen で起動し、canvas と同じページ位置・キーボード操作・Surface Pen 操作を共有する。既に起動中なら新しいウィンドウは増やさない。Surface Pen の末尾ボタン2回押しでも同じ起動・終了トグルができる。",
           handler: async (ctx) => {
             const inst = instances.get(keyOf(ctx));
             if (!inst) {
@@ -1573,7 +1612,7 @@ const session = await joinSession({
         {
           name: "close_presenter",
           description:
-            "open_presenter で起動した外部プレゼン画面を閉じ、専用ブラウザープロファイルを削除する。",
+            "open_presenter で起動した外部プレゼン画面を閉じ、専用ブラウザープロファイルを削除する。Surface Pen の末尾ボタン2回押しでも閉じられる。",
           handler: async (ctx) => {
             const inst = instances.get(keyOf(ctx));
             if (!inst) {

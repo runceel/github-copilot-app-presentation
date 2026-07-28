@@ -114,6 +114,10 @@ public Task DoSomethingAsync()
 新しいものではなく、昔からあるやり方<br>
 Microsoft、AWS、Googleの公式ドキュメントでも紹介されています。
 
+---
+
+## ADR
+
 > アーキテクチャ決定レコード (ADR) は、ソリューション アーキテクトの最も重要な成果物の 1 つです。
 
 引用: [アーキテクチャデシジョン レコード (ADR) を維持する](https://learn.microsoft.com/ja-jp/azure/well-architected/architect-role/architecture-decision-record)
@@ -209,4 +213,4 @@ Proposed / Accepted / Superseded / Deprecated
 
 ---
 
-# ご清聴<br>ありがとうございました
+# ご清聴ありがとうございました

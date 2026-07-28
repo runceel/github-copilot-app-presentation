@@ -17,6 +17,9 @@ using System.Threading;
 
 public static class PresentationPenHotkeyBridge
 {
+    // Windows emits one distinct pen shortcut per tail-button gesture:
+    // press-and-hold = Win+F18, double click = Win+F19, single click = Win+F20.
+    // A double click sends only F19, so the single-click gesture stays instant.
     private const int WhKeyboardLl = 13;
     private const int WmKeyDown = 0x0100;
     private const int WmKeyUp = 0x0101;
@@ -26,6 +29,7 @@ public static class PresentationPenHotkeyBridge
     private const int VkLeftWindows = 0x5B;
     private const int VkRightWindows = 0x5C;
     private const int VkF18 = 0x81;
+    private const int VkF19 = 0x82;
     private const int VkF20 = 0x83;
     private const byte VkMenuMask = 0xE8;
     private const uint KeyEventKeyUp = 0x0002;
@@ -36,6 +40,7 @@ public static class PresentationPenHotkeyBridge
     private static bool leftWindowsDown;
     private static bool rightWindowsDown;
     private static bool f18Handled;
+    private static bool f19Handled;
     private static bool f20Handled;
 
     public static int Run(int parentProcessId)
@@ -117,13 +122,19 @@ public static class PresentationPenHotkeyBridge
             }
 
             if (virtualKey == VkF20 &&
-                HandlePenShortcut(isDown, isUp, ref f20Handled, "next"))
+                HandlePenShortcut(isDown, isUp, ref f20Handled, "navigate", "next"))
+            {
+                return new IntPtr(1);
+            }
+
+            if (virtualKey == VkF19 &&
+                HandlePenShortcut(isDown, isUp, ref f19Handled, "command", "toggle-presenter"))
             {
                 return new IntPtr(1);
             }
 
             if (virtualKey == VkF18 &&
-                HandlePenShortcut(isDown, isUp, ref f18Handled, "previous"))
+                HandlePenShortcut(isDown, isUp, ref f18Handled, "navigate", "previous"))
             {
                 return new IntPtr(1);
             }
@@ -136,6 +147,7 @@ public static class PresentationPenHotkeyBridge
         bool isDown,
         bool isUp,
         ref bool handled,
+        string type,
         string action)
     {
         if (isDown && (leftWindowsDown || rightWindowsDown))
@@ -144,7 +156,7 @@ public static class PresentationPenHotkeyBridge
             {
                 handled = true;
                 MaskWindowsMenu();
-                WriteNavigate(action);
+                WriteAction(type, action);
             }
             return true;
         }
@@ -181,9 +193,9 @@ public static class PresentationPenHotkeyBridge
         }
     }
 
-    private static void WriteNavigate(string action)
+    private static void WriteAction(string type, string action)
     {
-        WriteLine("{\"type\":\"navigate\",\"action\":\"" + action + "\"}");
+        WriteLine("{\"type\":\"" + type + "\",\"action\":\"" + action + "\"}");
     }
 
     private static void WriteStatus(bool supported)
