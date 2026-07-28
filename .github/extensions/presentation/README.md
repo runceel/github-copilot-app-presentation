@@ -22,6 +22,7 @@ canvas iframe（renderer/）
   │ highlight.js で言語付きコードフェンスをシンタックスハイライト
   │ ```mermaid を図に変換 → mermaid.run
   │ ◀ ▶ ボタン・矢印キー・☰ 一覧でページ送り（canvas 内で完結）
+  │ ⛶ ボタンで同期された外部全画面ウィンドウを起動
   ▼
 テーマ付きスライドを表示（更新は自動反映）
 ```
@@ -32,6 +33,7 @@ canvas iframe（renderer/）
 - コンテンツサイズは **auto（既定）/ normal / large / xlarge** の4段階。`auto` はコード・表・画像・Mermaidを含まない通常スライドを計測し、余白が大きい場合だけ安全な範囲で拡大します。
 - ナビゲーション UI（操作バー・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
 - **PDF Export はUIを追加せず、AIから `export_pdf` actionを呼ぶ**と実行されます。現在のデッキをhidden print modeで全ページ描画し、headless Edge/Chromeで背景・画像・コード強調・Mermaidを含む16:9 PDFへ変換します。PDFビューアー間で透過グラデーションの色が変わらないよう、印刷時の背景は同系色の不透明sRGBグラデーションを使います。
+- **外部プレゼン画面**は canvas の ⛶ ボタンまたは `open_presenter` action で起動します。Edge / Chrome / Chromium を専用の一時プロファイルで app mode + fullscreen 起動し、同じ `/state`・`/navigate`・SSE を使うため、canvas・キーボード・Surface Pen のページ位置が同期します。外部ウィンドウを閉じるには `Alt+F4`、AIから閉じるには `close_presenter` を使います。canvas を閉じた場合も自動終了します。
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
 - コードフェンスに `csharp` / `json` / `diff` などの言語名を付けると、highlight.js がシンタックスハイライトします。
 
@@ -73,6 +75,8 @@ size: xlarge
 | `load_deck` | `{ slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft" }` | 登録済みデッキを差し替える / 再ロードする（発表途中の内容・テーマ変更用）。`index`（既定 0）のスライドを表示し、`theme` でデッキ全体の配色（既定 `dark`）を指定。各要素はフロントマター＋本文 Markdown。戻り値 `{ ok, version, index, total, theme }`。 |
 | `goto_slide` | `{ index: number }` | 登録済みデッキ内で表示スライドを 0 始まりインデックスで切り替える。範囲外は端に丸める。通常のページ送りは canvas 内で行われるため不要だが、チャットからの指定に使う。戻り値 `{ ok, changed, version, index, total }`。 |
 | `show_slide` | `{ markdown: string }` | 現在のスライドを1枚だけ差し替える（単発表示・その場限りの差し替え用）。フロントマター（`deck`/`kicker`/`page`/`total`/`title`/`layout`/`size`/`theme`）＋本文 Markdown。`theme` 省略時は現在のデッキテーマを引き継ぐ。 |
+| `open_presenter` | なし | 同期された外部プレゼン画面を Edge / Chrome / Chromium の app mode + fullscreen で起動する。既に起動中なら新しいウィンドウは増やさない。戻り値 `{ ok, started, alreadyRunning, browser?, pid? }`。 |
+| `close_presenter` | なし | 外部プレゼン画面を終了し、専用の一時ブラウザープロファイルを削除する。戻り値 `{ ok, stopped }`。 |
 | `export_pdf` | `{ outputPath?: string, theme?: "dark"｜"light"｜"microsoft" }` | 表示中のデッキを1スライド1ページの16:9 PDFへ書き出すAI専用action。相対パスはworkspace基準、省略時は `presentation.pdf`。`theme` はPDFだけに適用し、canvasの表示テーマは変えない。workspace外と `.pdf` 以外は拒否する。`show_slide` による現在ページの一時差し替えも反映する。戻り値 `{ ok, path, total, theme, bytes }`。Microsoft Edge / Google Chrome / Chromiumのいずれかが必要。 |
 | `reset` | なし | スライドとデッキをクリアして待機プレースホルダーに戻す。 |
 
@@ -85,6 +89,7 @@ size: xlarge
 | `GET /export-data` | ランダムtokenに対応するPDF Export用デッキスナップショットをprint modeへ返す。 |
 | `POST /export-status` | print modeが全ページの描画完了またはエラーを `export_pdf` actionへ通知する。 |
 | `POST /navigate` | canvas の操作で呼ぶページ送り。body は `{ index }`（絶対）または `{ delta }`（相対）。サーバーが現在位置を更新し、SSE で全クライアントへ反映する。 |
+| `POST /present` | canvas の ⛶ ボタンから外部プレゼン画面を起動する。同一 origin の POST のみ受け付ける。 |
 | `GET /events` | SSE。`version` 変化を低遅延で通知する nudge。 |
 
 ## ファイル構成

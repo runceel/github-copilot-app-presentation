@@ -132,7 +132,7 @@ function findExecutableOnPath(names) {
   return null;
 }
 
-function findPdfBrowser() {
+function findChromiumBrowser() {
   const candidates = [];
   if (process.platform === "win32") {
     for (const base of [
@@ -350,6 +350,203 @@ async function terminateProcessTree(child) {
   await waitForChildExit(child, 2_000);
 }
 
+function isProcessRunning(child) {
+  return !!child && child.exitCode === null && child.signalCode === null && !child.killed;
+}
+
+function isPresenterProfilePath(profileDir) {
+  if (typeof profileDir !== "string" || !profileDir) return false;
+  const candidate = resolve(profileDir);
+  return (
+    isPathInside(resolve(tmpdir()), candidate) &&
+    basename(candidate).startsWith("copilot-presentation-window-")
+  );
+}
+
+async function removePresenterProfile(profileDir) {
+  if (!profileDir) return;
+  if (!isPresenterProfilePath(profileDir)) {
+    throw new Error("Refusing to remove an invalid presenter profile path.");
+  }
+  await rm(profileDir, {
+    recursive: true,
+    force: true,
+    maxRetries: 10,
+    retryDelay: 200,
+  });
+}
+
+async function cleanupPresenterProfile(inst, profileDir) {
+  try {
+    await removePresenterProfile(profileDir);
+    if (inst.presenterProfileDir === profileDir) inst.presenterProfileDir = "";
+    return true;
+  } catch (error) {
+    log(`presentation: presenter profile cleanup failed: ${error?.message || error}`, "warning");
+    return false;
+  }
+}
+
+function waitForPresenterStartup(child, graceMs = 500) {
+  return new Promise((resolvePromise, rejectPromise) => {
+    let timer = null;
+    let settled = false;
+    const cleanup = () => {
+      child.off("spawn", onSpawn);
+      child.off("error", onError);
+      child.off("close", onClose);
+      if (timer) clearTimeout(timer);
+    };
+    const settle = (error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) rejectPromise(error);
+      else resolvePromise();
+    };
+    const onSpawn = () => {
+      timer = setTimeout(() => settle(), graceMs);
+    };
+    const onError = (error) => settle(error);
+    const onClose = (code, signal) => {
+      settle(
+        new Error(
+          `Presentation browser exited during startup (${
+            signal ? `signal ${signal}` : `exit ${code ?? "unknown"}`
+          }).`,
+        ),
+      );
+    };
+    child.once("spawn", onSpawn);
+    child.once("error", onError);
+    child.once("close", onClose);
+  });
+}
+
+async function stopPresenter(inst) {
+  const pendingLaunch = inst.presenterLaunchPromise;
+  if (pendingLaunch) {
+    await pendingLaunch.catch(() => {});
+  }
+
+  const child = inst.presenterProcess;
+  const profileDir = inst.presenterProfileDir;
+  inst.presenterProcess = null;
+
+  if (isProcessRunning(child)) {
+    await terminateProcessTree(child);
+  }
+  if (profileDir) {
+    await cleanupPresenterProfile(inst, profileDir);
+  }
+  await schedulePersist(inst);
+  return !!child || !!profileDir;
+}
+
+async function launchPresenter(inst) {
+  if (!getExportSlides(inst).length) {
+    throw new CanvasError(
+      "no_deck",
+      "No slides are loaded. Load a deck before opening the presenter.",
+    );
+  }
+  if (isProcessRunning(inst.presenterProcess)) {
+    return {
+      ok: true,
+      started: false,
+      alreadyRunning: true,
+      pid: inst.presenterProcess.pid,
+    };
+  }
+  if (inst.presenterLaunchPromise) return inst.presenterLaunchPromise;
+
+  const launch = async () => {
+    if (inst.presenterProcess || inst.presenterProfileDir) {
+      await stopPresenter(inst);
+    }
+
+    const browser = findChromiumBrowser();
+    if (!browser) {
+      throw new CanvasError(
+        "presenter_browser_not_found",
+        "External presentation requires Microsoft Edge, Google Chrome, or Chromium.",
+      );
+    }
+
+    const profileDir = await mkdtemp(join(tmpdir(), "copilot-presentation-window-"));
+    const presenterUrl = new URL(inst.url);
+    presenterUrl.searchParams.set("present", "1");
+    const child = spawn(
+      browser,
+      [
+        "--disable-background-mode",
+        "--disable-component-update",
+        "--disable-default-apps",
+        "--disable-extensions",
+        "--disable-session-crashed-bubble",
+        "--no-default-browser-check",
+        "--no-first-run",
+        "--start-fullscreen",
+        "--start-maximized",
+        `--user-data-dir=${profileDir}`,
+        `--app=${presenterUrl.href}`,
+      ],
+      {
+        windowsHide: false,
+        stdio: "ignore",
+      },
+    );
+
+    inst.presenterProcess = child;
+    inst.presenterProfileDir = profileDir;
+    child.once("error", (error) => {
+      log(`presentation: external presenter failed: ${error?.message || error}`, "warning");
+    });
+    child.once("close", (code, signal) => {
+      if (inst.presenterProcess === child) inst.presenterProcess = null;
+      void cleanupPresenterProfile(inst, profileDir)
+        .finally(() => schedulePersist(inst));
+      if (code !== 0 && code !== null) {
+        log(
+          `presentation: external presenter stopped (${
+            signal ? `signal ${signal}` : `exit ${code}`
+          })`,
+          "warning",
+        );
+      }
+    });
+
+    try {
+      await waitForPresenterStartup(child);
+    } catch (error) {
+      if (inst.presenterProcess === child) inst.presenterProcess = null;
+      if (isProcessRunning(child)) await terminateProcessTree(child);
+      await cleanupPresenterProfile(inst, profileDir);
+      throw new CanvasError(
+        "presenter_launch_failed",
+        error?.message || "External presentation failed to start.",
+      );
+    }
+
+    log(`presentation: external presenter opened with ${basename(browser)}`);
+    await schedulePersist(inst);
+    return {
+      ok: true,
+      started: true,
+      alreadyRunning: false,
+      browser: basename(browser),
+      pid: child.pid,
+    };
+  };
+
+  inst.presenterLaunchPromise = launch();
+  try {
+    return await inst.presenterLaunchPromise;
+  } finally {
+    inst.presenterLaunchPromise = null;
+  }
+}
+
 async function runPdfBrowser(browser, pageUrl, outputPath, profileDir) {
   const args = [
     "--headless=new",
@@ -459,7 +656,7 @@ async function exportPdf(inst, requestedPath, requestedTheme) {
       throw new CanvasError("no_deck", "No slides are loaded. Load a deck before exporting PDF.");
     }
 
-    const browser = findPdfBrowser();
+    const browser = findChromiumBrowser();
     if (!browser) {
       throw new CanvasError(
         "pdf_browser_not_found",
@@ -775,6 +972,7 @@ async function persistNow(inst) {
         index: inst.index,
         theme: inst.theme,
         mode: inst.mode,
+        presenterProfileDir: inst.presenterProfileDir,
       }),
       "utf8",
     );
@@ -786,12 +984,13 @@ async function persistNow(inst) {
 // Coalesced, serialized persistence. Rapid navigation can fire many state
 // changes; rather than awaiting each write (and risking an older write landing
 // after a newer one), we mark the instance dirty and run a single writer loop
-// that always flushes the *latest* snapshot. Fire-and-forget by design.
+// that always flushes the *latest* snapshot. Routine callers can fire-and-forget;
+// lifecycle cleanup may await the returned promise before shutting down.
 function schedulePersist(inst) {
   inst._persistDirty = true;
-  if (inst._persisting) return;
+  if (inst._persisting) return inst._persistPromise;
   inst._persisting = true;
-  (async () => {
+  inst._persistPromise = (async () => {
     try {
       while (inst._persistDirty) {
         inst._persistDirty = false;
@@ -799,8 +998,10 @@ function schedulePersist(inst) {
       }
     } finally {
       inst._persisting = false;
+      inst._persistPromise = null;
     }
   })();
+  return inst._persistPromise;
 }
 
 // Push the slide at inst.index (from the loaded deck) to the canvas: update the
@@ -915,6 +1116,7 @@ async function startServer(inst) {
           total: inst.slides.length,
           theme: inst.theme,
           mode: inst.mode,
+          presenterRunning: isProcessRunning(inst.presenterProcess),
         }),
       );
       return;
@@ -928,6 +1130,41 @@ async function startServer(inst) {
       res.setHeader("Content-Type", "application/json; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
       res.end(JSON.stringify({ deckVersion: inst.deckVersion, slides: inst.slides }));
+      return;
+    }
+    if (pathname === "/present") {
+      if (req.method !== "POST") {
+        res.statusCode = 405;
+        res.setHeader("Allow", "POST");
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+        return;
+      }
+      const origin = req.headers.origin;
+      if (origin && origin !== new URL(inst.url).origin) {
+        res.statusCode = 403;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "origin_not_allowed" }));
+        return;
+      }
+      try {
+        activateInstance(inst);
+        const result = await launchPresenter(inst);
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(JSON.stringify(result));
+      } catch (error) {
+        res.statusCode = error?.code === "no_deck" ? 409 : 500;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: error?.code || "presenter_launch_failed",
+            message: error?.message || "External presentation failed to start.",
+          }),
+        );
+      }
       return;
     }
     if (pathname === "/export-data") {
@@ -1097,6 +1334,9 @@ async function ensureInstance(ctx) {
       theme: DEFAULT_THEME,
       exportJobs: new Map(),
       exporting: false,
+      presenterProcess: null,
+      presenterProfileDir: "",
+      presenterLaunchPromise: null,
     };
     // Rehydrate the last deck (e.g. after extensions_reload) if present.
     try {
@@ -1110,8 +1350,23 @@ async function ensureInstance(ctx) {
       if (typeof saved.index === "number") inst.index = clampIndex(saved.index, inst.slides.length);
       if (typeof saved.theme === "string") inst.theme = normalizeTheme(saved.theme);
       if (saved.mode === "adhoc" || saved.mode === "deck") inst.mode = saved.mode;
+      if (isPresenterProfilePath(saved.presenterProfileDir)) {
+        inst.presenterProfileDir = saved.presenterProfileDir;
+      }
     } catch (_) {
       /* no saved state — start blank */
+    }
+    if (inst.presenterProfileDir) {
+      try {
+        await removePresenterProfile(inst.presenterProfileDir);
+        inst.presenterProfileDir = "";
+        await persistNow(inst);
+      } catch (error) {
+        log(
+          `presentation: stale presenter profile cleanup failed: ${error?.message || error}`,
+          "warning",
+        );
+      }
     }
     instances.set(key, inst);
   }
@@ -1131,7 +1386,7 @@ const session = await joinSession({
       id: "presentation",
       displayName: "Presentation",
       description:
-        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。open 時に slides/index/theme を渡すと最初からデッキを表示できる（プレースホルダーを挟まない）。発表途中の再ロードや差し替えは load_deck で行う。以降のページ送りは canvas 内の ◀ ▶・矢印キー・スライド一覧、対応する Windows 環境では Surface Pen の末尾ボタンで完結する。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替え、export_pdf で表示中のデッキを16:9 PDFへ書き出せる。",
+        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。open 時に slides/index/theme を渡すと最初からデッキを表示できる（プレースホルダーを挟まない）。発表途中の再ロードや差し替えは load_deck で行う。以降のページ送りは canvas 内の ◀ ▶・矢印キー・スライド一覧、対応する Windows 環境では Surface Pen の末尾ボタンで完結する。open_presenter で同期された外部全画面ウィンドウを起動できる。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替え、export_pdf で表示中のデッキを16:9 PDFへ書き出せる。",
       inputSchema: {
         type: "object",
         properties: {
@@ -1300,6 +1555,38 @@ const session = await joinSession({
           },
         },
         {
+          name: "open_presenter",
+          description:
+            "表示中のデッキを同期した外部プレゼン画面として開く。Microsoft Edge / Google Chrome / Chromium を専用プロファイルの app mode + fullscreen で起動し、canvas と同じページ位置・キーボード操作・Surface Pen 操作を共有する。既に起動中なら新しいウィンドウは増やさない。",
+          handler: async (ctx) => {
+            const inst = instances.get(keyOf(ctx));
+            if (!inst) {
+              throw new CanvasError(
+                "canvas_not_open",
+                "presentation canvas is not open; open it before opening the presenter",
+              );
+            }
+            activateInstance(inst);
+            return launchPresenter(inst);
+          },
+        },
+        {
+          name: "close_presenter",
+          description:
+            "open_presenter で起動した外部プレゼン画面を閉じ、専用ブラウザープロファイルを削除する。",
+          handler: async (ctx) => {
+            const inst = instances.get(keyOf(ctx));
+            if (!inst) {
+              throw new CanvasError(
+                "canvas_not_open",
+                "presentation canvas is not open",
+              );
+            }
+            const stopped = await stopPresenter(inst);
+            return { ok: true, stopped };
+          },
+        },
+        {
           name: "export_pdf",
           description:
             "表示中のデッキを16:9のPDFへ書き出すAI用アクション。1スライドを1ページとして、背景・画像・コード強調・Mermaidを含む現在の表示を出力する。show_slide で現在ページだけ差し替えている場合も、その差し替えをPDFへ反映する。UIは追加しない。",
@@ -1344,6 +1631,7 @@ const session = await joinSession({
               );
             }
             activateInstance(inst);
+            await stopPresenter(inst);
             inst.markdown = "";
             inst.slides = [];
             inst.index = 0;
@@ -1395,6 +1683,7 @@ const session = await joinSession({
         const key = keyOf(ctx);
         const inst = instances.get(key);
         if (!inst) return;
+        await stopPresenter(inst);
         for (const res of [...inst.clients]) {
           try {
             res.end();

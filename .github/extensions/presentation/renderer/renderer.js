@@ -457,6 +457,7 @@ let navIndex = 0;
 let navTotal = 0;
 let navMode = "deck";
 let overviewOpen = false;
+let presenterLaunchPending = false;
 
 // Derive a short overview title from a slide fragment: first heading, else first
 // non-empty body line, trimmed. Mirrors the skill's title rule.
@@ -503,6 +504,9 @@ async function fetchState() {
   if (!res.ok) return;
   const data = await res.json();
   if (typeof data.theme === "string") deckTheme = normalizeTheme(data.theme);
+  if (typeof data.presenterRunning === "boolean") {
+    updatePresenterButton(data.presenterRunning);
+  }
   // Refresh the deck (titles for the overview) when its content changed.
   if (typeof data.deckVersion === "number" && data.deckVersion !== knownDeckVersion) {
     await fetchDeck();
@@ -544,6 +548,51 @@ function goPrev() {
 function goToIndex(i) {
   navigate({ index: i });
   closeOverview();
+}
+
+async function openPresenterWindow() {
+  if (presenterLaunchPending) return;
+  presenterLaunchPending = true;
+  const button = document.getElementById("navPresent");
+  const status = document.getElementById("presentStatus");
+  if (button) button.disabled = true;
+  if (status) status.textContent = "外部プレゼン画面を起動しています。";
+
+  try {
+    const response = await fetch("./present", {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.message || `External presenter failed (${response.status}).`);
+    }
+    const message = data.alreadyRunning
+      ? "外部プレゼン画面は既に起動しています。"
+      : "外部プレゼン画面を起動しました。";
+    if (status) status.textContent = message;
+    updatePresenterButton(true, message);
+  } catch (error) {
+    const message = error?.message || "外部プレゼン画面を起動できませんでした。";
+    console.error("External presenter launch failed", error);
+    if (status) status.textContent = message;
+    if (button) {
+      button.dataset.state = "error";
+      button.title = message;
+    }
+  } finally {
+    presenterLaunchPending = false;
+    if (button) button.disabled = false;
+  }
+}
+
+function updatePresenterButton(running, message = "") {
+  const button = document.getElementById("navPresent");
+  if (!button) return;
+  button.dataset.state = running ? "active" : "";
+  button.title =
+    message || (running ? "外部プレゼン画面は起動中です" : "外部画面で全画面表示");
 }
 
 function updateNav() {
@@ -634,6 +683,7 @@ function wireControls() {
   };
   bind("navPrev", goPrev);
   bind("navNext", goNext);
+  bind("navPresent", openPresenterWindow);
   bind("navList", toggleOverview);
   bind("overviewClose", closeOverview);
 
@@ -726,6 +776,9 @@ function init() {
   if (params.get("print") === "1") {
     initPrint(params);
     return;
+  }
+  if (params.get("present") === "1") {
+    document.body.classList.add("presenter-mode");
   }
 
   wireControls();

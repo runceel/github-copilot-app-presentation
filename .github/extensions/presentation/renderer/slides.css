@@ -75,6 +75,8 @@
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+         clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 body{
   font-family:"Segoe UI Variable Text","Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic UI",system-ui,sans-serif;
   background:
@@ -221,9 +223,14 @@ footer .page{color:var(--accent-strong);font-weight:600;background:var(--accent-
 .nav-btn:hover:not(:disabled){background:var(--accent-soft);color:var(--accent-strong);}
 .nav-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 .nav-btn:disabled{opacity:.32;cursor:default;}
+.nav-btn[data-state="active"]{color:var(--accent-strong);background:var(--accent-soft);}
+.nav-btn[data-state="error"]{color:#d13438;}
 .nav-counter{min-width:4.2em;text-align:center;font-variant-numeric:tabular-nums;
      font-weight:600;color:var(--accent-strong);font-size:clamp(12px,1.7vh,16px);
      padding:0 .3em;user-select:none;}
+body.presenter-mode .nav{opacity:0;}
+body.presenter-mode .nav:hover,body.presenter-mode .nav:focus-within{opacity:1;}
+body.presenter-mode #navPresent{display:none;}
 
 /* ===== Slide-list overview overlay ===== */
 .overview{position:fixed;inset:0;z-index:60;display:flex;

@@ -63,6 +63,8 @@ total: 6
 | `load_deck` | 登録済みデッキを差し替える / 再ロードする。`slides`（各スライド 1 枚分の Markdown 断片の配列）、任意の `index`（最初に表示する 0 始まりインデックス、既定 0）、任意の `theme`（デッキ全体の配色テーマ、`dark`/`light`/`microsoft`、既定 `dark`）を渡す。**発表途中で内容やテーマを変える**ときに使う（開始時は通常 `open` の `input` で渡す）。 |
 | `goto_slide` | 登録済みデッキ内で表示スライドを切り替える。`index`（0 始まり）を渡す。範囲外は端に丸められる。**通常のページ送りは canvas 内で行われるため不要**だが、ユーザーがチャットで「3 ページ目に飛んで」のように特定ページを指定したときに使う。 |
 | `show_slide` | スライドを 1 枚だけ差し替える。デッキ未登録での単発表示や、その場限りの差し替え用。通常のプレゼンでは使わない。 |
+| `open_presenter` | 表示中のデッキを、canvas と同期された外部全画面ウィンドウで開く。Edge / Chrome / Chromium の app mode を使い、ページ位置・キーボード・Surface Pen 操作を共有する。 |
+| `close_presenter` | `open_presenter` で起動した外部プレゼン画面を閉じる。 |
 | `export_pdf` | 表示中のデッキを16:9 PDFへ書き出すAI専用action。任意の `outputPath` はworkspaceからの相対 `.pdf` パス、省略時は `presentation.pdf`。任意の `theme`（`dark`/`light`/`microsoft`）はPDFだけに適用し、canvas表示は変えない。1スライド1ページで、背景・画像・コード強調・Mermaidを含む。`show_slide` による現在ページの一時差し替えも反映する。 |
 | `reset` | スライドとデッキをクリアして待機表示に戻す。 |
 
@@ -212,6 +214,7 @@ CanvasInputInvalidError: Invalid input for action "load_deck" ... (root): must b
 canvas をデッキごと開いたら、**ページ送りはユーザーが canvas または対応入力デバイスから直接操作**します。agent が `ask_user` でループを回す必要はありません。次の操作が使えます:
 
 - **◀ / ▶ ボタン**（画面下中央のバー）… 前へ / 次へ。端ではボタンが無効化されます。
+- **⛶ ボタン** … Edge / Chrome / Chromium を外部全画面プレゼンとして起動。canvas とページ位置を同期します。
 - **キーボード** … `→` `PageDown` `Space` = 次へ、`←` `PageUp` = 前へ、`Home` / `End` = 先頭 / 末尾、`O` または `Esc` = スライド一覧の開閉。
 - **Surface Pen（Windows）** … 末尾ボタンの 1 回押し = 次へ、長押し = 前へ。Bluetooth ペアリングされたペンが生成する `Win+F20` / `Win+F18` を拡張機能が受け取る。利用できない環境では通常の操作へ自動的にフォールバック。
 - **☰ スライド一覧** … 全スライドのタイトル一覧を開き、クリックしたページへジャンプ（現在位置はハイライト表示）。
