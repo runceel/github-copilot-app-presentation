@@ -106,11 +106,47 @@ function clampIndex(value, total) {
 }
 
 // Allowed deck-wide themes; anything else (or unset) falls back to the default.
-const THEMES = new Set(["dark", "light", "microsoft"]);
+const THEMES = new Set(["dark", "light", "microsoft", "ms-modern"]);
 const DEFAULT_THEME = "dark";
 function normalizeTheme(value) {
   const t = typeof value === "string" ? value.trim().toLowerCase() : "";
   return THEMES.has(t) ? t : DEFAULT_THEME;
+}
+
+// `ms-modern` は元になった PowerPoint テーマと同じく、デッキの最後に必ず
+// 背表紙 (Closing logo slide) が来ることを特徴とする。AI が付け忘れても崩れない
+// よう、デッキ登録時にここで補う。
+const BACKCOVER_THEMES = new Set(["ms-modern"]);
+const DEFAULT_BACKCOVER = ["---", "layout: backcover", "---", ""].join("\n");
+
+// front matter の `layout:` を読む軽量パーサー。レンダラー側の splitFrontMatter と
+// 同じ形（先頭の `---` 〜 `---`）だけを見る。
+function readLayout(markdown) {
+  if (typeof markdown !== "string") return "";
+  const text = markdown.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/^[\n \t\uFEFF]+/, "");
+  if (!text.startsWith("---\n")) return "";
+  const lines = text.split("\n");
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === "---") break;
+    const idx = lines[i].indexOf(":");
+    if (idx <= 0) continue;
+    if (lines[i].slice(0, idx).trim().toLowerCase() !== "layout") continue;
+    return lines[i]
+      .slice(idx + 1)
+      .trim()
+      .replace(/^["']+|["']+$/g, "")
+      .toLowerCase();
+  }
+  return "";
+}
+
+// Append the theme's back cover unless the deck already ends with one, so
+// re-running load_deck (e.g. to switch themes) never stacks up duplicates.
+function ensureBackCover(slides, theme) {
+  if (!BACKCOVER_THEMES.has(theme)) return slides;
+  if (!slides.length) return slides;
+  if (readLayout(slides[slides.length - 1]) === "backcover") return slides;
+  return [...slides, DEFAULT_BACKCOVER];
 }
 
 function findExecutableOnPath(names) {
@@ -650,9 +686,12 @@ async function exportPdf(inst, requestedPath, requestedTheme) {
   let temporaryOutputPath = "";
 
   try {
+    const exportTheme = requestedTheme === undefined ? inst.theme : normalizeTheme(requestedTheme);
     const snapshot = {
-      slides: getExportSlides(inst),
-      theme: requestedTheme === undefined ? inst.theme : normalizeTheme(requestedTheme),
+      // Exporting under a back-cover theme must produce the back cover too, even
+      // when the canvas is currently showing a theme that does not require one.
+      slides: ensureBackCover(getExportSlides(inst), exportTheme),
+      theme: exportTheme,
     };
     if (!snapshot.slides.length) {
       throw new CanvasError("no_deck", "No slides are loaded. Load a deck before exporting PDF.");
@@ -1060,9 +1099,9 @@ async function applyDeckSlide(inst) {
 // populate instance state identically. Callers must validate `slides` (a
 // non-empty array of strings) before calling.
 async function applyDeck(inst, { slides, index, theme }) {
-  inst.slides = slides.slice();
-  inst.index = clampIndex(index ?? 0, inst.slides.length);
   inst.theme = normalizeTheme(theme);
+  inst.slides = ensureBackCover(slides.slice(), inst.theme);
+  inst.index = clampIndex(index ?? 0, inst.slides.length);
   inst.deckVersion += 1;
   await applyDeckSlide(inst);
 }
@@ -1443,9 +1482,9 @@ const session = await joinSession({
           },
           theme: {
             type: "string",
-            enum: ["dark", "light", "microsoft"],
+            enum: ["dark", "light", "microsoft", "ms-modern"],
             description:
-              "デッキ全体の配色テーマ。dark（既定・ダーク）/ light（明るい中立）/ microsoft（Fluent 配色）。省略時は dark。",
+              "デッキ全体の配色テーマ。dark（既定・ダーク）/ light（明るい中立）/ microsoft（Fluent 配色）/ ms-modern（社内 PowerPoint テンプレート風。末尾に背表紙が自動で付く）。省略時は dark。",
           },
         },
         additionalProperties: false,
@@ -1454,7 +1493,7 @@ const session = await joinSession({
         {
           name: "load_deck",
           description:
-            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片（任意のフロントマター + 本文）の配列を渡すと、デッキを保持して index（既定 0）のスライドを表示する。任意の theme（dark/light/microsoft、既定 dark）でデッキ全体の配色を指定できる。登録後のページ送りは canvas 内の操作（◀ ▶・矢印キー・一覧）と対応環境の Surface Pen で完結するので、通常は goto_slide を繰り返し呼ぶ必要はない。",
+            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片（任意のフロントマター + 本文）の配列を渡すと、デッキを保持して index（既定 0）のスライドを表示する。任意の theme（dark/light/microsoft/ms-modern、既定 dark）でデッキ全体の配色を指定できる。ms-modern のときは末尾に背表紙（layout: backcover）が自動で 1 枚追加される。登録後のページ送りは canvas 内の操作（◀ ▶・矢印キー・一覧）と対応環境の Surface Pen で完結するので、通常は goto_slide を繰り返し呼ぶ必要はない。",
           inputSchema: {
             type: "object",
             properties: {
@@ -1471,9 +1510,9 @@ const session = await joinSession({
               },
               theme: {
                 type: "string",
-                enum: ["dark", "light", "microsoft"],
+                enum: ["dark", "light", "microsoft", "ms-modern"],
                 description:
-                  "デッキ全体の配色テーマ。dark（既定・ダーク）/ light（明るい中立）/ microsoft（Fluent 配色）。省略時は dark。ユーザーがテーマに関わるテイストを伝えたら適切な値を選ぶ。",
+                  "デッキ全体の配色テーマ。dark（既定・ダーク）/ light（明るい中立）/ microsoft（Fluent 配色）/ ms-modern（社内 PowerPoint テンプレート風。末尾に背表紙が自動で付く）。省略時は dark。ユーザーがテーマに関わるテイストを伝えたら適切な値を選ぶ。",
               },
             },
             required: ["slides"],
@@ -1639,7 +1678,7 @@ const session = await joinSession({
               },
               theme: {
                 type: "string",
-                enum: ["dark", "light", "microsoft"],
+                enum: ["dark", "light", "microsoft", "ms-modern"],
                 description:
                   "PDFに適用するテーマ。省略時は表示中のデッキテーマ。指定してもcanvasの表示テーマは変更しない。",
               },

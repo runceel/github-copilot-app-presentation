@@ -29,7 +29,7 @@ canvas iframe（renderer/）
 
 - **全スライドはプレゼン開始時に `open_canvas` の `input`（`slides`）で一括登録**します。open ハンドラーが URL を返す前にデッキを適用するため、canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。発表途中の差し替え・テーマ変更は `load_deck` で行います。**ページ送りは canvas 内のボタン（◀ ▶）・矢印キー・スライド一覧（☰）で完結**し、その操作は拡張機能のループバックサーバー（`POST /navigate`）に送られて全クライアントへ反映されます。外部サーバーや `localhost` ポートの手動起動は不要です。
 - Windows では、**Surface Pen の末尾ボタンを 1 回押すと次へ、長押しすると前へ**移動し、**2 回押し（ダブルクリック）で外部プレゼン画面を起動 / 終了**します。末尾ボタンが生成する `Win+F20`（1 回押し）・`Win+F19`（2 回押し）・`Win+F18`（長押し）を小さな Windows PowerShell ヘルパーのキーボードフックで受け取り、既存のナビゲーション処理と外部プレゼン画面の制御へ渡します。ジェスチャーの判定は Windows 側が行い、2 回押しのときに 1 回押しの `Win+F20` は送られないため、ページ送りの応答が遅くなることはありません。公式 `PenButtonListener` に必要なアプリのパッケージ ID には依存しません。
-- 配色は **dark（既定）/ light / microsoft** の 3 テーマ。`open` の `input` または `load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。
+- 配色は **dark（既定）/ light / microsoft / ms-modern** の 4 テーマ。`open` の `input` または `load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。`ms-modern` は社内 PowerPoint テンプレート（`2024-07-29-theme.thmx`）由来の配色で、**デッキ末尾に背表紙（`layout: backcover`）が自動追加**されます（既に背表紙があれば追加しません）。
 - コンテンツサイズは **auto（既定）/ normal / large / xlarge** の4段階。`auto` はコード・表・画像・Mermaidを含まない通常スライドを計測し、余白が大きい場合だけ安全な範囲で拡大します。
 - ナビゲーション UI（操作バー・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
 - **PDF Export はUIを追加せず、AIから `export_pdf` actionを呼ぶ**と実行されます。現在のデッキをhidden print modeで全ページ描画し、headless Edge/Chromeで背景・画像・コード強調・Mermaidを含む16:9 PDFへ変換します。PDFビューアー間で透過グラデーションの色が変わらないよう、印刷時の背景は同系色の不透明sRGBグラデーションを使います。
@@ -56,7 +56,7 @@ size: xlarge
 ## 強調したいスライド
 ```
 
-指定値は `auto` / `normal` / `large` / `xlarge`。front matter とコメントの両方がある場合は front matter が優先されます。`layout: title` と `layout: closing` は専用レイアウトを維持し、自動拡大の対象外です。
+指定値は `auto` / `normal` / `large` / `xlarge`。front matter とコメントの両方がある場合は front matter が優先されます。`layout: title` / `layout: closing` / `layout: backcover` は専用レイアウトを維持し、自動拡大の対象外です。
 
 ## Surface Pen で操作する
 
@@ -76,16 +76,16 @@ size: xlarge
 
 ## アクション
 
-> **開始は `open_canvas`（`canvasId: "presentation"`）の `input` でデッキごと開く**のが基本です: `input: { slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft" }`。open ハンドラーが URL を返す前にデッキを適用するので、最初からスライドが表示されます（再フォーカスのみのときは `input` を省略すると現在位置を維持）。下表は開始後に使うアクションです。
+> **開始は `open_canvas`（`canvasId: "presentation"`）の `input` でデッキごと開く**のが基本です: `input: { slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft"｜"ms-modern" }`。open ハンドラーが URL を返す前にデッキを適用するので、最初からスライドが表示されます（再フォーカスのみのときは `input` を省略すると現在位置を維持）。下表は開始後に使うアクションです。
 
 | アクション | 入力 | 説明 |
 | --- | --- | --- |
-| `load_deck` | `{ slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft" }` | 登録済みデッキを差し替える / 再ロードする（発表途中の内容・テーマ変更用）。`index`（既定 0）のスライドを表示し、`theme` でデッキ全体の配色（既定 `dark`）を指定。各要素はフロントマター＋本文 Markdown。戻り値 `{ ok, version, index, total, theme }`。 |
+| `load_deck` | `{ slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft"｜"ms-modern" }` | 登録済みデッキを差し替える / 再ロードする（発表途中の内容・テーマ変更用）。`index`（既定 0）のスライドを表示し、`theme` でデッキ全体の配色（既定 `dark`）を指定。各要素はフロントマター＋本文 Markdown。`ms-modern` のときは末尾に背表紙を自動追加する（再ロードしても増殖しない）。戻り値 `{ ok, version, index, total, theme }`。 |
 | `goto_slide` | `{ index: number }` | 登録済みデッキ内で表示スライドを 0 始まりインデックスで切り替える。範囲外は端に丸める。通常のページ送りは canvas 内で行われるため不要だが、チャットからの指定に使う。戻り値 `{ ok, changed, version, index, total }`。 |
 | `show_slide` | `{ markdown: string }` | 現在のスライドを1枚だけ差し替える（単発表示・その場限りの差し替え用）。フロントマター（`deck`/`kicker`/`page`/`total`/`title`/`layout`/`size`/`theme`）＋本文 Markdown。`theme` 省略時は現在のデッキテーマを引き継ぐ。 |
 | `open_presenter` | なし | 同期された外部プレゼン画面を Edge / Chrome / Chromium の app mode + fullscreen で起動する。既に起動中なら新しいウィンドウは増やさない。Surface Pen の末尾ボタン 2 回押しでも同じトグルができる。戻り値 `{ ok, started, alreadyRunning, browser?, pid? }`。 |
 | `close_presenter` | なし | 外部プレゼン画面を終了し、専用の一時ブラウザープロファイルを削除する。Surface Pen の末尾ボタン 2 回押しでも終了できる。戻り値 `{ ok, stopped }`。 |
-| `export_pdf` | `{ outputPath?: string, theme?: "dark"｜"light"｜"microsoft" }` | 表示中のデッキを1スライド1ページの16:9 PDFへ書き出すAI専用action。相対パスはworkspace基準、省略時は `presentation.pdf`。`theme` はPDFだけに適用し、canvasの表示テーマは変えない。workspace外と `.pdf` 以外は拒否する。`show_slide` による現在ページの一時差し替えも反映する。戻り値 `{ ok, path, total, theme, bytes }`。Microsoft Edge / Google Chrome / Chromiumのいずれかが必要。 |
+| `export_pdf` | `{ outputPath?: string, theme?: "dark"｜"light"｜"microsoft"｜"ms-modern" }` | 表示中のデッキを1スライド1ページの16:9 PDFへ書き出すAI専用action。相対パスはworkspace基準、省略時は `presentation.pdf`。`theme` はPDFだけに適用し、canvasの表示テーマは変えない（背表紙が要るテーマならPDF側にも補う）。workspace外と `.pdf` 以外は拒否する。`show_slide` による現在ページの一時差し替えも反映する。戻り値 `{ ok, path, total, theme, bytes }`。Microsoft Edge / Google Chrome / Chromiumのいずれかが必要。 |
 | `reset` | なし | スライドとデッキをクリアして待機プレースホルダーに戻す。 |
 
 ### canvas が内部で使う HTTP エンドポイント（renderer 専用）
@@ -110,7 +110,7 @@ size: xlarge
     pen-button-listener.ps1 # Surface Pen の Win+F20 / Win+F19 / Win+F18 を Node へ中継
   renderer/
     index.html             # iframe シェル・操作バー・スライド一覧オーバーレイ
-    slides.css             # 3 テーマ（dark/light/microsoft）の配色定義・ナビ UI のスタイル
+    slides.css             # 4 テーマ（dark/light/microsoft/ms-modern）の配色定義・ナビ UI のスタイル
     renderer.js            # フロントマター解析 / marked / mermaid / SSE 購読 / 操作 UI（◀ ▶・キー・一覧）
   vendor/
     marked.min.js          # Markdown レンダラー
