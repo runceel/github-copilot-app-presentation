@@ -64,8 +64,15 @@ let deckTheme = DEFAULT_THEME;
 // reveal a newer, still-rendering one.
 let renderToken = 0;
 let lastMermaidTheme = null;
-let autoSizeTarget = null;
-let autoSizeFrame = 0;
+// `layoutTarget` is the slide currently on screen (cover and closing slides
+// included); `autoSize` says whether it also takes part in the font auto-fit.
+let layoutTarget = null;
+let layoutFrame = 0;
+// Overflow below this many pixels is treated as "it fits". Fractional line
+// heights and display scaling routinely push scrollHeight a fraction of a pixel
+// past clientHeight, which is invisible but still enough for `overflow:auto` to
+// draw a scrollbar.
+const SCROLL_EPSILON = 2;
 
 function normalizeTheme(value) {
   const t = typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -117,8 +124,8 @@ function measureBodyContent(bodyEl) {
     contentHeight: bottom - top,
     containerHeight: container.height,
     fits:
-      bodyEl.scrollHeight <= bodyEl.clientHeight + 1 &&
-      bodyEl.scrollWidth <= bodyEl.clientWidth + 1,
+      bodyEl.scrollHeight <= bodyEl.clientHeight + SCROLL_EPSILON &&
+      bodyEl.scrollWidth <= bodyEl.clientWidth + SCROLL_EPSILON,
   };
 }
 
@@ -148,14 +155,36 @@ function applyAutoSize(deck, bodyEl) {
   }
 }
 
-function scheduleAutoSize() {
-  if (!autoSizeTarget) return;
-  if (autoSizeFrame) cancelAnimationFrame(autoSizeFrame);
-  autoSizeFrame = requestAnimationFrame(() => {
-    autoSizeFrame = 0;
-    const target = autoSizeTarget;
-    if (!target || !target.deck.isConnected) return;
-    applyAutoSize(target.deck, target.bodyEl);
+// Slides that fit must not show a scrollbar, but genuinely tall or wide content
+// still has to stay reachable. The body is `overflow:hidden` by default and only
+// becomes scrollable once the overflow is larger than SCROLL_EPSILON. Measuring
+// while hidden keeps the result stable: scrollHeight/scrollWidth still report the
+// full content, and no scrollbar is present to shrink the box and skew the next
+// measurement.
+function updateBodyScroll(bodyEl) {
+  if (!bodyEl || !bodyEl.isConnected) return;
+  bodyEl.classList.remove("is-scrollable");
+  const overflows =
+    bodyEl.scrollHeight - bodyEl.clientHeight > SCROLL_EPSILON ||
+    bodyEl.scrollWidth - bodyEl.clientWidth > SCROLL_EPSILON;
+  if (overflows) bodyEl.classList.add("is-scrollable");
+}
+
+function refreshLayout() {
+  const target = layoutTarget;
+  if (!target || !target.deck.isConnected) return;
+  if (target.autoSize) applyAutoSize(target.deck, target.bodyEl);
+  updateBodyScroll(target.bodyEl);
+}
+
+// Coalesce the (re)layout into one frame: several triggers — render, resize,
+// font load, mermaid, images — can land back to back.
+function scheduleLayoutRefresh() {
+  if (!layoutTarget) return;
+  if (layoutFrame) cancelAnimationFrame(layoutFrame);
+  layoutFrame = requestAnimationFrame(() => {
+    layoutFrame = 0;
+    refreshLayout();
   });
 }
 
@@ -348,16 +377,24 @@ function renderSlide(markdown) {
   const token = ++renderToken;
   document.body.classList.add("mermaid-loading");
   document.getElementById("stage").replaceChildren(slide.deck);
-  if (autoSizeFrame) {
-    cancelAnimationFrame(autoSizeFrame);
-    autoSizeFrame = 0;
+  if (layoutFrame) {
+    cancelAnimationFrame(layoutFrame);
+    layoutFrame = 0;
   }
-  autoSizeTarget =
-    slide.sizeMode === "auto" && !slide.titleSlide && !slide.closingSlide
-      ? { deck: slide.deck, bodyEl: slide.bodyEl }
-      : null;
-  scheduleAutoSize();
-  runMermaid(slide.bodyEl, slide.theme, token);
+  layoutTarget = {
+    deck: slide.deck,
+    bodyEl: slide.bodyEl,
+    autoSize: slide.sizeMode === "auto" && !slide.titleSlide && !slide.closingSlide,
+  };
+  scheduleLayoutRefresh();
+  // Mermaid diagrams and images resolve their size asynchronously, so the
+  // scroll decision has to be revisited once they have settled.
+  runMermaid(slide.bodyEl, slide.theme, token).finally(() => {
+    if (token === renderToken) scheduleLayoutRefresh();
+  });
+  waitForImages(slide.bodyEl).then(() => {
+    if (token === renderToken) scheduleLayoutRefresh();
+  });
 }
 
 function afterLayout() {
@@ -782,9 +819,9 @@ function init() {
   }
 
   wireControls();
-  window.addEventListener("resize", scheduleAutoSize);
+  window.addEventListener("resize", scheduleLayoutRefresh);
   if (document.fonts?.ready) {
-    document.fonts.ready.then(scheduleAutoSize).catch(() => {});
+    document.fonts.ready.then(scheduleLayoutRefresh).catch(() => {});
   }
 
   fetchState()
