@@ -35,7 +35,7 @@ ADR 自体は新しい手法ではない。AI に作成・更新を支援して�
 - 現在: **35 スライド**
 - テーマ: `microsoft`
 - 表紙: `layout: title`
-- 最終ページ: `layout: closing`
+- 最終ページ: 背表紙（`layout: backcover`、拡張機能が自動付与）
 - プロフィール画像: `/assets/profile.jpg`
 - X: `@okazuki`
 - Zenn: `https://zenn.dev/okazuki`

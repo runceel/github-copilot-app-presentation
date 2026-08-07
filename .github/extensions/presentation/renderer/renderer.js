@@ -64,15 +64,18 @@ const MERMAID_THEME = {
 };
 const SIZE_MODES = new Set(["auto", "normal", "large", "xlarge"]);
 const DEFAULT_SIZE_MODE = "auto";
-// 背表紙 (layout: backcover) の既定の著作権表示。front matter の `copyright:` で
-// 上書きでき、空文字を指定すると表示しない。
+// 背表紙 (layout: backcover) の既定のワードマークと著作権表示。Microsoft 系テーマ
+// (microsoft / ms-modern) でのみ既定値を出し、他テーマでは front matter で明示した
+// ときだけ表示する。`copyright:` に空文字を指定すると常に非表示。
+const DEFAULT_LOGO = "Microsoft";
 const DEFAULT_COPYRIGHT = "\u00A9 Copyright Microsoft Corporation. All rights reserved.";
+const BRANDED_THEMES = new Set(["microsoft", "ms-modern"]);
 let deckTheme = DEFAULT_THEME;
 // Bumped on every render so a late mermaid finish from a previous slide can't
 // reveal a newer, still-rendering one.
 let renderToken = 0;
 let lastMermaidTheme = null;
-// `layoutTarget` is the slide currently on screen (cover and closing slides
+// `layoutTarget` is the slide currently on screen (cover and back cover
 // included); `autoSize` says whether it also takes part in the font auto-fit.
 let layoutTarget = null;
 let layoutFrame = 0;
@@ -301,9 +304,8 @@ function createSlide(markdown, fallbackTheme) {
 
   const layout = (meta.layout || "").toLowerCase();
   const titleSlide = layout === "title";
-  const closingSlide = layout === "closing";
   // 背表紙 (.thmx の "Closing logo slide" 相当)。ロゴと著作権表示は本文とは別に
-  // 組み立てるので、通常のクロージングとは別レイアウトとして扱う。
+  // 組み立てるので、専用レイアウトとして扱う。
   const backcoverSlide = layout === "backcover";
   const sizeMode = normalizeSizeMode(meta.size || directive.size);
 
@@ -315,22 +317,29 @@ function createSlide(markdown, fallbackTheme) {
   deck.className = "deck";
   deck.dataset.theme = theme;
   if (titleSlide) deck.className = "deck title-slide";
-  else if (closingSlide) deck.className = "deck closing-slide";
   else if (backcoverSlide) deck.className = "deck backcover-slide";
   if (sizeMode !== "auto") setSizeLevel(deck, sizeMode);
 
   // 背表紙は 4 色スクエア + ワードマークのロゴを左上に、著作権表示を左下に置く。
   // ロゴ画像は同梱せず CSS だけで描くので、ここでは器だけ組み立てる。
+  // Microsoft 系テーマ以外では既定のブランド表示を出さず、front matter で明示された
+  // ときだけワードマークを出す（4 色スクエアは Microsoft ロゴなので付けない）。
+  const branded = BRANDED_THEMES.has(theme);
   if (backcoverSlide) {
-    const logo = document.createElement("div");
-    logo.className = "backcover-logo";
-    const mark = document.createElement("span");
-    mark.className = "backcover-mark";
-    logo.appendChild(mark);
-    const wordmark = document.createElement("span");
-    wordmark.textContent = nonEmpty(meta.logo) ? meta.logo : "Microsoft";
-    logo.appendChild(wordmark);
-    deck.appendChild(logo);
+    const wordmarkText = "logo" in meta ? meta.logo : branded ? DEFAULT_LOGO : "";
+    if (nonEmpty(wordmarkText)) {
+      const logo = document.createElement("div");
+      logo.className = "backcover-logo";
+      if (branded) {
+        const mark = document.createElement("span");
+        mark.className = "backcover-mark";
+        logo.appendChild(mark);
+      }
+      const wordmark = document.createElement("span");
+      wordmark.textContent = wordmarkText;
+      logo.appendChild(wordmark);
+      deck.appendChild(logo);
+    }
   }
 
   const header = document.createElement("header");
@@ -369,8 +378,9 @@ function createSlide(markdown, fallbackTheme) {
   const total = nonEmpty(meta.total) ? meta.total : "";
   const showFooter = !(deckName === "" && (page === "" || total === ""));
   if (backcoverSlide) {
-    // `copyright:` を明示的に空にすると表示を消せる（省略時は既定文言）。
-    const notice = "copyright" in meta ? meta.copyright : DEFAULT_COPYRIGHT;
+    // `copyright:` を明示すればどのテーマでも出せる（空文字なら非表示）。省略時は
+    // Microsoft 系テーマのみ既定文言を出す。
+    const notice = "copyright" in meta ? meta.copyright : branded ? DEFAULT_COPYRIGHT : "";
     if (nonEmpty(notice)) {
       const small = document.createElement("div");
       small.className = "backcover-copyright";
@@ -399,7 +409,6 @@ function createSlide(markdown, fallbackTheme) {
     theme,
     sizeMode,
     titleSlide,
-    closingSlide,
     backcoverSlide,
     title: meta.title || meta.deck || "Slide",
   };
@@ -421,10 +430,7 @@ function renderSlide(markdown) {
     deck: slide.deck,
     bodyEl: slide.bodyEl,
     autoSize:
-      slide.sizeMode === "auto" &&
-      !slide.titleSlide &&
-      !slide.closingSlide &&
-      !slide.backcoverSlide,
+      slide.sizeMode === "auto" && !slide.titleSlide && !slide.backcoverSlide,
   };
   scheduleLayoutRefresh();
   // Mermaid diagrams and images resolve their size asynchronously, so the
@@ -478,12 +484,7 @@ async function renderPrintDeck(slides, theme) {
   if (document.fonts?.ready) await document.fonts.ready;
   await afterLayout();
   for (const slide of rendered) {
-    if (
-      slide.sizeMode === "auto" &&
-      !slide.titleSlide &&
-      !slide.closingSlide &&
-      !slide.backcoverSlide
-    ) {
+    if (slide.sizeMode === "auto" && !slide.titleSlide && !slide.backcoverSlide) {
       applyAutoSize(slide.deck, slide.bodyEl);
     }
   }

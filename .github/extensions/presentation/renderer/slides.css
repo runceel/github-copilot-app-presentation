@@ -18,14 +18,10 @@
   --cover-bg:
     radial-gradient(1200px 760px at 50% 34%, rgba(78,168,255,.20) 0%, transparent 66%),
     linear-gradient(160deg,#11203a 0%,#0e1117 60%);
-  --closing-bg:
-    radial-gradient(1100px 720px at 50% 64%, rgba(122,92,255,.22) 0%, transparent 66%),
-    linear-gradient(200deg,#0e1117 38%,#1b1535 100%);
+  --backcover-bg:linear-gradient(135deg,#1d2b52 0%,#2a1f52 100%);
   --print-slide-bg:#0e1117;
   --print-cover-bg:linear-gradient(160deg,#11203a 0%,#0e1117 60%);
-  --print-closing-bg:linear-gradient(200deg,#0e1117 38%,#1b1535 100%);
-}
-:root[data-theme="light"],
+}:root[data-theme="light"],
 .deck[data-theme="light"]{
   --bg:#ffffff; --fg:#15181f; --muted:#5b6470; --body:#333a44;
   --accent:#4f46e5; --accent-strong:#4338ca; --accent-soft:#eef2ff; --accent-line:#c7d2fe;
@@ -41,12 +37,9 @@
   --cover-bg:
     radial-gradient(1200px 760px at 50% 32%, #e0e7ff 0%, transparent 70%),
     linear-gradient(160deg,#eef2ff 0%,#ffffff 58%);
-  --closing-bg:
-    radial-gradient(1100px 720px at 50% 66%, #f3e8ff 0%, transparent 70%),
-    linear-gradient(200deg,#ffffff 42%,#f6f0ff 100%);
+  --backcover-bg:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);
   --print-slide-bg:#ffffff;
   --print-cover-bg:linear-gradient(160deg,#e0e7ff 0%,#eef2ff 45%,#ffffff 100%);
-  --print-closing-bg:linear-gradient(200deg,#ffffff 20%,#f6f0ff 72%,#f3e8ff 100%);
 }
 :root[data-theme="microsoft"],
 .deck[data-theme="microsoft"]{
@@ -66,12 +59,9 @@
   --cover-bg:
     radial-gradient(1100px 720px at 50% 26%, #9fd0f4 0%, transparent 72%),
     linear-gradient(160deg,#bfe1fb 0%,#daeefc 100%);
-  --closing-bg:
-    radial-gradient(1100px 720px at 50% 74%, #ffc492 0%, transparent 72%),
-    linear-gradient(200deg,#ffe7d1 0%,#ffd4a8 100%);
+  --backcover-bg:#0078d4;
   --print-slide-bg:#ffffff;
   --print-cover-bg:linear-gradient(160deg,#a7d4f5 0%,#b7dcf7 55%,#d1e9fa 100%);
-  --print-closing-bg:linear-gradient(200deg,#ffe7d1 0%,#ffd4a8 100%);
 }
 /* ms-modern: 社内 PowerPoint テーマ (2024-07-29-theme.thmx) 由来の配色。
    見出しは tx2 = Microsoft ブルー、本文は黒、通常スライドは白基調。
@@ -88,10 +78,10 @@
   --syntax-deletion:#c11a30; --syntax-deletion-bg:#fdeaed;
   --glow-1:#f4f3f6; --glow-2:#faf9fb;
   --ms-red:#f25022; --ms-green:#7fba00; --ms-blue:#00a4ef; --ms-yellow:#ffb900;
-  --ms-backcover:#0078d4;
+  --backcover-bg:#0078d4;
   --topbar:linear-gradient(90deg,#0078d4,#c03bc4);
   --kicker-mark:linear-gradient(135deg,#0078d4,#c03bc4);
-  /* 表紙 / 結び: .thmx の「2_Title Slide」(slideLayout4) を再現する。
+  /* 表紙: .thmx の「2_Title Slide」(slideLayout4) を再現する。
      左〜中央は淡いラベンダー〜水色のにじみで本文用に空けたまま、右上に稜線で
      区切られた多面体 (ファセット) が食い込み、右端へ向かって濃紺〜菫色に沈む。
      稜線は頂点付近が白、右へ向かってピンクに変わる細いストローク。
@@ -126,45 +116,11 @@
  stroke="%23ffffff" stroke-opacity="0.55" stroke-width="3"/>\
 <path d="M1078 0 L1069 93 L1600 411" fill="none" stroke="url(%23e)" stroke-width="4"/>\
 </svg>');
-  /* 結びは同じファセット構成のまま、にじみと面の色相を桃〜菫へずらして表紙と
-     見分けられるようにする。 */
-  --ms-facet-alt:url('data:image/svg+xml;utf8,\
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="none">\
-<defs>\
-<linearGradient id="b" x1="0" y1="0" x2="0.8" y2="1">\
-<stop offset="0" stop-color="%23f7f3f8"/><stop offset="0.45" stop-color="%23f3eff5"/>\
-<stop offset="1" stop-color="%23f0dfec"/></linearGradient>\
-<radialGradient id="c" cx="0.62" cy="0.96" r="0.6">\
-<stop offset="0" stop-color="%23e08bc4" stop-opacity="0.8"/>\
-<stop offset="0.55" stop-color="%23edbcd9" stop-opacity="0.36"/>\
-<stop offset="1" stop-color="%23edbcd9" stop-opacity="0"/></radialGradient>\
-<linearGradient id="a" x1="0.63" y1="0" x2="1" y2="0.4">\
-<stop offset="0" stop-color="%23fdf1f7"/><stop offset="0.3" stop-color="%23eaa6cf"/>\
-<stop offset="0.62" stop-color="%23a559c0"/><stop offset="1" stop-color="%234b2c92"/>\
-</linearGradient>\
-<linearGradient id="d" x1="0.66" y1="0.1" x2="1" y2="1">\
-<stop offset="0" stop-color="%23f4dced" stop-opacity="0.28"/>\
-<stop offset="0.45" stop-color="%23d287c8" stop-opacity="0.72"/>\
-<stop offset="1" stop-color="%237b62cf" stop-opacity="0.95"/></linearGradient>\
-<linearGradient id="e" x1="0.66" y1="0.1" x2="1" y2="0.46">\
-<stop offset="0" stop-color="%23ffffff"/><stop offset="0.45" stop-color="%23f5b98c"/>\
-<stop offset="1" stop-color="%23e8566b"/></linearGradient>\
-</defs>\
-<rect width="1600" height="900" fill="url(%23b)"/>\
-<rect width="1600" height="900" fill="url(%23c)"/>\
-<path d="M1069 93 C1120 350 1240 640 1350 900 L1600 900 L1600 411 Z" fill="url(%23d)"/>\
-<path d="M1078 0 L1600 0 L1600 411 L1069 93 Z" fill="url(%23a)"/>\
-<path d="M1069 93 C1120 350 1240 640 1350 900" fill="none"\
- stroke="%23ffffff" stroke-opacity="0.55" stroke-width="3"/>\
-<path d="M1078 0 L1069 93 L1600 411" fill="none" stroke="url(%23e)" stroke-width="4"/>\
-</svg>');
   --cover-bg:var(--ms-facet) center/cover no-repeat,#f2f1f5;
-  --closing-bg:var(--ms-facet-alt) center/cover no-repeat,#f4f1f5;
   --print-slide-bg:#ffffff;
   /* 背景が単一の SVG なので、印刷時も画面と同じものをそのまま使える
      （rgba の重ね合わせを含まないため PDF ビューアー間で色が揺れない）。 */
   --print-cover-bg:var(--cover-bg);
-  --print-closing-bg:var(--closing-bg);
   --ms-font:"Yu Gothic UI","Segoe UI Variable Text","Segoe UI","游ゴシック",
             "Hiragino Kaku Gothic ProN",system-ui,sans-serif;
 }
@@ -302,27 +258,26 @@ footer{flex:0 0 auto;display:flex;justify-content:space-between;align-items:cent
        margin-top:clamp(12px,2.2vh,26px);border-top:1px solid var(--border);padding-top:12px;}
 footer .page{color:var(--accent-strong);font-weight:600;background:var(--accent-soft);
              border:1px solid var(--accent-line);border-radius:999px;padding:.18em .8em;}
-/* ===== Cover (title) & closing layouts =====
-   Both center the kicker + body as one block (footer pinned to the bottom via
-   absolute positioning so it doesn't shift the centering), and each gets its
-   own background so the cover and the closing slide are easy to tell apart. */
-.deck.title-slide,.deck.closing-slide{justify-content:center;text-align:center;}
-.deck.title-slide{background:var(--cover-bg,var(--bg));}
-.deck.closing-slide{background:var(--closing-bg,var(--bg));}
-.deck.title-slide>header,.deck.closing-slide>header{display:flex;justify-content:center;}
-.deck.title-slide>.body,.deck.closing-slide>.body{flex:0 1 auto;justify-content:center;justify-content:safe center;
+/* ===== Cover (title) layout =====
+   Centers the kicker + body as one block (footer pinned to the bottom via
+   absolute positioning so it doesn't shift the centering) with its own
+   background so the cover stands apart from the body slides. */
+.deck.title-slide{justify-content:center;text-align:center;
+      background:var(--cover-bg,var(--bg));}
+.deck.title-slide>header{display:flex;justify-content:center;}
+.deck.title-slide>.body{flex:0 1 auto;justify-content:center;justify-content:safe center;
       max-height:calc(100% - 2*var(--deck-pad-y));}
-.deck.title-slide>footer,.deck.closing-slide>footer{position:absolute;
+.deck.title-slide>footer{position:absolute;
       left:var(--deck-pad-x);right:var(--deck-pad-x);bottom:var(--deck-pad-y);
       margin-top:0;border-top:0;padding-top:0;}
-.deck.title-slide .kicker,.deck.closing-slide .kicker{margin-bottom:.7em;}
+.deck.title-slide .kicker{margin-bottom:.7em;}
 
 /* ===== Back cover (背表紙) =====
-   .thmx の「Closing logo slide」に相当。clrMapOvr で bg2→dk2 / tx1→lt1 に
-   反転しているため、実効的には Microsoft ブルーのベタ塗りに白のロゴと著作権表示。
-   ロゴは 4 色スクエア + ワードマークを CSS だけで描く（画像は同梱しない）。 */
+   .thmx の「Closing logo slide」に相当し、どのテーマでもデッキの最後に付く。
+   背景はテーマごとの --backcover-bg（濃色）に白文字。Microsoft 系テーマだけ
+   4 色スクエア + ワードマークのロゴと著作権表示が乗る（画像は同梱せず CSS で描く）。 */
 .deck.backcover-slide{justify-content:center;text-align:center;
-      background:var(--ms-backcover,var(--accent));color:#fff;}
+      background:var(--backcover-bg,var(--accent));color:#fff;}
 /* ベタ塗りの上にトップバーが乗ると背表紙の面が濁るので消す。 */
 .deck.backcover-slide::before{display:none;}
 .deck.backcover-slide>header{display:flex;justify-content:center;}
@@ -435,12 +390,11 @@ body.presenter-mode #navPresent{display:none;}
     --slide-h1-size:60px;--slide-h2-size:48px;--slide-h3-size:33px;
     --slide-body-size:28px;--slide-code-size:19px;
   }
-  body.print-mode .deck:not(.title-slide):not(.closing-slide):not(.backcover-slide){
+  body.print-mode .deck:not(.title-slide):not(.backcover-slide){
     background:var(--print-slide-bg,var(--bg));
   }
   body.print-mode .deck.title-slide{background:var(--print-cover-bg,var(--cover-bg));}
-  body.print-mode .deck.closing-slide{background:var(--print-closing-bg,var(--closing-bg));}
-  body.print-mode .deck.backcover-slide{background:var(--ms-backcover,var(--accent));}
+  body.print-mode .deck.backcover-slide{background:var(--backcover-bg,var(--accent));}
   body.print-mode .deck:last-child{break-after:auto;page-break-after:auto;}
   body.print-mode .deck::before{position:absolute;}
   body.print-mode .body{overflow:hidden;}

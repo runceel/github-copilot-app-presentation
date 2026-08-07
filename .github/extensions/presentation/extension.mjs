@@ -113,10 +113,8 @@ function normalizeTheme(value) {
   return THEMES.has(t) ? t : DEFAULT_THEME;
 }
 
-// `ms-modern` は元になった PowerPoint テーマと同じく、デッキの最後に必ず
-// 背表紙 (Closing logo slide) が来ることを特徴とする。AI が付け忘れても崩れない
-// よう、デッキ登録時にここで補う。
-const BACKCOVER_THEMES = new Set(["ms-modern"]);
+// どのテーマでもデッキの最後は背表紙 (Closing logo slide) で締める。AI が付け忘れても
+// 崩れないよう、デッキ登録時にここで補う。
 const DEFAULT_BACKCOVER = ["---", "layout: backcover", "---", ""].join("\n");
 
 // front matter の `layout:` を読む軽量パーサー。レンダラー側の splitFrontMatter と
@@ -140,10 +138,9 @@ function readLayout(markdown) {
   return "";
 }
 
-// Append the theme's back cover unless the deck already ends with one, so
-// re-running load_deck (e.g. to switch themes) never stacks up duplicates.
-function ensureBackCover(slides, theme) {
-  if (!BACKCOVER_THEMES.has(theme)) return slides;
+// Append the back cover unless the deck already ends with one, so re-running
+// load_deck (e.g. to switch themes) never stacks up duplicates.
+function ensureBackCover(slides) {
   if (!slides.length) return slides;
   if (readLayout(slides[slides.length - 1]) === "backcover") return slides;
   return [...slides, DEFAULT_BACKCOVER];
@@ -688,9 +685,8 @@ async function exportPdf(inst, requestedPath, requestedTheme) {
   try {
     const exportTheme = requestedTheme === undefined ? inst.theme : normalizeTheme(requestedTheme);
     const snapshot = {
-      // Exporting under a back-cover theme must produce the back cover too, even
-      // when the canvas is currently showing a theme that does not require one.
-      slides: ensureBackCover(getExportSlides(inst), exportTheme),
+      // PDF もデッキと同じく背表紙で終わるようにする。
+      slides: ensureBackCover(getExportSlides(inst)),
       theme: exportTheme,
     };
     if (!snapshot.slides.length) {
@@ -1100,7 +1096,7 @@ async function applyDeckSlide(inst) {
 // non-empty array of strings) before calling.
 async function applyDeck(inst, { slides, index, theme }) {
   inst.theme = normalizeTheme(theme);
-  inst.slides = ensureBackCover(slides.slice(), inst.theme);
+  inst.slides = ensureBackCover(slides.slice());
   inst.index = clampIndex(index ?? 0, inst.slides.length);
   inst.deckVersion += 1;
   await applyDeckSlide(inst);
@@ -1484,7 +1480,7 @@ const session = await joinSession({
             type: "string",
             enum: ["dark", "light", "microsoft", "ms-modern"],
             description:
-              "デッキ全体の配色テーマ。dark（既定・ダーク）/ light（明るい中立）/ microsoft（Fluent 配色）/ ms-modern（社内 PowerPoint テンプレート風。末尾に背表紙が自動で付く）。省略時は dark。",
+              "デッキ全体の配色テーマ。dark（既定・ダーク）/ light（明るい中立）/ microsoft（Fluent 配色）/ ms-modern（社内 PowerPoint テンプレート風）。省略時は dark。どのテーマでも末尾に背表紙が自動で付く。",
           },
         },
         additionalProperties: false,
@@ -1493,7 +1489,7 @@ const session = await joinSession({
         {
           name: "load_deck",
           description:
-            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片（任意のフロントマター + 本文）の配列を渡すと、デッキを保持して index（既定 0）のスライドを表示する。任意の theme（dark/light/microsoft/ms-modern、既定 dark）でデッキ全体の配色を指定できる。ms-modern のときは末尾に背表紙（layout: backcover）が自動で 1 枚追加される。登録後のページ送りは canvas 内の操作（◀ ▶・矢印キー・一覧）と対応環境の Surface Pen で完結するので、通常は goto_slide を繰り返し呼ぶ必要はない。",
+            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片（任意のフロントマター + 本文）の配列を渡すと、デッキを保持して index（既定 0）のスライドを表示する。任意の theme（dark/light/microsoft/ms-modern、既定 dark）でデッキ全体の配色を指定できる。テーマに関わらず末尾に背表紙（layout: backcover）が自動で 1 枚追加される。登録後のページ送りは canvas 内の操作（◀ ▶・矢印キー・一覧）と対応環境の Surface Pen で完結するので、通常は goto_slide を繰り返し呼ぶ必要はない。",
           inputSchema: {
             type: "object",
             properties: {
@@ -1512,7 +1508,7 @@ const session = await joinSession({
                 type: "string",
                 enum: ["dark", "light", "microsoft", "ms-modern"],
                 description:
-                  "デッキ全体の配色テーマ。dark（既定・ダーク）/ light（明るい中立）/ microsoft（Fluent 配色）/ ms-modern（社内 PowerPoint テンプレート風。末尾に背表紙が自動で付く）。省略時は dark。ユーザーがテーマに関わるテイストを伝えたら適切な値を選ぶ。",
+                  "デッキ全体の配色テーマ。dark（既定・ダーク）/ light（明るい中立）/ microsoft（Fluent 配色）/ ms-modern（社内 PowerPoint テンプレート風）。省略時は dark。どのテーマでも末尾に背表紙が自動で付く。ユーザーがテーマに関わるテイストを伝えたら適切な値を選ぶ。",
               },
             },
             required: ["slides"],
