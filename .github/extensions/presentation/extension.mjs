@@ -76,6 +76,16 @@ function mimeFor(path) {
   return MIME[extname(path).toLowerCase()] || "application/octet-stream";
 }
 
+function pdfNameForSource(sourceName) {
+  const sourceBase = basename(typeof sourceName === "string" ? sourceName.trim() : "");
+  const withoutExtension = sourceBase.replace(/\.(?:md|markdown)$/i, "");
+  const safeBase = withoutExtension
+    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
+    .trim()
+    .replace(/[. ]+$/, "");
+  return `${safeBase || basename(DEFAULT_PDF_NAME, ".pdf")}.pdf`;
+}
+
 // key uniquely identifies one running panel for one session, avoiding
 // collisions when the same instanceId ("presentation") is reused elsewhere.
 function keyOf(ctx) {
@@ -1063,6 +1073,7 @@ async function persistNow(inst) {
         slides: inst.slides,
         index: inst.index,
         theme: inst.theme,
+        sourceName: inst.sourceName,
         mode: inst.mode,
         presenterProfileDir: inst.presenterProfileDir,
       }),
@@ -1112,7 +1123,10 @@ async function applyDeckSlide(inst) {
 // slide. Shared by the `load_deck` action and the `open` handler so both paths
 // populate instance state identically. Callers must validate `slides` (a
 // non-empty array of strings) before calling.
-async function applyDeck(inst, { slides, index, theme }) {
+async function applyDeck(inst, { slides, index, theme, sourceName }) {
+  if (typeof sourceName === "string" && sourceName.trim()) {
+    inst.sourceName = basename(sourceName.trim());
+  }
   inst.theme = normalizeTheme(theme);
   inst.slides = ensureBackCover(slides.slice());
   inst.index = clampIndex(index ?? 0, inst.slides.length);
@@ -1254,6 +1268,42 @@ async function startServer(inst) {
             ok: false,
             error: error?.code || "presenter_launch_failed",
             message: error?.message || "External presentation failed to start.",
+          }),
+        );
+      }
+      return;
+    }
+    if (pathname === "/export") {
+      if (req.method !== "POST") {
+        res.statusCode = 405;
+        res.setHeader("Allow", "POST");
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+        return;
+      }
+      const origin = req.headers.origin;
+      if (origin && origin !== new URL(inst.url).origin) {
+        res.statusCode = 403;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "origin_not_allowed" }));
+        return;
+      }
+      try {
+        activateInstance(inst);
+        const result = await exportPdf(inst, pdfNameForSource(inst.sourceName), inst.theme);
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(JSON.stringify(result));
+      } catch (error) {
+        res.statusCode =
+          error?.code === "no_deck" || error?.code === "export_in_progress" ? 409 : 500;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: error?.code || "pdf_export_failed",
+            message: error?.message || "PDF export failed.",
           }),
         );
       }
@@ -1423,6 +1473,7 @@ async function ensureInstance(ctx) {
       slides: [],
       index: 0,
       mode: "deck",
+      sourceName: "",
       clients: new Set(),
       assetsRoot: join(repoRoot, "assets"),
       workspaceRoot: repoRoot,
@@ -1445,6 +1496,7 @@ async function ensureInstance(ctx) {
       }
       if (typeof saved.index === "number") inst.index = clampIndex(saved.index, inst.slides.length);
       if (typeof saved.theme === "string") inst.theme = normalizeTheme(saved.theme);
+      if (typeof saved.sourceName === "string") inst.sourceName = saved.sourceName;
       if (saved.mode === "adhoc" || saved.mode === "deck") inst.mode = saved.mode;
       if (isPresenterProfilePath(saved.presenterProfileDir)) {
         inst.presenterProfileDir = saved.presenterProfileDir;
@@ -1504,6 +1556,11 @@ const session = await joinSession({
             description:
               "デッキ全体の配色テーマ。dark（既定・ダーク）/ light（明るい中立）/ microsoft（Fluent 配色）/ ms-modern（社内 PowerPoint テンプレート風）。省略時は dark。どのテーマでも末尾に背表紙が自動で付く。",
           },
+          sourceName: {
+            type: "string",
+            description:
+              "元 Markdown ファイル名。Canvas の PDF ボタンはこの名前に .pdf を付けて保存する。",
+          },
         },
         additionalProperties: false,
       },
@@ -1531,6 +1588,11 @@ const session = await joinSession({
                 enum: ["dark", "light", "microsoft", "ms-modern"],
                 description:
                   "デッキ全体の配色テーマ。dark（既定・ダーク）/ light（明るい中立）/ microsoft（Fluent 配色）/ ms-modern（社内 PowerPoint テンプレート風）。省略時は dark。どのテーマでも末尾に背表紙が自動で付く。ユーザーがテーマに関わるテイストを伝えたら適切な値を選ぶ。",
+              },
+              sourceName: {
+                type: "string",
+                description:
+                  "元 Markdown ファイル名。Canvas の PDF ボタンはこの名前に .pdf を付けて保存する。",
               },
             },
             required: ["slides"],
@@ -1560,6 +1622,7 @@ const session = await joinSession({
               slides,
               index: ctx.input?.index,
               theme: ctx.input?.theme,
+              sourceName: ctx.input?.sourceName,
             });
             return {
               ok: true,
@@ -1732,6 +1795,7 @@ const session = await joinSession({
             inst.slides = [];
             inst.index = 0;
             inst.theme = DEFAULT_THEME;
+            inst.sourceName = "";
             inst.mode = "deck";
             inst.deckVersion += 1;
             inst.version += 1;
@@ -1765,11 +1829,16 @@ const session = await joinSession({
           const sameDeck =
             inst.slides.length === slides.length &&
             inst.slides.every((s, i) => s === slides[i]);
+          if (typeof input.sourceName === "string" && input.sourceName.trim()) {
+            inst.sourceName = basename(input.sourceName.trim());
+            schedulePersist(inst);
+          }
           if (inst.slides.length === 0 || !sameDeck) {
             await applyDeck(inst, {
               slides,
               index: input.index,
               theme: input.theme,
+              sourceName: input.sourceName,
             });
           }
         }
