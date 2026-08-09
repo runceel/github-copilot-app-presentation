@@ -752,6 +752,22 @@ function toggleOverview() {
   else openOverview();
 }
 
+function isSlideWhitespaceTarget(target) {
+  if (!(target instanceof Element)) return false;
+  const deck = target.closest(".deck");
+  if (!deck || !document.getElementById("stage")?.contains(deck)) return false;
+  if (
+    target.closest(
+      "#nav, #overview, button, a, input, textarea, select, video, iframe, " +
+        ".deck > header, .deck > footer, .deck > .backcover-logo, .deck > .backcover-copyright, " +
+        ".body > *",
+    )
+  ) {
+    return false;
+  }
+  return true;
+}
+
 // --- input wiring ----------------------------------------------------------
 function wireControls() {
   const bind = (id, fn) => {
@@ -777,6 +793,36 @@ function wireControls() {
       if (e.target === overview) closeOverview();
     });
   }
+
+  document.addEventListener("click", (e) => {
+    if (
+      e.defaultPrevented ||
+      e.button !== 0 ||
+      e.ctrlKey ||
+      e.metaKey ||
+      e.altKey ||
+      e.shiftKey ||
+      !isSlideWhitespaceTarget(e.target)
+    ) {
+      return;
+    }
+    goNext();
+  });
+
+  document.addEventListener("contextmenu", (e) => {
+    if (
+      e.defaultPrevented ||
+      e.ctrlKey ||
+      e.metaKey ||
+      e.altKey ||
+      e.shiftKey ||
+      !isSlideWhitespaceTarget(e.target)
+    ) {
+      return;
+    }
+    e.preventDefault();
+    goPrev();
+  });
 
   // The iframe must be focused to receive key events; grab focus up front and
   // whenever the user interacts with it.
