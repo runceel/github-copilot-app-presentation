@@ -71,7 +71,7 @@ total: 6
 
 ## 主なアクション
 
-> **プレゼンの開始は、`open_canvas`（`canvasId: "presentation"`）の `input` に `slides`（必要なら `index` / `theme`）を渡してデッキごと開く**のが基本です。こうすると canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。下表のアクションは、開始後の操作・更新に使います。
+> **プレゼンの開始は、`open_canvas`（`canvasId: "presentation"`）の `input` に `slides`（必要なら `index` / `theme` / `sourceName`）を渡してデッキごと開く**のが基本です。`sourceName` には元 Markdown ファイル名を渡してください。Canvas のプリンターアイコンから `<元ファイル名>.pdf` を保存できます。こうすると canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。下表のアクションは、開始後の操作・更新に使います。
 
 | アクション | 用途 |
 | --- | --- |
@@ -80,11 +80,11 @@ total: 6
 | `show_slide` | スライドを 1 枚だけ差し替える。デッキ未登録での単発表示や、その場限りの差し替え用。通常のプレゼンでは使わない。 |
 | `open_presenter` | 表示中のデッキを、canvas と同期された外部全画面ウィンドウで開く。Edge / Chrome / Chromium の app mode を使い、ページ位置・キーボード・Surface Pen 操作を共有する。Surface Pen の末尾ボタン 2 回押しでも起動 / 終了できる。 |
 | `close_presenter` | `open_presenter` で起動した外部プレゼン画面を閉じる。 |
-| `export_pdf` | 表示中のデッキを16:9 PDFへ書き出すAI専用action。任意の `outputPath` はworkspaceからの相対 `.pdf` パス、省略時は `presentation.pdf`。任意の `theme`（`dark`/`light`/`microsoft`/`ms-modern`）はPDFだけに適用し、canvas表示は変えない。1スライド1ページで、背景・画像・コード強調・Mermaidを含む。`show_slide` による現在ページの一時差し替えも反映する。 |
+| `export_pdf` | 表示中のデッキを16:9 PDFへ書き出すAI用action。任意の `outputPath` はworkspaceからの相対 `.pdf` パス、省略時は `presentation.pdf`。Canvas のプリンターアイコンは `sourceName` から `<元ファイル名>.pdf` を自動保存する。任意の `theme`（`dark`/`light`/`microsoft`/`ms-modern`）はPDFだけに適用し、canvas表示は変えない。1スライド1ページで、背景・画像・コード強調・Mermaidを含む。`show_slide` による現在ページの一時差し替えも反映する。 |
 | `reset` | スライドとデッキをクリアして待機表示に戻す。 |
 
 > `load_deck` / `goto_slide` は結果に `{ ok, version, index, total }` を返します（`goto_slide` は `changed` も返し、表示が実際に変わったかを示します）。`index` は現在表示中の 0 始まりインデックス、`total` は総スライド数です。
-> `export_pdf` は `{ ok, path, total, theme, bytes }` を返します。PDFを書き出す前に、元Markdownが更新されている場合は最新の全スライドを `load_deck` で再登録してください。
+> `export_pdf` は `{ ok, path, total, theme, bytes }` を返します。PDFを書き出す前に、元Markdownが更新されている場合は最新の全スライドを `load_deck` で再登録してください。Canvas のプリンターアイコンは、元 Markdown のファイル名を `sourceName` に渡しておくと `<元ファイル名>.pdf` を workspace に保存します。
 
 ## スライド断片のフォーマット
 

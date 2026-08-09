@@ -331,6 +331,7 @@ footer .page{color:var(--accent-strong);font-weight:600;background:var(--accent-
 body.presenter-mode .nav{opacity:0;}
 body.presenter-mode .nav:hover,body.presenter-mode .nav:focus-within{opacity:1;}
 body.presenter-mode #navPresent{display:none;}
+body.presenter-mode #navExport{display:none;}
 
 /* ===== Slide-list overview overlay ===== */
 .overview{position:fixed;inset:0;z-index:60;display:flex;

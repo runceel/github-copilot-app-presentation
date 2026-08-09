@@ -541,6 +541,7 @@ let navTotal = 0;
 let navMode = "deck";
 let overviewOpen = false;
 let presenterLaunchPending = false;
+let pdfExportPending = false;
 
 // Derive a short overview title from a slide fragment: first heading, else first
 // non-empty body line, trimmed. Mirrors the skill's title rule.
@@ -678,6 +679,45 @@ function updatePresenterButton(running, message = "") {
     message || (running ? "外部プレゼン画面は起動中です" : "外部画面で全画面表示");
 }
 
+async function exportPdfFromCanvas() {
+  if (pdfExportPending) return;
+  pdfExportPending = true;
+  const button = document.getElementById("navExport");
+  const status = document.getElementById("exportStatus");
+  if (button) button.disabled = true;
+  if (status) status.textContent = "PDFを保存しています。";
+
+  try {
+    const response = await fetch("./export", {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.message || `PDF export failed (${response.status}).`);
+    }
+    const filename = data.path ? data.path.split(/[\\/]/).pop() : "PDF";
+    const message = `${filename} を保存しました。`;
+    if (status) status.textContent = message;
+    if (button) {
+      button.dataset.state = "active";
+      button.title = message;
+    }
+  } catch (error) {
+    const message = error?.message || "PDFを保存できませんでした。";
+    console.error("PDF export failed", error);
+    if (status) status.textContent = message;
+    if (button) {
+      button.dataset.state = "error";
+      button.title = message;
+    }
+  } finally {
+    pdfExportPending = false;
+    if (button) button.disabled = false;
+  }
+}
+
 function updateNav() {
   const nav = document.getElementById("nav");
   if (!nav) return;
@@ -783,6 +823,7 @@ function wireControls() {
   bind("navPrev", goPrev);
   bind("navNext", goNext);
   bind("navPresent", openPresenterWindow);
+  bind("navExport", exportPdfFromCanvas);
   bind("navList", toggleOverview);
   bind("overviewClose", closeOverview);
 
