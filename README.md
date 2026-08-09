@@ -57,10 +57,10 @@ Skill は便利な起動手順であり、Extension 本体の代替ではあり�
 
 > `slides.md` を Microsoft っぽいテーマでプレゼンしてください。
 
-ルートには `slides.md` のほか、`github-copilot-app.md`、`github-copilot-app-2.md`、
-`jat-202607-hiroshima.md` などのサンプルがあります。ローカル画像は `assets/` に置き、
-Markdown から `/assets/...` で参照します。Mermaid は ` ```mermaid ` のコードフェンスで
-記述できます。
+ルートの `slides.md` が presentation canvas を試すためのサンプルです。ローカル画像は
+`assets/` に置き、Markdown から `/assets/...` で参照します。Mermaid は
+` ```mermaid ` のコードフェンスで記述できます。登壇用のプレゼン資料は
+[presentation-materials](https://github.com/runceel/presentation-materials) に分離しています。
 
 ## ドキュメント
 
