@@ -42,6 +42,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
+import { reconstructAsset } from "./scripts/vendor-assets.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PEN_LISTENER_SCRIPT = join(EXT_DIR, "windows", "pen-button-listener.ps1");
@@ -51,6 +52,8 @@ const PEN_LISTENER_SCRIPT = join(EXT_DIR, "windows", "pen-button-listener.ps1");
 const DATA_DIR = join(tmpdir(), "copilot-presentation-canvas");
 const DEFAULT_PDF_NAME = "presentation.pdf";
 const PDF_RENDER_TIMEOUT_MS = 60_000;
+const VENDOR_DIR = join(EXT_DIR, "vendor");
+const VENDOR_MANIFEST = join(VENDOR_DIR, "vendor-assets.lock.json");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -1001,6 +1004,21 @@ async function sendFile(res, absPath, { cache } = {}) {
   }
 }
 
+async function sendChunkedVendorAsset(res, assetName) {
+  try {
+    const buffer = await reconstructAsset(VENDOR_DIR, assetName, VENDOR_MANIFEST);
+    res.statusCode = 200;
+    res.setHeader("Content-Type", mimeFor(assetName));
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.end(buffer);
+  } catch (error) {
+    log(`presentation: vendor asset integrity failure for ${assetName}: ${error.message}`, "error");
+    res.statusCode = 500;
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.end("Vendor asset integrity failure");
+  }
+}
+
 function handleSse(req, res, inst) {
   res.statusCode = 200;
   res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
@@ -1348,6 +1366,10 @@ async function startServer(inst) {
     }
     if (pathname === "/events") {
       handleSse(req, res, inst);
+      return;
+    }
+    if (pathname === "/vendor/mermaid.min.js") {
+      await sendChunkedVendorAsset(res, "mermaid.min.js");
       return;
     }
     if (pathname.startsWith("/renderer/") || pathname.startsWith("/vendor/")) {
