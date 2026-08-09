@@ -7,6 +7,21 @@ description: 'Markdown ファイルを使って GitHub Copilot の canvas でス
 
 Markdown ファイルを元に、**プレゼン開始時に全スライド分の「小さな Markdown 断片」をまとめて生成し、canvas を開くときに `open` の `input`（`slides`）へ一括で渡して**最初から presentation canvas 拡張機能に表示するスキルです（「スライド未読込」のプレースホルダーを挟みません）。**登録後のページ送り（次へ / 前へ / 一覧）は canvas のボタン・キーボード、対応環境では Surface Pen で完結**するので、agent はスライドを送るための `ask_user` ループを回す必要がありません。発表途中で内容やテーマを差し替えたいときだけ `load_deck` を呼びます。
 
+## 配布と導入
+
+このファイルは任意導入の Skill です。プレゼン表示に必要な本体は
+`.github/extensions/presentation/` の Extension なので、まず Extension を導入してください。
+公開リポジトリからユーザースコープへ導入する場合は、Copilot に次のように依頼します。
+
+> `https://github.com/runceel/github-copilot-app-presentation/tree/main/.github/extensions/presentation`
+> から presentation canvas Extension をユーザースコープへインストールしてください。
+
+再現可能な導入には `main` をリリースタグ（例: `v1.0.0`）または確認済みコミット SHA に
+置き換えます。Extension はローカルコードを実行するため、導入前に差分とタグを確認してください。
+Skill はプロジェクトの `.github/skills/presentation/SKILL.md` に置くか、利用者の Skill
+スコープへコピーします。配布上の注意（ZIP、Gist の単一ファイル上限、Mermaid の分割配布）は
+リポジトリの README と `THIRD-PARTY-NOTICES.md` を参照してください。
+
 ## いちばん大事な原則 ⚡
 
 1. **あなた（生成 AI）が書くのは、各スライド 1 枚分の「小さな Markdown 断片」だけ**です。HTML・CSS・テーマ・レイアウト・ページ番号・アニメーションは**すべて拡張機能側（marked）が担当**します。フル HTML を生成しないこと。

@@ -123,6 +123,8 @@ size: xlarge
 ## サードパーティライセンス
 
 `vendor/` には以下の OSS を同梱しています（各ライセンスに従います）。
+配布時の著作権表示とライセンス一覧は
+[THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md) にも記載しています。
 
 - **marked** — MIT License © 2011-2024 Christopher Jeffrey 他 — https://github.com/markedjs/marked
 - **DOMPurify** — Apache-2.0 / MPL-2.0 © Cure53 他 — https://github.com/cure53/DOMPurify
