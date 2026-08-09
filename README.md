@@ -1,40 +1,77 @@
 # Copilot Canvas Presentation
 
-GitHub Copilot の canvas を使って、Markdown からライブにスライドプレゼンを行うための環境です。
-`slides.md` を元にプレゼンを開始すると、最初のスライドがすぐ表示され、以降のページ送りは canvas 内の操作で完結します。
-**Mermaid 記法の図**や、リモート / ローカル（`assets/`）の**画像挿入**にも対応しています。
-配色は **dark（既定）/ light / microsoft** の 3 テーマから選べます。
+GitHub Copilot App の canvas で、Markdown をスライドとして表示する
+**presentation canvas Extension** です。Markdown の変換、テーマ、Mermaid、画像、
+ページ送りを canvas 側で処理します。
 
-## セットアップ
+## インストール
 
-必要なものは GitHub Copilot アプリだけです（このリポジトリを開いて使います）。
+このリポジトリをプロジェクトとして開くと、`.github/extensions/presentation/` の
+Extension がプロジェクトスコープで読み込まれます。別のリポジトリでも使う場合は、
+GitHub Copilot App に次のように依頼してください。
 
-プレゼンは **presentation canvas 拡張機能**（`.github/extensions/presentation/`）が表示するため、追加のインストールやサーバー起動は不要です。
+> 次の GitHub リポジトリフォルダーから presentation をユーザースコープへインストールしてください。
+>
+> `https://github.com/runceel/github-copilot-app-presentation/tree/main/.github/extensions/presentation`
 
-## 使い方
+`main` の URL は最新版を指します。再現可能な導入には、リリース後に `main` を
+バージョンタグへ置き換えた URL を使ってください。
 
-1. このリポジトリを GitHub Copilot アプリで開きます。
-2. スライドの内容を [`slides.md`](./slides.md) に書きます。`---` の行がスライドの区切りです。
-3. Copilot にこう伝えます:
+```text
+https://github.com/runceel/github-copilot-app-presentation/tree/v1.0.0/.github/extensions/presentation
+```
 
-   > slides.md に従ってプレゼンしてください。
+Extension はローカルでコードを実行します。導入前に内容を確認し、信頼できるタグまたは
+コミットを指定してください。公開済みのタグは移動させず、更新時は新しいバージョンを
+使います。リリースページには手動導入用 ZIP と SHA-256 チェックサムを添付します。
+ZIP を展開すると、`.github/extensions/presentation/` の内容をユーザー拡張ディレクトリへ
+配置できます。
 
-4. canvas にスライドが表示されます。あとは canvas 内の **◀ ▶ ボタン**、**矢印キー**、**☰ スライド一覧**でページを送ります。
+Gist は小さな Extension の共有には便利ですが、単一ファイルがおおむね 1 MB に制限されます。
+同梱の `mermaid.min.js` はこの制限を超えるため、Mermaid を含む完全版は公開リポジトリの
+フォルダー URL またはリリース ZIP から導入してください。Mermaid を含まない軽量版を
+別配布する場合は、Mermaid 対応を省いた構成として明示します。
 
-`slides.md` を編集したあとの再実行も、同じ依頼文で進められます。
+## 何が含まれるか
 
-## 表示イメージ
+| ファイル | 責務 |
+| --- | --- |
+| `.github/extensions/presentation/` | Copilot canvas Extension。本体、renderer、同梱 OSS を提供します。 |
+| `.github/skills/presentation/SKILL.md` | Markdown を全スライドの断片へ変換し、Extension を起動する任意導入の Skill です。 |
+| `slides.md` などのルート Markdown | すぐ試せるサンプルおよびプレゼン原稿です。利用者の資料に置き換えられます。 |
 
-**スライド表示（1枚目）**
+Skill は便利な起動手順であり、Extension 本体の代替ではありません。Skill を導入しない
+場合も、`presentation` canvas を直接開いて `slides` を渡せます。Extension と Skill の
+変更は独立してリリースできるため、互換性を壊す変更はリリースノートに記載します。
 
-![presentation screen 1](./assets/presentation-screen-1.png)
+## 最小操作例
 
-**スライド表示（2枚目）**
+1. `slides.md` を編集します。`---` の行でスライドを区切ります。
+2. Copilot に次のように依頼します。
 
-![presentation screen 2](./assets/presentation-screen-2.png)
+   > `slides.md` に従ってプレゼンしてください。
 
-仕組みやスキルの詳細は [`.github/skills/presentation/SKILL.md`](./.github/skills/presentation/SKILL.md) を、canvas 拡張機能の詳細は [`.github/extensions/presentation/README.md`](./.github/extensions/presentation/README.md) を参照してください。
+3. canvas 内の **◀ ▶ ボタン**、**矢印キー**、**☰ スライド一覧**で操作します。
+
+テーマを指定する場合は、たとえば次のように依頼できます。
+
+> `slides.md` を Microsoft っぽいテーマでプレゼンしてください。
+
+ルートには `slides.md` のほか、`github-copilot-app.md`、`github-copilot-app-2.md`、
+`jat-202607-hiroshima.md` などのサンプルがあります。ローカル画像は `assets/` に置き、
+Markdown から `/assets/...` で参照します。Mermaid は ` ```mermaid ` のコードフェンスで
+記述できます。
+
+## ドキュメント
+
+- [presentation Skill](./.github/skills/presentation/SKILL.md)
+- [Extension の仕様とアクション](./.github/extensions/presentation/README.md)
+- [同梱 OSS の第三者通知](./.github/extensions/presentation/THIRD-PARTY-NOTICES.md)
+- [リリース手順](./.github/RELEASING.md)
+- [MIT License](./LICENSE)
 
 ## ライセンス
 
-[MIT License](./LICENSE)
+このリポジトリのオリジナル部分は MIT License で公開しています。同梱 OSS のライセンスと
+著作権表示は [THIRD-PARTY-NOTICES.md](./.github/extensions/presentation/THIRD-PARTY-NOTICES.md)
+を参照してください。

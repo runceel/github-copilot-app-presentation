@@ -117,16 +117,18 @@ size: xlarge
     purify.min.js          # DOMPurify（HTML サニタイズ）
     highlight.min.js       # コードのシンタックスハイライト
     highlight.LICENSE      # highlight.js の MIT ライセンス
-    mermaid.min.js          # 図のレンダリング
+    mermaid.min.js.part-*   # 図のレンダリング（1MB制限対応の分割配布）
 ```
 
 ## サードパーティライセンス
 
 `vendor/` には以下の OSS を同梱しています（各ライセンスに従います）。
+配布時の著作権表示とライセンス一覧は
+[THIRD-PARTY-NOTICES.md](./THIRD-PARTY-NOTICES.md) にも記載しています。
 
 - **marked** — MIT License © 2011-2024 Christopher Jeffrey 他 — https://github.com/markedjs/marked
 - **DOMPurify** — Apache-2.0 / MPL-2.0 © Cure53 他 — https://github.com/cure53/DOMPurify
 - **highlight.js** — MIT License © 2006 Ivan Sagalaev — https://github.com/highlightjs/highlight.js
 - **Mermaid** — MIT License © 2014-2024 Knut Sveidqvist 他 — https://github.com/mermaid-js/mermaid
 
-> 補足: `mermaid.min.js` は約 3MB のため、gist 共有（1 ファイル ~1MB 上限）には乗りません。ローカル利用・リポジトリへのコミットには影響しません。
+> 補足: `mermaid.min.js` は約 3MB ありますが、インストーラーの単一ファイル上限に合わせて `mermaid.min.js.part-*` へ分割しています。HTTP 配信時に Extension が順序どおり再構成するため、Gist やリポジトリ導入でも Mermaid は従来どおり利用できます。分割元・各チャンクの SHA-256 は `vendor/vendor-assets.lock.json` で管理し、更新時は `scripts/vendor-assets.mjs` で再生成・検証します。

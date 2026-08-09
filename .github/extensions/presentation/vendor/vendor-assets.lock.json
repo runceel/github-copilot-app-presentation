@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "chunkSize": 524288,
+  "assets": {
+    "mermaid.min.js": {
+      "source": "mermaid.min.js",
+      "size": 3312967,
+      "sha256": "70137e77bb273bb2ef972b86e8b0400cca8be53cb25bfc45911a186dc98665de",
+      "upstream": {
+        "name": "mermaid",
+        "version": "11.15.0",
+        "source": "https://www.npmjs.com/package/mermaid"
+      },
+      "chunks": [
+        {
+          "index": 1,
+          "file": "mermaid.min.js.part-0001",
+          "size": 524288,
+          "sha256": "edc857bf8ad368bf97ff5848dd0439461f2460ac53b58b1f6cc4d8493449aac5"
+        },
+        {
+          "index": 2,
+          "file": "mermaid.min.js.part-0002",
+          "size": 524288,
+          "sha256": "8c7a9e27ba496d04d25c1c9716185aaf9d5ae3ef6d093a5783a6306ac8c8d03f"
+        },
+        {
+          "index": 3,
+          "file": "mermaid.min.js.part-0003",
+          "size": 524288,
+          "sha256": "ef79bb7da99d7a3ce848e29df40de09ee6cca03e3b15101dd6d93080655a33cd"
+        },
+        {
+          "index": 4,
+          "file": "mermaid.min.js.part-0004",
+          "size": 524288,
+          "sha256": "10919790fa99d83917114b343a310d3faee9e4e6c2614c97a5c0c454f3419471"
+        },
+        {
+          "index": 5,
+          "file": "mermaid.min.js.part-0005",
+          "size": 524288,
+          "sha256": "98354d583d9d126593f79154e6f318c8e43ae8644b21bbef9290c91469874ae5"
+        },
+        {
+          "index": 6,
+          "file": "mermaid.min.js.part-0006",
+          "size": 524288,
+          "sha256": "a90f197efc189debeb94d59c848f6317c785183f0473ddad14d2fe5657979612"
+        },
+        {
+          "index": 7,
+          "file": "mermaid.min.js.part-0007",
+          "size": 167239,
+          "sha256": "a5f4e5d4bc208e7258bbc408dfcd9cb48599da8c34e46866b4655d4c1512907f"
+        }
+      ]
+    }
+  }
+}
