@@ -1,3 +1,5 @@
+import { renderArchitectureBlock } from "./architecture.mjs";
+
 // Client-side slide renderer for the presentation canvas.
 //
 // The extension server pushes the *current slide* as a small markdown fragment
@@ -75,6 +77,7 @@ let deckTheme = DEFAULT_THEME;
 // reveal a newer, still-rendering one.
 let renderToken = 0;
 let lastMermaidTheme = null;
+let architectureEditMode = false;
 // `layoutTarget` is the slide currently on screen (cover and back cover
 // included); `autoSize` says whether it also takes part in the font auto-fit.
 let layoutTarget = null;
@@ -253,7 +256,12 @@ function applyEmojiShortcodes(root) {
 function applySyntaxHighlighting(root) {
   if (!window.hljs) return;
   root.querySelectorAll("pre code").forEach((code) => {
-    if (code.classList.contains("language-mermaid")) return;
+    if (
+      code.classList.contains("language-mermaid") ||
+      code.classList.contains("language-architecture")
+    ) {
+      return;
+    }
     try {
       window.hljs.highlightElement(code);
     } catch (e) {
@@ -367,6 +375,16 @@ function createSlide(markdown, fallbackTheme) {
     graph.className = "mermaid";
     graph.textContent = code.textContent;
     target.replaceWith(graph);
+  });
+  // Architecture fences contain a constrained JSON DSL. The renderer builds its
+  // SVG with createElementNS/textContent instead of injecting generated markup.
+  bodyEl.querySelectorAll("code.language-architecture").forEach((code) => {
+    const target = code.closest("pre") || code;
+    target.replaceWith(
+      renderArchitectureBlock(code.textContent, document, {
+        editable: architectureEditMode,
+      }),
+    );
   });
   applySyntaxHighlighting(bodyEl);
   deck.appendChild(bodyEl);
@@ -949,6 +967,9 @@ function init() {
   }
   if (params.get("present") === "1") {
     document.body.classList.add("presenter-mode");
+  } else if (params.get("architectureEdit") === "1") {
+    architectureEditMode = true;
+    document.body.classList.add("architecture-edit-mode");
   }
 
   wireControls();

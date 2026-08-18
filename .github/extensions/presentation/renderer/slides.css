@@ -252,6 +252,30 @@ pre.mermaid{background:none;border:0;border-left:0;border-radius:0;box-shadow:no
     text-align:center;overflow:auto;}
 pre.mermaid svg{max-width:100%;height:auto;max-height:44vh;}
 body.mermaid-loading .mermaid{visibility:hidden;}
+.architecture-diagram{width:100%;min-height:0;margin:.35em 0;display:flex;
+     align-items:center;justify-content:center;}
+.architecture-svg{display:block;width:100%;height:auto;max-height:56vh;
+     color:var(--body);font-family:inherit;overflow:visible;}
+.architecture-svg text{font-family:inherit;}
+.architecture-editable{position:relative;padding-top:2.4em;}
+.architecture-editor-toolbar{position:absolute;top:0;right:0;z-index:3;display:flex;
+     align-items:center;gap:.65em;font-size:clamp(11px,1.5vh,14px);}
+.architecture-editor-toolbar button{border:1px solid var(--border);border-radius:6px;
+     padding:.35em .7em;background:var(--surface);color:var(--fg);font:inherit;cursor:pointer;}
+.architecture-editor-toolbar button:hover{border-color:var(--accent);color:var(--accent-strong);}
+.architecture-editor-status{color:var(--muted);min-width:12em;text-align:right;}
+.architecture-editable [data-architecture-type="node"]{cursor:pointer;outline:none;}
+.architecture-editable [data-architecture-type="node"]:focus>rect,
+.architecture-editable [data-architecture-type="node"]:focus>ellipse,
+.architecture-editable .architecture-selected>rect,
+.architecture-editable .architecture-selected>ellipse{
+     stroke:var(--accent-strong);stroke-width:7;filter:drop-shadow(0 0 8px var(--accent-line));}
+.architecture-error{display:flex;flex-direction:column;gap:.35em;margin:.5em 0;
+     padding:.8em 1em;border:2px solid #d13438;border-radius:8px;
+     color:var(--body);background:color-mix(in srgb,#d13438 10%,var(--surface));}
+.architecture-error strong{color:#d13438;}
+.architecture-error span{font-family:"Cascadia Code","Cascadia Mono",Consolas,monospace;
+     font-size:.75em;overflow-wrap:anywhere;}
 hr{border:0;border-top:1px solid var(--border);margin:.7em 0;}
 footer{flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;
        color:var(--muted);font-size:clamp(12px,1.7vh,16px);
@@ -399,5 +423,7 @@ body.presenter-mode #navExport{display:none;}
   body.print-mode .deck:last-child{break-after:auto;page-break-after:auto;}
   body.print-mode .deck::before{position:absolute;}
   body.print-mode .body{overflow:hidden;}
+  body.print-mode .architecture-svg{max-height:5.25in;}
+  body.print-mode .architecture-editor-toolbar{display:none!important;}
   body.print-mode .nav,body.print-mode .overview{display:none!important;}
 }
