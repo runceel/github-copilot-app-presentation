@@ -5,17 +5,23 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   ArchitectureError,
+  CONNECTOR_LABEL_CLEARANCE,
   ICONS,
   LAYOUT_DIRECTIONS,
   MAX_ELEMENTS,
   MAX_ROUTING_GRID_COORDINATES,
   MAX_SOURCE_LENGTH,
+  MIN_VISIBLE_ROUTE_LENGTH,
   ROUTE_FALLBACK_REASONS,
   architectureSemanticSnapshot,
   computeConnectorRoute,
+  connectorLabelAnchor,
+  connectorLabelBox,
   parseArchitecture,
+  pointAtHalfLength,
   renderArchitectureBlock,
   renderArchitectureDiagram,
+  routeLengthOutsideBox,
 } from "../renderer/architecture.mjs";
 
 const validDiagram = {
@@ -1859,5 +1865,142 @@ test("a shipped diagram actually covers the 8-12 node dense case", async () => {
   assert.ok(
     dense.length > 0,
     "8〜12 ノードかつ connector 10 本以上を手動 polyline なしで捌く図が出荷物に存在しない",
+  );
+});
+
+// --- Issue #22: ラベルが自分の線と矢尻を覆い隠す ---
+
+/** 単一 connector の図を組み立て、経路とラベル枠を実測できる形で返す。 */
+function labeledConnector({ label = "HTML", gap = 60, routing = "orthogonal", ...rest } = {}) {
+  const elements = [
+    { type: "node", id: "a", x: 400, y: 400, width: 220, height: 110, text: "A" },
+    { type: "node", id: "b", x: 400 + 220 + gap, y: 400, width: 220, height: 110, text: "B" },
+    { type: "connector", from: "a", to: "b", label, routing, ...rest },
+  ];
+  const model = parseArchitecture(
+    JSON.stringify({ version: 1, canvas: { width: 1600, height: 900 }, elements }),
+  );
+  const snapshot = architectureSemanticSnapshot(model);
+  const index = model.elements.findIndex((element) => element.type === "connector");
+  const connector = model.elements[index];
+  const points = snapshot.elements[index].points;
+  return { model, snapshot, connector, points, box: connectorLabelBox(connector, points) };
+}
+
+test("connector label no longer hides its own line and arrowhead", () => {
+  // Issue #22 の再現配置。ラベル枠には 70px の下限があるため、
+  // gap 60 から両端 14px を差し引いた 32px の可視線を中央配置の枠が覆い切っていた。
+  const { points, box } = labeledConnector({ gap: 60 });
+  assert.ok(box, "ラベル枠が算出されていない");
+  const visible = routeLengthOutsideBox(points, box);
+  assert.ok(
+    visible >= MIN_VISIBLE_ROUTE_LENGTH,
+    `ラベルが自分の経路を覆っている: 可視長 ${visible.toFixed(2)} < ${MIN_VISIBLE_ROUTE_LENGTH}`,
+  );
+});
+
+test("label anchor stays on the midpoint when the line has room", () => {
+  // 逃がすのは覆い隠すときだけ。余裕がある図の見た目を動かさないことを固定する。
+  const { connector, points } = labeledConnector({ gap: 420 });
+  const anchor = connectorLabelAnchor(connector, points);
+  const midpoint = pointAtHalfLength(points);
+  assert.equal(anchor.escaped, false);
+  assert.ok(Math.abs(anchor.x - midpoint.x) < 1e-9, "余裕がある図でラベルが横に動いた");
+  assert.ok(Math.abs(anchor.y - midpoint.y) < 1e-9, "余裕がある図でラベルが縦に動いた");
+});
+
+test("label escapes perpendicular to its own segment", () => {
+  // 水平な線からは上下へ、垂直な線からは左右へ逃がす。線に沿って動かしても
+  // 覆う範囲は変わらないので、法線方向であることがこの修正の本質になる。
+  const horizontal = labeledConnector({ gap: 60 });
+  const midpoint = pointAtHalfLength(horizontal.points);
+  const anchor = connectorLabelAnchor(horizontal.connector, horizontal.points);
+  assert.equal(anchor.escaped, true);
+  assert.ok(Math.abs(anchor.x - midpoint.x) < 1e-9, "水平な線で横方向へ逃げている");
+  assert.ok(Math.abs(anchor.y - midpoint.y) > 1, "水平な線で縦方向へ逃げていない");
+  // 枠の縁が線から CONNECTOR_LABEL_CLEARANCE だけ離れていること。
+  const clearance = Math.abs(anchor.y - midpoint.y) - horizontal.box.height / 2;
+  assert.ok(
+    Math.abs(clearance - CONNECTOR_LABEL_CLEARANCE) < 1e-9,
+    `線との間隔が ${clearance} で ${CONNECTOR_LABEL_CLEARANCE} と一致しない`,
+  );
+});
+
+test("pointAtHalfLength reports a unit direction, including the degenerate span", () => {
+  const { points } = labeledConnector({ gap: 60 });
+  const midpoint = pointAtHalfLength(points);
+  assert.ok(midpoint.direction, "direction を返していない");
+  const length = Math.hypot(midpoint.direction.x, midpoint.direction.y);
+  assert.ok(Math.abs(length - 1) < 1e-9, `direction が単位ベクトルでない: ${length}`);
+  // 長さ 0 の経路でも法線を決められるよう既定の向きを返す。
+  const degenerate = pointAtHalfLength([{ x: 10, y: 20 }, { x: 10, y: 20 }]);
+  assert.ok(degenerate.direction, "長さ 0 の経路で direction を返していない");
+  assert.equal(Math.hypot(degenerate.direction.x, degenerate.direction.y), 1);
+});
+
+test("the rendered label matches the box used for routing", () => {
+  // routeCost はラベル枠でコストを測るので、描画位置と routing 位置がずれると
+  // 「避けたはずの場所に描かれる」状態になる。両者が同一であることを固定する。
+  const { model, connector, points, box } = labeledConnector({ gap: 60 });
+  const document = new FakeDocument();
+  const svg = renderArchitectureDiagram(model, document);
+  const labels = descendants(svg).filter(
+    (node) => node.tagName === "text" && node.textContent === "HTML",
+  );
+  assert.equal(labels.length, 1, "ラベルの text が 1 つ描かれていない");
+  const centerX = box.x + box.width / 2;
+  const centerY = box.y + box.height / 2;
+  assert.ok(
+    Math.abs(Number(labels[0].attributes.get("x")) - centerX) < 1e-9 &&
+      Math.abs(Number(labels[0].attributes.get("y")) - centerY) < 1e-9,
+    "描画されたラベル位置が routing の使う枠の中心と一致しない",
+  );
+  // 逃がした結果であることも確認する（中点のままなら不変条件の検証にならない）。
+  assert.equal(connectorLabelAnchor(connector, points).escaped, true);
+});
+
+test("orthogonal labels never cover their own route across a generated space", () => {
+  // 逃がす仕組みが「その場しのぎ」でないことを、生成した配置空間で確かめる。
+  // 診断を積まずに済ませている根拠がこれなので、代表例 1 つでは足りない。
+  const ports = ["auto", "top", "right", "bottom", "left"];
+  let checked = 0;
+  let worst = Infinity;
+  let worstCase = null;
+  for (const fromPort of ports) {
+    for (const toPort of ports) {
+      for (const dx of [-320, -200, -120, -40, 0, 40, 120, 200, 320]) {
+        for (const dy of [-320, -200, -80, 0, 80, 200, 320]) {
+          for (const label of ["a", "HTML", "publishes events"]) {
+            const elements = [
+              { type: "node", id: "a", x: 600, y: 380, width: 220, height: 110, text: "A" },
+              { type: "node", id: "b", x: 600 + dx, y: 380 + dy, width: 220, height: 110, text: "B" },
+              { type: "node", id: "c", x: 900, y: 200, width: 260, height: 400, text: "C" },
+              { type: "connector", from: "a", to: "b", label, routing: "orthogonal", fromPort, toPort },
+            ];
+            const model = parseArchitecture(
+              JSON.stringify({ version: 1, canvas: { width: 1600, height: 900 }, elements }),
+            );
+            const snapshot = architectureSemanticSnapshot(model);
+            const index = model.elements.findIndex((element) => element.type === "connector");
+            const points = snapshot.elements[index].points;
+            if (!points || points.length < 2) continue;
+            const box = connectorLabelBox(model.elements[index], points);
+            if (!box) continue;
+            const visible = routeLengthOutsideBox(points, box);
+            checked++;
+            if (visible < worst) {
+              worst = visible;
+              worstCase = { fromPort, toPort, dx, dy, label, visible };
+            }
+          }
+        }
+      }
+    }
+  }
+  // 走査が痩せて自明に通ることを防ぐ番人。
+  assert.ok(checked > 4000, `検査した配置が ${checked} 件しかない`);
+  assert.ok(
+    worst >= MIN_VISIBLE_ROUTE_LENGTH,
+    `可視長 ${worst.toFixed(2)} の配置がある: ${JSON.stringify(worstCase)}`,
   );
 });
