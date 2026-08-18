@@ -163,3 +163,98 @@ test("印刷の失敗シグナルを検知できる", async ({ page }) => {
     await harness.close();
   }
 });
+
+// 回帰ガード（#12）: initPrint はトークン欠落だけを try の **外側** で throw する。
+// 呼び出し側で受けないと未処理の Promise 拒否になるだけで data-print-error が立たず、
+// ブラウザーは exit 0 で白紙 1 ページの PDF を吐いて正常終了する。上のテスト
+// （トークン不一致）は initPrint 内部の catch を通るので、この経路は素通りする。
+test("トークンの無い印刷も失敗として観測できる", async ({ page }) => {
+  const harness = await startHarness({ slides: ARCHITECTURE_DECK });
+  const consoleErrors = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+  try {
+    await page.goto(`${harness.url}/?print=1`, { waitUntil: "load" });
+    await page.waitForFunction(
+      () => document.documentElement.getAttribute("data-print-error") === "true",
+      undefined,
+      { timeout: 30_000 },
+    );
+
+    // veil が残ったままだと PDF が真っ白になるので、外れていることも見る。
+    expect(
+      await page.evaluate(() => document.body.classList.contains("mermaid-loading")),
+      "失敗時に mermaid-loading の覆いを残さない",
+    ).toBe(false);
+    expect(harness.printReports, "トークンが無いので成功報告は届かない").toHaveLength(0);
+    expect(consoleErrors.join("\n"), "理由が console に残る").toMatch(/token/i);
+  } finally {
+    await harness.close();
+  }
+});
+
+/** EventSource の生成数と ./state のポーリング数を数える計測器を仕掛ける。 */
+async function instrumentLiveUpdates(page) {
+  await page.addInitScript(() => {
+    window.__eventSourceCount = 0;
+    const OriginalEventSource = window.EventSource;
+    window.EventSource = class extends OriginalEventSource {
+      constructor(...args) {
+        window.__eventSourceCount += 1;
+        super(...args);
+      }
+    };
+  });
+  const statePolls = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname.endsWith("/state")) statePolls.push(request.url());
+  });
+  return {
+    statePolls,
+    eventSourceCount: () => page.evaluate(() => window.__eventSourceCount),
+  };
+}
+
+// ポーリング間隔（renderer.js の setInterval）の 2 周ぶん。
+const QUIESCENCE_WAIT_MS = 4_500;
+
+// 回帰ガード（#12）: `--print-to-pdf` は「ページが静止すること」を完了条件にする。
+// init() の印刷分岐が早期 return しなくなると、閉じない SSE と 2 秒間隔のポーリングが
+// 動き続け、ブラウザーは **永久に終了しない**（実測: 120 秒でも終わらない）。
+// Node 側の 60 秒タイムアウトで殺されるまで PDF は 1 バイトも出ない。
+test("印刷モードは SSE も定期ポーリングも起動しない", async ({ page }) => {
+  const harness = await startHarness({ slides: ARCHITECTURE_DECK });
+  try {
+    const live = await instrumentLiveUpdates(page);
+    await page.goto(`${harness.url}/?print=1&token=${encodeURIComponent(harness.printToken)}`, {
+      waitUntil: "load",
+    });
+    await waitForPrintReady(page);
+    await page.waitForTimeout(QUIESCENCE_WAIT_MS);
+
+    expect(await live.eventSourceCount(), "印刷モードは SSE を張らない").toBe(0);
+    expect(live.statePolls, "印刷モードは /state をポーリングしない").toHaveLength(0);
+  } finally {
+    await harness.close();
+  }
+});
+
+// 上のテストが「計測器が動いていないだけ」で緑にならないことの裏取り。
+// 通常表示では SSE もポーリングも必ず動くので、同じ計測器が非ゼロを返す。
+test("通常表示は SSE と定期ポーリングを起動する", async ({ page }) => {
+  const harness = await startHarness({ slides: ARCHITECTURE_DECK });
+  try {
+    const live = await instrumentLiveUpdates(page);
+    await page.goto(`${harness.url}/`, { waitUntil: "load" });
+    await page.waitForTimeout(QUIESCENCE_WAIT_MS);
+
+    expect(await live.eventSourceCount(), "通常表示は SSE を張る").toBeGreaterThan(0);
+    expect(
+      live.statePolls.length,
+      "通常表示は /state を繰り返し取得する",
+    ).toBeGreaterThan(1);
+  } finally {
+    await harness.close();
+  }
+});

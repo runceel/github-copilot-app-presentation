@@ -1254,6 +1254,10 @@ function appendText(documentRef, parent, element, text, options = {}) {
     "text-anchor": "middle",
     "dominant-baseline": "middle",
     "pointer-events": "none",
+    // 視覚専用。同じ文字列は既に親の aria-label と <title> に入っているので、
+    // 隠さないと支援技術が 1 要素につき 2 回読み上げる（Chromium の AX ツリーで実測）。
+    // 表示が幅制限で省略されることもあるため、正はあくまで aria-label 側。
+    "aria-hidden": "true",
   });
   lines.forEach((line, index) => {
     const tspan = svgElement(documentRef, "tspan", {
@@ -2519,6 +2523,9 @@ function renderGroup(documentRef, element) {
   const group = svgElement(documentRef, "g", {
     "data-architecture-id": element.id,
     "data-architecture-type": "group",
+    // 宣言順（DSL に書かれた順）。DOM 順は描画順（z 順）なので一致しない。
+    // 「描画順に引きずられない論理順」が要るところは必ずこの属性を見る。
+    "data-architecture-order": element.order,
     opacity: element.style.opacity,
     role: "group",
     "aria-label": label,
@@ -2545,6 +2552,8 @@ function renderGroup(documentRef, element) {
       "font-size": element.style.fontSize,
       "font-weight": 700,
       "pointer-events": "none",
+      // 視覚専用（アクセシブル名は上の aria-label / <title> が持つ）。
+      "aria-hidden": "true",
     });
     title.textContent = element.title;
     group.appendChild(title);
@@ -2564,6 +2573,7 @@ function renderNode(documentRef, element) {
   const group = svgElement(documentRef, "g", {
     "data-architecture-id": element.id,
     "data-architecture-type": "node",
+    "data-architecture-order": element.order,
     opacity: element.style.opacity,
     role: "img",
     "aria-label": label,
@@ -2619,6 +2629,8 @@ function renderConnector(documentRef, element, points, markerId) {
   const group = svgElement(documentRef, "g", {
     opacity: element.style.opacity,
     "data-architecture-connector": `${element.from}-${element.to}`,
+    "data-architecture-type": "connector",
+    "data-architecture-order": element.order,
     role: "group",
     "aria-label": label,
   });
@@ -2660,6 +2672,8 @@ function renderConnector(documentRef, element, points, markerId) {
       "text-anchor": "middle",
       "dominant-baseline": "middle",
       "pointer-events": "none",
+      // 視覚専用。幅に収まらないと省略されるので、正は親の aria-label 側。
+      "aria-hidden": "true",
     });
     text.textContent = fittedLabel.text;
     group.appendChild(text);
@@ -2724,6 +2738,11 @@ export function renderArchitectureDiagram(
     preserveAspectRatio: "xMidYMid meet",
     role: "group",
     "aria-labelledby": `${titleId} ${descriptionId}`,
+    // 通常表示・presenter では図の中に操作対象が無いため、要素ごとにタブストップを
+    // 作らず **図全体で 1 つ**にする。これでキーボード利用者が図に到達でき、
+    // フォーカス時に <title> と <desc>（= 図の概要）が読み上げられる。
+    // 要素単位の走査は編集モード（architecture-editor.mjs）の役割。
+    tabindex: "0",
   });
   const title = svgElement(documentRef, "title", { id: titleId });
   title.textContent = model.title;
