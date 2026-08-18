@@ -11,23 +11,34 @@
 // マシンとネットワークの影響が大きすぎてバジェットにならないので、
 // パイプラインだけを **ページ内で** 直接呼んで測る。
 //
-// バジェットの根拠（実測値。Windows / Chromium / 21 回の平均）:
+// バジェットの根拠（実測値。Windows / Chromium / 41 回の中央値）:
 //
 //   | 図の形                              | 要素数 | 1 回あたり |
 //   | ----------------------------------- | ------ | ---------- |
-//   | ノード 25（接続なし）               |     25 |    3.9 ms  |
-//   | ノード 200（接続なし）              |    200 |   10.5 ms  |
-//   | ノード 100 + 直列コネクター 100     |    200 |   11.9 ms  |
-//   | ノード 100 + 交差コネクター 100     |    200 |   10.8 ms  |
+//   | ノード 1（ほぼ空）                  |      1 |    0.1 ms  |
+//   | ノード 25（接続なし）               |     25 |    1.2 ms  |
+//   | ノード 200（接続なし）              |    200 |    8.3 ms  |
+//   | ノード 100 + 交差コネクター 100     |    200 |    9.0 ms  |
 //
 // 200 要素は `MAX_ELEMENTS` そのもので、**DSL が受け付ける最大の図**である。
-// つまり上の 12 ms 前後が、製品として起こりうる最悪ケースの実測値。
+// つまり上の 9 ms 前後が、製品として起こりうる最悪ケースの実測値。
 //
-// 絶対バジェットを 300 ms に置いたのは、CI（Playwright の Docker イメージ、
-// 共有ランナー）が開発機より数倍遅く、かつ他プロセスと競合するため。
-// 実測の 25 倍の余裕がある。この値で捕まえたいのは「数 ms が数十 ms になった」
-// ではなく「数 ms が数秒になった」——つまりアルゴリズムが壊れた場合である。
-// 緩やかな劣化はスケーリング側のテストで見る。
+// 平均ではなく **中央値** を取る。1 回ごとに計測して中央値を取ると、GC や
+// 他プロセスに 1 回持っていかれても値が動かない。平均だと外れ値 1 個で
+// 比率が崩れ、バジェットを無意味に緩める方向へ引っ張られる。
+//
+// スケーリングでは 2 つのサイズを **交互に** 測る。別々にまとめて測ると、
+// 計測中の CPU 周波数や JIT の状態のずれがそのまま比率に乗る（同じコードで
+// 25 ms と 111 ms に振れるのを実測した）。交互なら、その手のドリフトは
+// 両方に等しく乗るので比率からは消える。
+//
+// 2 本立てにしている理由:
+//   - 絶対バジェット（RENDER_BUDGET_MS）は「数 ms が数秒になった」だけを見る
+//     粗い門。CI は共有ランナーで実測の数倍ぶれるので、ここを締めても
+//     不安定になるだけで劣化は捕まらない。
+//   - 実際に形の劣化を捕まえるのは **スケーリング側**。要素数を 8 倍にして
+//     コストが何倍になるかを見る。ここは相対値なのでマシン速度に影響されず、
+//     遅いランナーでも締めたままにできる。
 
 import { expect, test } from "@playwright/test";
 
@@ -37,24 +48,30 @@ import { startHarness } from "../harness/server.mjs";
 const MAX_ELEMENTS = 200;
 
 /**
- * 最大サイズの図 1 枚あたりの上限。実測 ~12 ms に対して 25 倍の余裕。
+ * 最大サイズの図 1 枚あたりの上限。実測 ~9 ms に対して 27 倍の余裕。
  * ここを超えるのは「アルゴリズムが壊れた」ときだけのはず。
  */
-const RENDER_BUDGET_MS = 300;
+const RENDER_BUDGET_MS = 250;
 
 /**
  * 要素数 8 倍（25 → 200）でコストが何倍まで増えてよいか。
- * 線形なら 8 倍、二乗なら 64 倍。実測は 2.7 倍（小さい図では固定コストが
- * 支配的なので線形より良く見える）。24 倍は二乗を確実に落としつつ、
- * 遅いランナーでの計測ノイズには耐える位置。
+ * 線形なら 8 倍、二乗なら 64 倍。実測は 7.3〜8.3 倍（ほぼ線形、3 回計測）。
+ *
+ * 15 倍は実測上限の約 1.8 倍。相対値なのでランナーの速度そのものには影響されず、
+ * 遅い CI でも締めたままにできる（小さい図と大きい図を**交互に**測っているので、
+ * 計測中の速度変動は比率から消える）。
+ *
+ * 変異テストで確認済み: 描画に要素数の二乗に比例するコストを足すと比率が
+ * 19〜35 倍に上がり、3 回とも 15 を超えてこのテストが落ちる。逆に無改造では
+ * 3 回とも 8.3 以下だった。
  */
-const SCALING_BUDGET = 24;
+const SCALING_BUDGET = 15;
 
-/** 平均を取る回数。1 回あたりが数 ms なのでタイマー分解能を十分に超える。 */
-const RUNS = 21;
+/** 中央値を取る回数。1 回ごとに計測するので外れ値に強い。 */
+const RUNS = 41;
 
 /** ウォームアップ（JIT とアイコンの初回生成をバジェットから外す）。 */
-const WARMUP = 3;
+const WARMUP = 5;
 
 const CANVAS = { width: 1600, height: 1600 };
 
@@ -97,7 +114,10 @@ function nodesAndCrossingConnectors(nodeCount) {
 }
 
 /**
- * ページ内で `renderArchitectureBlock` を繰り返し呼び、1 回あたりの ms を返す。
+ * ページ内で `renderArchitectureBlock` を繰り返し呼び、1 回あたりの ms の
+ * **中央値** を返す。1 回ずつ計測して中央値を取るので、GC や他プロセスに
+ * 数回持っていかれても値が動かない。
+ *
  * 併せて「本当に図が描けたか」も返す。図がエラー表示に落ちていると描画コストは
  * 劇的に下がる（実測 0.6 ms）ので、速いことを成功と誤読しないためのガード。
  */
@@ -117,19 +137,78 @@ async function measureRender(page, model) {
           host.appendChild(module.renderArchitectureBlock(source, document));
         }
 
-        const started = performance.now();
+        const samples = [];
         for (let i = 0; i < runs; i += 1) {
           host.textContent = "";
+          const started = performance.now();
           host.appendChild(module.renderArchitectureBlock(source, document));
+          samples.push(performance.now() - started);
         }
-        const perRun = (performance.now() - started) / runs;
+        samples.sort((a, b) => a - b);
 
-        return { rendered, elementCount, perRun };
+        return { rendered, elementCount, perRun: samples[Math.floor(samples.length / 2)] };
       } finally {
         host.remove();
       }
     },
     { source: JSON.stringify(model), runs: RUNS, warmup: WARMUP },
+  );
+}
+
+/**
+ * 2 つのモデルを **交互に** 測って、それぞれの中央値と比率を返す。
+ *
+ * 別々に測ると、測っている間の CPU 周波数・JIT の状態・他プロセスの負荷が
+ * 2 つの計測でずれ、比率にそのまま乗る（実測で同じコードが 24 ms と 111 ms に
+ * 振れた）。交互に測れば、その手のドリフトは両方に等しく乗るので比率から消える。
+ */
+async function measureScaling(page, smallModel, largeModel) {
+  return page.evaluate(
+    async ({ smallSource, largeSource, runs, warmup }) => {
+      const module = await import("./renderer/architecture.mjs");
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const once = (source) => {
+        host.textContent = "";
+        const started = performance.now();
+        host.appendChild(module.renderArchitectureBlock(source, document));
+        return performance.now() - started;
+      };
+      const median = (values) => {
+        const sorted = [...values].sort((a, b) => a - b);
+        return sorted[Math.floor(sorted.length / 2)];
+      };
+      try {
+        const describe = (source) => {
+          const probe = module.renderArchitectureBlock(source, document);
+          return {
+            rendered: !!probe.querySelector("svg.architecture-svg"),
+            elementCount: probe.querySelectorAll("[data-architecture-order]").length,
+          };
+        };
+        const small = describe(smallSource);
+        const large = describe(largeSource);
+
+        for (let i = 0; i < warmup; i += 1) {
+          once(smallSource);
+          once(largeSource);
+        }
+
+        const smallSamples = [];
+        const largeSamples = [];
+        for (let i = 0; i < runs; i += 1) {
+          smallSamples.push(once(smallSource));
+          largeSamples.push(once(largeSource));
+        }
+
+        small.perRun = median(smallSamples);
+        large.perRun = median(largeSamples);
+        return { small, large };
+      } finally {
+        host.remove();
+      }
+    },
+    { smallSource: JSON.stringify(smallModel), largeSource: JSON.stringify(largeModel), runs: RUNS, warmup: WARMUP },
   );
 }
 
@@ -167,27 +246,29 @@ test.describe("Architecture の描画コスト", () => {
 
     expect(
       nodes.perRun,
-      `ノード ${MAX_ELEMENTS} 個の描画が ${nodes.perRun.toFixed(1)}ms（実測基準 ~10ms）`,
+      `ノード ${MAX_ELEMENTS} 個の描画が ${nodes.perRun.toFixed(1)}ms（実測基準 ~8ms）`,
     ).toBeLessThan(RENDER_BUDGET_MS);
     expect(
       routed.perRun,
-      `交差コネクター入りの描画が ${routed.perRun.toFixed(1)}ms（実測基準 ~11ms）`,
+      `交差コネクター入りの描画が ${routed.perRun.toFixed(1)}ms（実測基準 ~9ms）`,
     ).toBeLessThan(RENDER_BUDGET_MS);
   });
 
   test("要素数に対して描画コストが二乗に転ばない", async ({ page }) => {
-    const small = await measureRender(page, nodesOnly(25));
-    const large = await measureRender(page, nodesOnly(MAX_ELEMENTS));
+    const { small, large } = await measureScaling(page, nodesOnly(25), nodesOnly(MAX_ELEMENTS));
 
     expect(small.rendered).toBe(true);
     expect(large.rendered).toBe(true);
+    expect(small.elementCount).toBe(25);
+    expect(large.elementCount).toBe(MAX_ELEMENTS);
     // 割り算する前に、分母がタイマー分解能に埋もれていないことを確かめる。
+    // ここが 0 に近いと比率がいくらでも大きく／小さく振れて意味を失う。
     expect(small.perRun, "小さい図の計測が速すぎて比率を取れない").toBeGreaterThan(0.05);
 
     const ratio = large.perRun / small.perRun;
     expect(
       ratio,
-      `要素数 8 倍でコストが ${ratio.toFixed(1)} 倍（線形なら 8 倍、二乗なら 64 倍）`,
+      `要素数 8 倍でコストが ${ratio.toFixed(1)} 倍（線形なら 8 倍、二乗なら 64 倍、実測 7〜8 倍）`,
     ).toBeLessThan(SCALING_BUDGET);
   });
 });

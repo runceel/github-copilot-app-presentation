@@ -45,8 +45,17 @@ async function openLive(page, { present = false, slides = EDITING_DECK } = {}) {
   return harness;
 }
 
-/** 印刷モード（PDF が焼かれるのと同じ DOM）で開く。 */
+/**
+ * 印刷モード（PDF が焼かれるのと同じ DOM）で開く。
+ *
+ * **print メディアをエミュレートすること。** Playwright の既定は screen なので、
+ * 何もしないと slides.css の `@media print { ... }` が丸ごと適用されない。
+ * `body.print-mode` クラス自体は付くので一見それらしく描かれるが、実際の PDF とは
+ * 別物になる（図の箱の高さが実測で 403px 対 504px と 2 割以上ずれる）。
+ * ここを外すと print 側の CSS 規則は 1 行もテストされない。
+ */
 async function openPrint(page, { slides = EDITING_DECK } = {}) {
+  await page.emulateMedia({ media: "print" });
   const harness = await startHarness({ slides });
   await page.goto(`${harness.url}/?print=1&token=${harness.printToken}`, { waitUntil: "load" });
   await waitForPrintReady(page);
@@ -126,7 +135,7 @@ test.describe("canvas / presenter / 印刷の等価性", () => {
     }
   });
 
-  test("印刷の図は画面と同じ寸法で描かれる（WYSIWYG）", async ({ page }) => {
+  test("印刷でも図は歪まず、紙の高さに収まる", async ({ page }) => {
     const live = await openLive(page);
     let liveMeasure;
     try {
@@ -143,17 +152,77 @@ test.describe("canvas / presenter / 印刷の等価性", () => {
       const printMeasure = await measureDiagram(page, DIAGRAM_TITLE);
       expect(printMeasure).not.toBeNull();
 
-      // ビューポート（1280x720）と @page（13.333333in x 7.5in = 1280x720px）が
-      // 同じ 16:9 なので、図は画面と PDF でまったく同じ大きさに描かれる。これが
-      // 「画面で確認した通りの PDF が出る」ことの実体。print CSS を触って図が
-      // 縮んだり伸びたりすると、ここが真っ先に落ちる。
-      expect(printMeasure.drawn).toEqual(liveMeasure.drawn);
+      // 画面と紙で図の**形**が同じであること。実寸は用紙に合わせて変わってよいが、
+      // 縦横比が変われば図は歪んでおり、画面で確認したものとは別物になる。
+      const liveRatio = liveMeasure.drawn.width / liveMeasure.drawn.height;
+      const printRatio = printMeasure.drawn.width / printMeasure.drawn.height;
+      expect(printRatio).toBeCloseTo(liveRatio, 2);
 
       // 図が箱からはみ出さない（はみ出すと PDF で切れる）。
       expect(printMeasure.drawn.width).toBeLessThanOrEqual(printMeasure.box.width);
       expect(printMeasure.drawn.height).toBeLessThanOrEqual(printMeasure.box.height);
-      // print CSS の高さ上限が効いていること。
+
+      // print CSS の高さ上限が効いていること。1 ページ 7.5in のうち 5.25in までに
+      // 抑えて、見出しと本文の場所を残す。ここが緩むと図が次ページを押し出す。
       expect(printMeasure.box.height).toBeLessThanOrEqual(PRINT_MAX_HEIGHT_PX + 1);
+      // かつ、実際にこの上限で決まっていること（screen 側の 56vh に負けていない）。
+      // 上の <= だけだと print CSS が丸ごと効いていなくても通ってしまう。
+      expect(printMeasure.box.height).toBeGreaterThan(liveMeasure.box.height);
+    } finally {
+      await print.close();
+    }
+  });
+
+  // kickoff で名指しされた出力等価性の危険箇所。いずれも画面には要るが紙には出したくない
+  // 要素で、print CSS が効かなくなると PDF に混入する（mermaid のツールチップは実測で
+  // 末尾に空白ページを 1 枚増やす）。
+  test("印刷では画面用の UI が PDF に混入しない", async ({ page }) => {
+    const print = await openPrint(page, { slides: [MIXED_SLIDE] });
+    try {
+      const state = await page.evaluate(() => {
+        const shown = (selector) =>
+          [...document.querySelectorAll(selector)].filter(
+            (node) => getComputedStyle(node).display !== "none",
+          ).length;
+        return {
+          // mermaid は描画のたびに <body> 直下へツールチップ用の div を足す。
+          tooltips: document.querySelectorAll(".mermaidTooltip").length,
+          shownTooltips: shown(".mermaidTooltip"),
+          navs: document.querySelectorAll(".nav").length,
+          shownNavs: shown(".nav"),
+          shownOverviews: shown(".overview"),
+        };
+      });
+
+      // 隠す対象が DOM に存在することを先に確かめる。存在しない要素を「隠れている」と
+      // 数えても意味がない（規則を消しても通ってしまう）。
+      expect(state.tooltips).toBeGreaterThan(0);
+      expect(state.navs).toBeGreaterThan(0);
+
+      expect(state.shownTooltips).toBe(0);
+      expect(state.shownNavs).toBe(0);
+      expect(state.shownOverviews).toBe(0);
+    } finally {
+      await print.close();
+    }
+  });
+
+  test("印刷では図の編集ツールバーが隠れる", async ({ page }) => {
+    const print = await openPrint(page);
+    try {
+      // 編集ツールバーは `?architectureEdit=1` でしか生えず、印刷経路の DOM には
+      // 実物が存在しない（実測 0 個）。存在しない要素を数えても規則の検証にならないので、
+      // 同じクラスの要素を図の隣に差し込んで print スタイルシート自体を確かめる。
+      const display = await page.evaluate(() => {
+        const probe = document.createElement("div");
+        probe.className = "architecture-editor-toolbar";
+        probe.textContent = "probe";
+        document.querySelector("svg.architecture-svg").parentElement.appendChild(probe);
+        const value = getComputedStyle(probe).display;
+        probe.remove();
+        return value;
+      });
+      expect(display).toBe("none");
     } finally {
       await print.close();
     }
