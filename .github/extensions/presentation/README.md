@@ -91,8 +91,8 @@ canvas、外部 presenter、PDF のすべてで同じ比率に縮尺されます
 ````
 
 - `node` は `rect` / `rounded-rect` / `ellipse`、複数行 `text`、一意な `id` を持てます。
-- `icon` は外部資産を読まず、内製 SVG primitive だけで描く `cloud` / `database` /
-  `api` / `user` / `server` の allowlist です。線色は theme token に追従します。
+- `icon` は組み込みアイコン名か、リポジトリ直下 `assets/` に置いた画像へのパスです。
+  詳細は後述の「アイコン」を参照してください。
 - `group` の `children` 座標は group 左上からの相対座標です。境界・タイトルは子要素より
   前に描かれ、視覚的なコンテナになります。`layout` を省略すると従来どおり明示座標、
   `row` / `column` / `grid` を指定すると `gap`（または `rowGap` / `columnGap`）/
@@ -116,12 +116,15 @@ canvas、外部 presenter、PDF のすべてで同じ比率に縮尺されます
   を推奨します。4 テーマへ自動追従し、リテラル色は hex、白、黒、透明だけに制限します。
 - 不正 JSON、範囲外の数値、重複 ID、未知の参照、未許可の要素・style・色は図の位置に
   エラーとして表示され、スライドの他の本文は残ります。DSL 値から HTML、script、
-  イベント属性、外部 URL は生成しません。
+  イベント属性は生成しません。外部 origin への参照も生成しません（`icon` から出る
+  唯一の URL は同一 origin の `/assets/...` だけです）。
 - `version` は現在 `1`（省略時も v1）。source 64 KiB、全要素 200、connector 100、
-  入れ子 4 段、polyline 中間点 12、総テキスト 20,000 文字などの上限を設けています。
+  入れ子 4 段、polyline 中間点 12、総テキスト 20,000 文字、`icon` 参照 200 文字
+  などの上限を設けています。
   診断は `elements[0].children[2].icon` のような JSON path と、`;` 以降に修正指針を
-  含みます（例: `elements[0].icon: must be one of: cloud, database, api, user, server;
-  replace 'rocket' with one of them`）。
+  含みます（例: `elements[0].icon: must be a built-in icon name (cloud, database, ...)
+  or a path under assets/; replace 'rocket' with a built-in name, or with a repository
+  asset such as 'assets/icons/logo.svg' (...)`）。
 - 機械可読な **JSON Schema**（draft 2020-12）を
   [`schema/architecture-v1.schema.json`](./schema/architecture-v1.schema.json)
   に用意しています。`.architecture.json` ファイルに相対パスの `$schema` を書くと
@@ -132,6 +135,120 @@ canvas、外部 presenter、PDF のすべてで同じ比率に縮尺されます
 - SVG 自体は `<title>` / `<desc>` と `aria-labelledby` を持ち、group/node/connector
   に意味のある role・`aria-label`・SVG `<title>` を付けます。必要なら root の
   `description` と各要素の `ariaLabel` を明示できます。
+
+### アイコン
+
+`node` の `icon` には **組み込みアイコン名** か、**リポジトリ直下 `assets/` に置いた
+画像へのパス** のどちらかを書けます。
+
+#### 組み込みアイコン
+
+外部資産を一切読まず、拡張機能に同梱した 24×24 の SVG primitive だけで描きます。
+
+| 名前 | 意図している概念 |
+| --- | --- |
+| `cloud` | クラウド、マネージドサービス全般 |
+| `database` | リレーショナル DB、永続ストア |
+| `api` | API、エンドポイント、契約 |
+| `user` | 利用者、人、アクター |
+| `server` | サーバー、ホスト、ワーカー |
+| `analytics` | 分析、メトリクス、ダッシュボード |
+| `browser` | ブラウザー、Web フロントエンド |
+| `mobile` | モバイルアプリ、端末 |
+| `network` | ネットワーク、接続、分散構成 |
+| `queue` | キュー、メッセージング、非同期処理 |
+| `shield` | 認証・認可、セキュリティ、ガードレール |
+
+- **命名規則**: 小文字の kebab-case（`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`）で、
+  製品名やベンダー名ではなく**一般的な概念を表す名詞**を使います。
+  この規則は単体テストで強制しています。
+- **テーマ追従**: `fill: none` の線画で、`stroke` にノードの `textColor`
+  （既定は theme token `fg`）がそのまま入ります。結果として 4 テーマすべてで
+  配色が自動的に切り替わります。テーマごとの `--fg` が背景に対して
+  **3:1 以上**（WCAG 2.1 SC 1.4.11）であることもテストで固定しています。
+- 既存の名前と絵柄は **v1 の公開語彙**なので、改名・再描画は行いません
+  （追加は互換変更、変更は破壊的変更）。
+
+#### `assets/` のアイコンを使う
+
+リポジトリ直下の `assets/` フォルダーに画像を置き、`assets/` から始まる相対パスで
+参照します。拡張機能はこれを同一 origin の `/assets/...` として配信するので、
+canvas・外部プレゼン画面・PDF 出力のいずれでも同じように解決されます。
+
+````markdown
+```architecture
+{
+  "elements": [
+    {
+      "type": "node", "id": "brand",
+      "x": 80, "y": 80, "width": 260, "height": 140,
+      "text": "Our service", "icon": "assets/sample.svg"
+    }
+  ]
+}
+```
+````
+
+**許可される拡張子**: `.svg` / `.png` / `.webp` / `.jpg` / `.jpeg`（大文字も可）。
+
+**受理されるパスの形**:
+
+- 必ず `assets/` から始まる（先頭の `/` は不可）。
+- 各セグメントは英数字で始まり、以降は英数字・`_`・`-`・`.` のみ。
+- サブフォルダー可（`assets/icons/brand/logo.svg`）。
+- 全体で 200 文字以内。
+
+**拒否される参照**（いずれもパーサーと JSON Schema の両方が同じ判定をします）:
+
+```text
+https://example.com/logo.svg   外部 URL は不可
+//example.com/logo.svg         protocol-relative URL も不可
+data:image/svg+xml;base64,...  data: URI は不可
+assets/../secret.svg           .. を含むパスは不可
+/assets/logo.svg               絶対パスは不可
+images/logo.svg                assets/ の外は不可
+assets/logo.gif                許可外の拡張子は不可
+assets\logo.svg                バックスラッシュは不可
+assets/logo.svg?v=2            クエリ文字列は不可
+```
+
+拒否された場合は図の位置にエラーが表示され、`elements[0].icon: must be a built-in
+icon name (...) or a path under assets/; ...` のように修正指針まで示します。
+
+#### ユーザー提供アイコンの制限（仕様であってバグではありません）
+
+- **テーマ色に追従しません。** `<image>` として読み込むため、拡張機能側から中身の色を
+  差し替えられません。PNG / JPEG / WebP はもちろん、**SVG でも同じ**です。
+  4 テーマすべてで**同じ見た目のまま**描画されます。
+- したがって **4 テーマの背景（濃色の `dark` と、淡色の `light` / `microsoft` /
+  `ms-modern`）で判読できるかは素材の作者の責任**です。次のいずれかを推奨します。
+  - どちらの背景でも十分なコントラストを持つ配色にする。
+  - アイコン自身が不透明な背景（円形の下地など）を持つ形にする。
+  - テーマを 1 つに固定して発表する。
+- SVG 内のスクリプトはブラウザーの secure static mode で無効化される前提です。
+  それでも**信頼できる素材だけを置いてください**。
+- ファイルが存在しない場合、パーサーはファイルシステムを見ないためエラーにはならず、
+  **アイコン領域が空のまま**描画されます。パスの綴りは自分で確認してください。
+- `aria-hidden="true"` は組み込みと同じで、アイコンは支援技術から隠されます。
+  さらに**アセットのパスはアクセシブル名に含めません**（読み上げても意味を成さないため）。
+  意味は `text` / `ariaLabel` に書いてください。
+
+#### ライセンスと帰属表示
+
+`assets/` に置いたアイコンのライセンス順守は**利用者の責任**です。
+
+- **再配布可能なライセンスの素材だけを `assets/` にコミットしてください。**
+  リポジトリは公開される可能性があり、コミットは再配布に当たります。
+- 帰属表示（attribution）が必要なライセンス（CC BY、一部の Apache-2.0 派生アイコン
+  セットなど）の素材を使う場合は、次のどちらかで**必ずクレジットを表示**してください。
+  - スライド内（クレジットページ、または当該スライドの脚注）。
+  - リポジトリ内の `assets/README.md` などに出典・作者・ライセンス・入手元 URL を記録。
+- **第三者の商標・ロゴ**（クラウドベンダーのロゴなど）は、その所有者のブランドガイド
+  ラインに従ってください。多くの場合、改変・着色変更・比率変更が禁止されています。
+  本拡張機能はアイコンを縦横比を保って（`preserveAspectRatio="xMidYMid meet"`）
+  24×24 の枠に収めるだけで、着色も改変も行いません。
+- 組み込みアイコン（前掲の 11 種）は本リポジトリのために描き起こしたもので、
+  リポジトリのライセンスに従います。**帰属表示は不要**です。
 
 ### connector の自動ルーティング
 
@@ -197,7 +314,8 @@ clipboard へコピーします。通常表示、`?present=1`、`?print=1` で�
 
 **使い分け:** Mermaid は自動レイアウト、シーケンス図、クラス図など構造中心の図に向きます。
 Architecture DSL は座標、サイズ、コンテナ、重なりを資料ごとに固定したい構成図に向きます。
-この PoC は外部依存やアイコン資産を追加しておらず、追加 source はおよそ 40 KiB です。
+この PoC は外部依存を追加しておらず、アイコンもインライン SVG のパスデータだけで
+（画像ファイルを同梱せずに）持っています。追加 source はおよそ 40 KiB です。
 ドラッグ編集と Undo/Redo は対象外です。connector の交差最小化は
 ヒューリスティック（局所探索）であり、最小解を保証するものではありません。
 ノードの自動配置は `layout: "layered"` の範囲にとどまり、力学モデルなどの

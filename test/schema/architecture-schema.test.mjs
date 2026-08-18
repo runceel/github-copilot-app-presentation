@@ -250,7 +250,7 @@ test("literal colour pattern is behaviourally equivalent to LITERAL_COLORS", () 
 
 const enumSyncCases = [
   ["SHAPES", architecture.SHAPES, schema.$defs.nodeBase.properties.shape.enum],
-  ["ICONS", architecture.ICONS, schema.$defs.nodeBase.properties.icon.enum],
+  ["ICONS", architecture.ICONS, schema.$defs.iconName.enum],
   ["ROUTINGS", architecture.ROUTINGS, schema.$defs.connector.properties.routing.enum],
   ["PORTS", architecture.PORTS, schema.$defs.connector.properties.fromPort.enum],
   ["PORTS (toPort)", architecture.PORTS, schema.$defs.connector.properties.toPort.enum],
@@ -275,6 +275,109 @@ test("schema pattern matches ID_PATTERN", () => {
   assert.equal(architecture.ID_PATTERN.flags, "");
 });
 
+test("schema pattern matches ICON_ASSET_PATTERN", () => {
+  // `/` は RegExp.prototype.source が必ず `\/` へ正規化するので、スキーマ側は
+  // 読みやすい素の `/` で書き、比較の前に同じ正規化を通す。
+  assert.equal(
+    new RegExp(schema.$defs.iconAsset.pattern).source,
+    architecture.ICON_ASSET_PATTERN.source,
+  );
+  // フラグを付けると `pattern` へ写した瞬間に大小文字の扱いがずれるので固定する。
+  assert.equal(architecture.ICON_ASSET_PATTERN.flags, "");
+});
+
+test("icon asset pattern is behaviourally equivalent between schema and parser", () => {
+  // .source が一致していれば挙動は同じだが、「どの入力を受理する意図なのか」を
+  // ここに列挙して固定しておく。拒否側が緩むと即座に落ちる。
+  const schemaPattern = new RegExp(schema.$defs.iconAsset.pattern);
+  const accepted = [
+    "assets/sample.svg",
+    "assets/profile.jpg",
+    "assets/kazuki-san-post.png",
+    "assets/icons/logo.webp",
+    "assets/a/b/c/deep.jpeg",
+    "assets/UPPER.SVG",
+    "assets/Mixed.PnG",
+    "assets/my.brand.logo.svg",
+    "assets/icons/name_1.png",
+    "assets/2024/q1-diagram.webp",
+  ];
+  const rejected = [
+    "assets/_under-score/name_1.png",
+    "assets/-leading-dash.svg",
+    "assets/../secret.svg",
+    "assets/..%2fsecret.svg",
+    "../assets/logo.svg",
+    "/assets/logo.svg",
+    "assets//logo.svg",
+    "assets/./logo.svg",
+    "assets/.hidden.svg",
+    "assets/logo.svg/../../etc/passwd.png",
+    "data:image/svg+xml;base64,PHN2Zy8+",
+    "https://example.com/logo.svg",
+    "http://example.com/logo.svg",
+    "//example.com/logo.svg",
+    "assets\\logo.svg",
+    "images/logo.svg",
+    "assets/logo.gif",
+    "assets/logo.svgz",
+    "assets/logo.js",
+    "assets/logo",
+    "assets/",
+    "assets",
+    "assets/logo.svg?x=1",
+    "assets/logo.svg#frag",
+    "assets/lo go.svg",
+    "assets/logo.svg ",
+  ];
+  for (const probe of [...accepted, ...rejected]) {
+    assert.equal(
+      schemaPattern.test(probe),
+      architecture.ICON_ASSET_PATTERN.test(probe),
+      `icon asset verdict differs for ${JSON.stringify(probe)}`,
+    );
+  }
+  for (const probe of accepted) {
+    assert.ok(
+      architecture.ICON_ASSET_PATTERN.test(probe),
+      `${JSON.stringify(probe)} should be an allowed asset reference`,
+    );
+  }
+  for (const probe of rejected) {
+    assert.equal(
+      architecture.ICON_ASSET_PATTERN.test(probe),
+      false,
+      `${JSON.stringify(probe)} must not be an allowed asset reference`,
+    );
+  }
+});
+
+test("the corpus exercises every built-in icon", () => {
+  // 組み込みアイコンを増やしたのにコーパスへ足し忘れると、そのアイコンは
+  // スキーマとパーサーの判定一致を一度も確かめられないまま出荷されてしまう。
+  const entry = corpus.find((candidate) => candidate.name === "every icon");
+  assert.ok(entry, "corpus must keep an 'every icon' case");
+  const used = JSON.parse(entry.source).elements.map((element) => element.icon);
+  assert.deepEqual([...used].sort(), [...architecture.ICONS].sort());
+});
+
+test("built-in icon names follow the naming convention", () => {
+  // 命名規則: 小文字 kebab-case の一般名詞。ベンダー名や大文字混じりを混ぜると
+  // DSL の公開語彙が一貫しなくなるので、ここで固定する。
+  const convention = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+  for (const name of architecture.ICONS) {
+    assert.match(name, convention, `built-in icon name ${JSON.stringify(name)}`);
+  }
+  // 組み込み名がアセットパスとしても解釈できると受理集合が曖昧になる。
+  for (const name of architecture.ICONS) {
+    assert.equal(architecture.ICON_ASSET_PATTERN.test(name), false);
+  }
+  // v1 で公開済みの名前は改名・削除しない（schema/README.md のポリシー）。
+  for (const name of ["cloud", "database", "api", "user", "server"]) {
+    assert.ok(architecture.ICONS.has(name), `${name} is part of the v1 public vocabulary`);
+  }
+});
+
 test("schema constants match the parser limits", () => {
   assert.equal(schema.properties.version.const, architecture.DSL_VERSION);
   assert.equal(schema.properties.elements.maxItems, architecture.MAX_ELEMENTS);
@@ -283,6 +386,7 @@ test("schema constants match the parser limits", () => {
     architecture.MAX_ELEMENTS,
   );
   assert.equal(schema.$defs.connector.properties.points.maxItems, architecture.MAX_POINTS);
+  assert.equal(schema.$defs.iconAsset.maxLength, architecture.MAX_ICON_REFERENCE);
 });
 
 test("schema nesting chain matches MAX_DEPTH", () => {
@@ -310,12 +414,14 @@ test("every exported constant is classified as schema-encoded, parser-only, or r
   const schemaEncoded = new Set([
     "DSL_VERSION",
     "ICONS",
+    "ICON_ASSET_PATTERN",
     "ID_PATTERN",
     "LAYOUTS",
     "LAYOUT_DIRECTIONS",
     "LITERAL_COLORS",
     "MAX_DEPTH",
     "MAX_ELEMENTS",
+    "MAX_ICON_REFERENCE",
     "MAX_POINTS",
     "PORTS",
     "ROUTINGS",
