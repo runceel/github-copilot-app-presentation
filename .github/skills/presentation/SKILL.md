@@ -166,6 +166,10 @@ node と既存 connector の重なりを避ける候補を優先します。複�
 `routing: "polyline"` と `points` で明示します。
 自動レイアウトが必要なら Mermaid、資料上の配置を厳密に保ちたいなら Architecture DSL
 を使います。不正な JSON や参照は図の場所にエラー表示され、他の本文は残ります。
+DSL の機械可読な JSON Schema は
+`.github/extensions/presentation/schema/architecture-v1.schema.json` にあります。
+図を単体ファイルとして書くときは相対パスの `$schema` を付けるとエディターで補完・検証が
+効き、その JSON をそのまま ` ```architecture ` フェンスへ貼り付けられます。
 
 ### 画像
 - **リモート URL**: `![代替テキスト](https://example.com/foo.png)` をそのまま書けます。

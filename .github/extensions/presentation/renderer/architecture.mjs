@@ -107,64 +107,118 @@ class ArchitectureError extends Error {
   }
 }
 
-function fail(path, message) {
-  throw new ArchitectureError(`${path}: ${message}`);
+function fail(path, message, remedy) {
+  const guidance = remedy ? `; ${remedy}` : "";
+  throw new ArchitectureError(`${path}: ${message}${guidance}`);
+}
+
+function describeValue(value) {
+  if (value === undefined) return "nothing";
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "an array";
+  if (typeof value === "string") {
+    return `'${value.length > 32 ? `${value.slice(0, 32)}…` : value}'`;
+  }
+  if (typeof value === "object") return "an object";
+  return `'${String(value)}'`;
 }
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function expectObject(value, path) {
-  if (!isObject(value)) fail(path, "must be an object");
+function expectObject(value, path, remedy = "use a JSON object such as { }") {
+  if (!isObject(value)) fail(path, "must be an object", remedy);
   return value;
 }
 
 function rejectUnknownKeys(value, allowed, path) {
   for (const key of Object.keys(value)) {
-    if (!allowed.has(key)) fail(`${path}.${key}`, "is not supported");
+    if (!allowed.has(key)) {
+      fail(
+        `${path}.${key}`,
+        "is not supported",
+        `remove it or use one of: ${[...allowed].join(", ")}`,
+      );
+    }
   }
 }
 
-function numberIn(value, path, min, max, fallback) {
+function numberIn(value, path, min, max, fallback, remedy) {
   const candidate = value === undefined ? fallback : value;
   if (typeof candidate !== "number" || !Number.isFinite(candidate)) {
-    fail(path, "must be a finite number");
+    fail(
+      path,
+      "must be a finite number",
+      remedy ?? `replace ${describeValue(candidate)} with a number between ${min} and ${max}`,
+    );
   }
   if (candidate < min || candidate > max) {
-    fail(path, `must be between ${min} and ${max}`);
+    fail(path, `must be between ${min} and ${max}`, remedy ?? "adjust the value into that range");
   }
   return candidate;
 }
 
-function textValue(value, path, fallback = "", maxLength = 500) {
+function textValue(value, path, fallback = "", maxLength = 500, remedy) {
   const candidate = value === undefined ? fallback : value;
-  if (typeof candidate !== "string") fail(path, "must be a string");
-  if (candidate.length > maxLength) fail(path, `must be at most ${maxLength} characters`);
+  if (typeof candidate !== "string") {
+    fail(
+      path,
+      "must be a string",
+      remedy ?? `replace ${describeValue(candidate)} with text in double quotes`,
+    );
+  }
+  if (candidate.length > maxLength) {
+    fail(
+      path,
+      `must be at most ${maxLength} characters`,
+      remedy ?? `shorten it by ${candidate.length - maxLength} characters`,
+    );
+  }
   return candidate;
 }
 
 function idValue(value, path) {
   if (typeof value !== "string" || !ID_PATTERN.test(value)) {
-    fail(path, "must start with a letter and contain only letters, numbers, '.', '_' or '-'");
+    fail(
+      path,
+      "must start with a letter and contain only letters, numbers, '.', '_' or '-'",
+      `replace ${describeValue(value)} with an id such as 'api-gateway' (64 characters or fewer)`,
+    );
   }
   return value;
 }
 
 function enumValue(value, path, values, fallback) {
   const candidate = textValue(value, path, fallback, 32);
-  if (!values.has(candidate)) fail(path, `must be one of: ${[...values].join(", ")}`);
+  if (!values.has(candidate)) {
+    fail(
+      path,
+      `must be one of: ${[...values].join(", ")}`,
+      `replace ${describeValue(candidate)} with one of them`,
+    );
+  }
   return candidate;
 }
 
 function colorValue(value, path, fallback) {
   const candidate = value === undefined ? fallback : value;
-  if (typeof candidate !== "string") fail(path, "must be a theme token or color string");
+  if (typeof candidate !== "string") {
+    fail(
+      path,
+      "must be a theme token or color string",
+      `replace ${describeValue(candidate)} with a theme token such as accent, or a hex color such as "#1f6feb"`,
+    );
+  }
   if (Object.prototype.hasOwnProperty.call(THEME_TOKENS, candidate)) {
     return THEME_TOKENS[candidate];
   }
   if (LITERAL_COLORS.test(candidate)) return candidate;
-  fail(path, "must be a theme token, hex color, black, white, transparent, or none");
+  fail(
+    path,
+    "must be a theme token, hex color, black, white, transparent, or none",
+    `replace ${describeValue(candidate)} with a theme token such as ${Object.keys(THEME_TOKENS).slice(0, 3).join(", ")}, or a hex color such as #1f6feb`,
+  );
 }
 
 function normalizeStyle(value, path, defaults) {
@@ -172,7 +226,11 @@ function normalizeStyle(value, path, defaults) {
   rejectUnknownKeys(style, STYLE_KEYS, path);
   const dash = textValue(style.dash, `${path}.dash`, defaults.dash || "", 40);
   if (dash && !/^\d+(?:\.\d+)?(?:[ ,]+\d+(?:\.\d+)?)*$/.test(dash)) {
-    fail(`${path}.dash`, "must contain only non-negative dash lengths");
+    fail(
+      `${path}.dash`,
+      "must contain only non-negative dash lengths",
+      'use space or comma separated numbers such as "12 8"',
+    );
   }
   return {
     fill: colorValue(style.fill, `${path}.fill`, defaults.fill),
@@ -251,7 +309,11 @@ function layoutPlacements(children, group, layout, path) {
     height: group.height - layout.padding * 2 - titleReserve,
   };
   if (inner.width <= 0 || inner.height <= 0) {
-    fail(`${path}.layout`, "padding and title leave no space for children");
+    fail(
+      `${path}.layout`,
+      "padding and title leave no space for children",
+      "reduce layout padding or increase the group width and height",
+    );
   }
   const count = flowItems.length;
   const columns =
@@ -264,20 +326,32 @@ function layoutPlacements(children, group, layout, path) {
   const cellWidth = (inner.width - layout.columnGap * (columns - 1)) / columns;
   const cellHeight = (inner.height - layout.rowGap * (rows - 1)) / rows;
   if (cellWidth < 24 || cellHeight < 24) {
-    fail(`${path}.layout`, "children do not fit; reduce gap/padding or add group space");
+    fail(
+      `${path}.layout`,
+      "children do not fit",
+      "reduce layout gap/padding, enlarge the group, or move some children out",
+    );
   }
   flowItems.forEach(({ child, index }, flowIndex) => {
     const column = flowIndex % columns;
     const row = Math.floor(flowIndex / columns);
     const defaultWidth = child.type === "group" ? cellWidth : Math.min(cellWidth, 340);
     const defaultHeight = child.type === "group" ? cellHeight : Math.min(cellHeight, 170);
-    const width = numberIn(child.width, `${path}.children[${index}].width`, 1, cellWidth, defaultWidth);
+    const width = numberIn(
+      child.width,
+      `${path}.children[${index}].width`,
+      1,
+      cellWidth,
+      defaultWidth,
+      "the parent layout limits each cell; reduce the value, enlarge the group, or drop width to use the automatic size",
+    );
     const height = numberIn(
       child.height,
       `${path}.children[${index}].height`,
       1,
       cellHeight,
       defaultHeight,
+      "the parent layout limits each cell; reduce the value, enlarge the group, or drop height to use the automatic size",
     );
     placements.set(index, {
       x:
@@ -317,16 +391,34 @@ function flattenElements(
   path = "elements",
   placements = new Map(),
 ) {
-  if (!Array.isArray(rawElements)) fail(path, "must be an array");
-  if (depth > MAX_DEPTH) fail(path, `nesting must not exceed ${MAX_DEPTH} levels`);
+  if (!Array.isArray(rawElements)) fail(path, "must be an array", "use a JSON array such as [ ]");
+  if (depth > MAX_DEPTH) {
+    fail(
+      path,
+      `nesting must not exceed ${MAX_DEPTH} levels`,
+      "flatten the structure or split the diagram across slides",
+    );
+  }
 
   rawElements.forEach((raw, localIndex) => {
-    if (output.length >= MAX_ELEMENTS) fail("elements", `must contain at most ${MAX_ELEMENTS} items`);
+    if (output.length >= MAX_ELEMENTS) {
+      fail(
+        "elements",
+        `must contain at most ${MAX_ELEMENTS} items`,
+        "split the diagram across multiple slides",
+      );
+    }
     const elementPath = `${path}[${localIndex}]`;
     const element = expectObject(raw, elementPath);
     const type = textValue(element.type, `${elementPath}.type`, "", 20);
     if (!Object.prototype.hasOwnProperty.call(ELEMENT_KEYS, type)) {
-      fail(`${elementPath}.type`, "must be node, group, or connector");
+      fail(
+        `${elementPath}.type`,
+        "must be node, group, or connector",
+        element.type === undefined
+          ? 'add a "type" of node, group, or connector'
+          : `replace ${describeValue(element.type)} with node, group, or connector`,
+      );
     }
     rejectUnknownKeys(element, ELEMENT_KEYS[type], elementPath);
     const order = output.length;
@@ -342,13 +434,25 @@ function flattenElements(
       );
       const points = element.points === undefined ? [] : element.points;
       if (!Array.isArray(points) || points.length > MAX_POINTS) {
-        fail(`${elementPath}.points`, `must be an array with at most ${MAX_POINTS} points`);
+        fail(
+          `${elementPath}.points`,
+          `must be an array with at most ${MAX_POINTS} points`,
+          "remove extra waypoints or split the connector into several connectors",
+        );
       }
       if (routing !== "polyline" && points.length) {
-        fail(`${elementPath}.points`, "is only valid with polyline routing");
+        fail(
+          `${elementPath}.points`,
+          "is only valid with polyline routing",
+          'set "routing": "polyline" or remove the points',
+        );
       }
       if (element.arrow !== undefined && typeof element.arrow !== "boolean") {
-        fail(`${elementPath}.arrow`, "must be a boolean");
+        fail(
+          `${elementPath}.arrow`,
+          "must be a boolean",
+          `replace ${describeValue(element.arrow)} with true or false`,
+        );
       }
       output.push({
         type,
@@ -384,7 +488,13 @@ function flattenElements(
     }
 
     const id = idValue(element.id, `${elementPath}.id`);
-    if (ids.has(id)) fail(`${elementPath}.id`, `duplicates '${id}'`);
+    if (ids.has(id)) {
+      fail(
+        `${elementPath}.id`,
+        `duplicates '${id}'`,
+        "give every node and group a unique id across the whole diagram",
+      );
+    }
     ids.add(id);
     const box = normalizeBox(element, origin, elementPath, placements.get(localIndex));
 
@@ -506,7 +616,11 @@ function assignConnectorLanes(elements) {
           other.connector.lane === connector.lane && conflicts(record, other),
       );
     if (duplicate) {
-      fail(`${connector.sourcePath}.lane`, `duplicates explicit lane ${connector.lane}`);
+      fail(
+        `${connector.sourcePath}.lane`,
+        `duplicates explicit lane ${connector.lane}`,
+        "give overlapping connectors different lane values, or omit lane to assign them automatically",
+      );
     }
   });
 
@@ -541,7 +655,11 @@ function assignConnectorLanes(elements) {
           ) ?? null;
       }
       if (selected === null) {
-        fail(record.connector.sourcePath, "has no available connector lane");
+        fail(
+          record.connector.sourcePath,
+          "has no available connector lane",
+          "reduce the number of connectors between the same elements, or set explicit lane values",
+        );
       }
       record.connector.lane = selected;
     });
@@ -611,21 +729,48 @@ function totalTextLength(model) {
 }
 
 export function parseArchitecture(source) {
-  if (typeof source !== "string") fail("diagram", "must be JSON text");
+  if (typeof source !== "string") {
+    fail("diagram", "must be JSON text", "pass the fenced block contents as a string");
+  }
   if (source.length > MAX_SOURCE_LENGTH) {
-    fail("diagram", `must be at most ${MAX_SOURCE_LENGTH} characters`);
+    fail(
+      "diagram",
+      `must be at most ${MAX_SOURCE_LENGTH} characters`,
+      "split the diagram across multiple slides",
+    );
   }
   let raw;
   try {
     raw = JSON.parse(source);
   } catch (error) {
     const detail = error?.message ? ` (${error.message})` : "";
-    fail("diagram", `contains invalid JSON${detail}`);
+    fail(
+      "diagram",
+      `contains invalid JSON${detail}`,
+      "check for trailing commas, unquoted keys, or missing braces",
+    );
   }
-  const root = expectObject(raw, "diagram");
-  rejectUnknownKeys(root, new Set(["version", "canvas", "title", "description", "elements"]), "diagram");
-  const version = numberIn(root.version, "version", DSL_VERSION, DSL_VERSION, DSL_VERSION);
-  if (!Number.isInteger(version)) fail("version", "must be an integer");
+  const root = expectObject(
+    raw,
+    "diagram",
+    'the top level must be a JSON object with an "elements" array',
+  );
+  rejectUnknownKeys(
+    root,
+    new Set(["$schema", "version", "canvas", "title", "description", "elements"]),
+    "diagram",
+  );
+  const version = numberIn(
+    root.version,
+    "version",
+    DSL_VERSION,
+    DSL_VERSION,
+    DSL_VERSION,
+    `set "version": ${DSL_VERSION} or omit the field`,
+  );
+  if (!Number.isInteger(version)) {
+    fail("version", "must be an integer", `set "version": ${DSL_VERSION} or omit the field`);
+  }
   const model = {
     version,
     canvas: parseCanvas(root.canvas),
@@ -648,20 +793,40 @@ export function parseArchitecture(source) {
     if (element.type !== "connector") return;
     connectorCount += 1;
     if (!connectable.has(element.from)) {
-      fail(`${element.sourcePath}.from`, `references unknown element '${element.from}'`);
+      fail(
+        `${element.sourcePath}.from`,
+        `references unknown element '${element.from}'`,
+        `add a node or group with id '${element.from}', or point the connector at an existing id`,
+      );
     }
     if (!connectable.has(element.to)) {
-      fail(`${element.sourcePath}.to`, `references unknown element '${element.to}'`);
+      fail(
+        `${element.sourcePath}.to`,
+        `references unknown element '${element.to}'`,
+        `add a node or group with id '${element.to}', or point the connector at an existing id`,
+      );
     }
     if (element.from === element.to) {
-      fail(element.sourcePath, "self-referencing connectors are not supported");
+      fail(
+        element.sourcePath,
+        "self-referencing connectors are not supported",
+        "point the connector at a different element",
+      );
     }
   });
   if (connectorCount > MAX_CONNECTORS) {
-    fail("elements", `must contain at most ${MAX_CONNECTORS} connectors`);
+    fail(
+      "elements",
+      `must contain at most ${MAX_CONNECTORS} connectors`,
+      "split the diagram across multiple slides",
+    );
   }
   if (totalTextLength(model) > MAX_TOTAL_TEXT) {
-    fail("diagram", `text content must be at most ${MAX_TOTAL_TEXT} characters`);
+    fail(
+      "diagram",
+      `text content must be at most ${MAX_TOTAL_TEXT} characters`,
+      "shorten node text, group titles, labels, and descriptions",
+    );
   }
   assignConnectorLanes(model.elements);
   model.elements = model.elements
@@ -1998,8 +2163,17 @@ export {
   ArchitectureError,
   DSL_VERSION,
   ICONS,
+  ID_PATTERN,
+  LAYOUTS,
+  LITERAL_COLORS,
   MAX_CONNECTORS,
+  MAX_DEPTH,
   MAX_ELEMENTS,
+  MAX_POINTS,
   MAX_SOURCE_LENGTH,
+  MAX_TOTAL_TEXT,
+  PORTS,
+  ROUTINGS,
+  SHAPES,
   THEME_TOKENS,
 };

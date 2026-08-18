@@ -45,6 +45,9 @@ Extension は **実行時の npm 依存をゼロ**に保ちます。利用者は
 の中に `package.json` や `node_modules/` を作らないでください。なお同ディレクトリ配下の
 `test/` と `scripts/` は Node 標準機能のみで動く開発用資産なので、ZIP から省いても
 Extension の動作には影響しません。
+一方 `.github/extensions/presentation/schema/` は**意図的に ZIP へ含めます**。利用者が
+手元で Architecture DSL の JSON Schema を参照し、エディター補完・検証を効かせるための
+資産だからです（拡張の実行時には読み込まれません）。
 
 ## CI
 
@@ -53,6 +56,7 @@ Extension の動作には影響しません。
 | コマンド | 内容 |
 | --- | --- |
 | `npm run test:vendor` | 分割された vendor 資産のハッシュ整合性を検証 |
+| `npm run test:schema` | Architecture DSL の JSON Schema と `parseArchitecture` の判定一致を検証 |
 | `npm run test:unit` | Extension 同梱の `node --test`（Node 標準のみ、npm 依存なし） |
 | `npm run test:visual` | Playwright によるビジュアル回帰（4 テーマ） |
 | `npm run test:pdf` | 印刷モードを PDF 化してページ数・16:9・SVG 構造を検証 |

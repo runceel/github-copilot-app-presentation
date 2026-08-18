@@ -49,6 +49,11 @@ jobs:
         # 原因の分かりにくいタイムアウトで落ちるため先に検出する。
         run: npm run test:vendor
 
+      - name: Architecture DSL スキーマ検証
+        # JSON Schema と parseArchitecture の判定が一致していることを固定する。
+        # 乖離を放置するとスキーマが仕様として信用できなくなるため、単体テストより先に流す。
+        run: npm run test:schema
+
       - name: 単体テスト
         run: npm run test:unit
 
