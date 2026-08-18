@@ -425,5 +425,8 @@ body.presenter-mode #navExport{display:none;}
   body.print-mode .body{overflow:hidden;}
   body.print-mode .architecture-svg{max-height:5.25in;}
   body.print-mode .architecture-editor-toolbar{display:none!important;}
+  /* Mermaid appends a tooltip host to <body> on render. It sits just past the
+     720px page boundary and forces an extra blank page in the exported PDF. */
+  body.print-mode .mermaidTooltip{display:none!important;}
   body.print-mode .nav,body.print-mode .overview{display:none!important;}
 }

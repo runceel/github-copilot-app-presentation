@@ -34,12 +34,11 @@ const MIXED_SLIDE = readFileSync(
 // 背表紙の手前に mermaid + architecture 混在スライドを差し込んだデッキ。
 const MIXED_DECK = [...ARCHITECTURE_DECK.slice(0, -1), MIXED_SLIDE, ...ARCHITECTURE_DECK.slice(-1)];
 
-// 既知の不具合（Phase 1 では描画側を変更しないため、現状の挙動をそのまま固定する）:
-// mermaid は描画時に <div class="mermaidTooltip"> を body 直下へ追加する。この要素は
-// print CSS で消されず、ページ境界（7.5in = 720px）を 6px はみ出すため、mermaid を
-// 含むデッキの PDF は末尾に空白ページが 1 枚増える。
-// 描画側が修正されたらこのテストが落ちるので、そのときに 0 へ戻すこと。
-const KNOWN_MERMAID_TOOLTIP_EXTRA_PAGES = 1;
+// 回帰ガード（#11）: mermaid は描画時に <div class="mermaidTooltip"> を body 直下へ
+// 追加する。かつてこの要素が print CSS で消されず、ページ境界（7.5in = 720px）を
+// 6px はみ出して空白ページを 1 枚増やしていた。slides.css の
+// `body.print-mode .mermaidTooltip{display:none!important;}` で修正済み。
+// この規則が失われると下のページ数アサートが落ちる。
 
 const PDF_OPTIONS = { printBackground: true, preferCSSPageSize: true };
 
@@ -138,9 +137,7 @@ test("mermaid を含むデッキも 16:9 で出力される", async ({ page }) =
     ).toBeGreaterThan(0);
 
     const { pageCount, mediaBoxes } = inspectPdf(pdf);
-    expect(pageCount, "mermaid 由来の余分なページを含めたページ数").toBe(
-      MIXED_DECK.length + KNOWN_MERMAID_TOOLTIP_EXTRA_PAGES,
-    );
+    expect(pageCount, "mermaid を含んでも 1 スライド = 1 ページ").toBe(MIXED_DECK.length);
     assertSixteenByNine(mediaBoxes);
   } finally {
     await harness.close();
