@@ -1955,7 +1955,7 @@ const session = await joinSession({
         {
           name: "edit_architecture",
           description:
-            "Architecture 図の編集モードを切り替える（Experimental）。有効にすると canvas 上の図をドラッグ／矢印キーで動かせるようになり、変更は元 Markdown の ```architecture ブロックへそのまま書き戻される。presenter 表示と PDF 出力では編集 UI は出ない。発表前には必ず enabled=false に戻すこと。",
+            "Architecture 図の編集モードを切り替える。有効にすると canvas 上の図をドラッグ／矢印キーで動かせるようになり、変更は元 Markdown の ```architecture ブロックへそのまま書き戻される。presenter 表示と PDF 出力では編集 UI は出ない。発表前には必ず enabled=false に戻すこと。",
           inputSchema: {
             type: "object",
             properties: {

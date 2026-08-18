@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   ArchitectureError,
   ICONS,
@@ -1676,5 +1678,186 @@ test("unknown layered direction is rejected with the allowed values", () => {
       for (const allowed of LAYOUT_DIRECTIONS) assert.ok(error.message.includes(allowed));
       return true;
     },
+  );
+});
+// ---------------------------------------------------------------- Phase 7
+// 「出荷する図」そのものを品質ゲートに載せる。
+//
+// Phase 3 の品質テストが測っているのは `denseDiagram()` が組み立てる **合成図**
+// だけである。合成図はアルゴリズムの退行を捕まえるが、「利用者が実際に目にする図」
+// が壊れたことは捕まえない。
+//
+// ビジュアル回帰は代表図を描画しているが、その判定はピクセル比較と
+// `.architecture-error` が 0 件であることだけで、**経路がノードを貫通する形に
+// 退行してもベースラインを撮り直せば緑になる**。実際 `data-architecture-routing`
+// や `routing.degraded` を検査するテストはリポジトリのどこにも無かった。
+//
+// 受け入れ基準「8〜12 ノード規模および密な図で決定的な出力になる」の根拠は
+// 合成図ではなく出荷物でなければ意味がないので、ここで固定する。
+//
+// ただし正直に書いておく。**出荷図は余白が十分にあり、経路回避を完全に無効化
+// （`routeCost` のノード貫通ペナルティを 0 にする／`gridRoute` の障害物を空にする）
+// しても貫通は起きない**ことを実測で確認した。したがって出荷図の走査だけでは
+// 「劣化検出が死んだ」退行を捕まえられない。そのため下のテストは、必ず劣化する
+// 合成図と必ず貫通する polyline をカナリアとして先に通し、判定側が生きている
+// ことを確かめてから出荷図を検査する構成にしている。
+
+const repoRoot = fileURLToPath(new URL("../../../../", import.meta.url));
+
+/** 走査対象外。schema テストの SKIP_DIRECTORIES と揃えている。 */
+const SKIP_DIRECTORIES = new Set([
+  ".git",
+  "node_modules",
+  "test-results",
+  "playwright-report",
+  "dist",
+]);
+
+const ARCHITECTURE_BLOCK = /^```architecture[^\S\r\n]*\r?\n([\s\S]*?)^```[^\S\r\n]*$/gm;
+
+/**
+ * 走査が何も拾わなくても緑になる事故を防ぐ番人。
+ * ここに挙げたファイルは architecture ブロックを必ず持っている。
+ */
+const REQUIRED_DIAGRAM_FILES = [
+  path.join(".github", "extensions", "presentation", "README.md"),
+  path.join(".github", "extensions", "presentation", "test", "fixtures", "architecture.md"),
+  path.join("test", "fixtures", "architecture-visual.md"),
+];
+
+/** 現状 9 ブロック。減る方向は「代表図が消えた」ことなので落とす。 */
+const MINIMUM_SHIPPED_DIAGRAMS = 9;
+
+async function collectShippedDiagrams() {
+  const found = [];
+  const walk = async (directory) => {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (!SKIP_DIRECTORIES.has(entry.name)) await walk(full);
+      } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".md")) {
+        const markdown = await readFile(full, "utf8");
+        ARCHITECTURE_BLOCK.lastIndex = 0;
+        let match;
+        let index = 0;
+        while ((match = ARCHITECTURE_BLOCK.exec(markdown)) !== null) {
+          found.push({ file: path.relative(repoRoot, full), index, source: match[1] });
+          index += 1;
+        }
+      }
+    }
+  };
+  await walk(repoRoot);
+  return found;
+}
+
+test("every architecture diagram shipped in this repository routes without degrading", async () => {
+  // --- 検出機構そのものが生きていることを先に固定する（カナリア）---------------
+  // 出荷図はどれも余白が十分で、経路回避を完全に無効化しても貫通が起きない。
+  // つまり出荷図だけを見ていると「劣化を検出できなくなった」退行を見逃す。
+  // そこで、必ず劣化する図・必ず貫通する図を先に通し、判定側が黙っていないことを
+  // 確かめてから出荷図を検査する。
+  const knownDegraded = architectureSemanticSnapshot(
+    parseArchitecture(denseDiagram({ columns: 4, rows: 3, pairs: TWELVE_NODE_PAIRS })),
+  );
+  assert.equal(
+    knownDegraded.routing.degraded,
+    true,
+    "劣化するはずの図が degraded=false になっている。劣化検出が死んでいるので以降の検査は無意味",
+  );
+  assert.ok(knownDegraded.routing.diagnostics.length > 0);
+
+  // 幾何の独立検算（measureQuality）も同様に、貫通を貫通と数えられることを確かめる。
+  const penetrating = measureQuality(
+    JSON.stringify({
+      version: 1,
+      canvas: { width: 600, height: 300 },
+      elements: [
+        { type: "node", id: "a", text: "A", x: 20, y: 130, width: 80, height: 40 },
+        { type: "node", id: "mid", text: "M", x: 260, y: 120, width: 80, height: 60 },
+        { type: "node", id: "c", text: "C", x: 500, y: 130, width: 80, height: 40 },
+        {
+          type: "connector",
+          from: "a",
+          to: "c",
+          routing: "polyline",
+          points: [
+            { x: 100, y: 150 },
+            { x: 300, y: 150 },
+            { x: 500, y: 150 },
+          ],
+        },
+      ],
+    }),
+  );
+  assert.ok(
+    penetrating.nodeHits > 0,
+    "無関係なノードを貫く経路を nodeHits=0 と数えている。幾何検算が死んでいる",
+  );
+
+  // --- ここから出荷図の検査 ---------------------------------------------------
+  const diagrams = await collectShippedDiagrams();
+
+  // 走査が壊れて 0 件になっても以降の for が空回りするだけで緑になる。先に塞ぐ。
+  const files = new Set(diagrams.map((diagram) => diagram.file));
+  for (const required of REQUIRED_DIAGRAM_FILES) {
+    assert.ok(files.has(required), `${required} の architecture ブロックを走査できていない`);
+  }
+  assert.ok(
+    diagrams.length >= MINIMUM_SHIPPED_DIAGRAMS,
+    `architecture ブロックが ${diagrams.length} 件しか見つからない（${MINIMUM_SHIPPED_DIAGRAMS} 件以上のはず）`,
+  );
+
+  for (const diagram of diagrams) {
+    const where = `${diagram.file}#${diagram.index}`;
+    const snapshot = architectureSemanticSnapshot(parseArchitecture(diagram.source));
+
+    // 1. エンジン自身の申告。ラベルが置けない・経路が引けない図はここに出る。
+    assert.equal(snapshot.routing.degraded, false, `${where} が劣化経路にフォールバックしている`);
+    assert.deepEqual(snapshot.routing.diagnostics, [], `${where} に配線診断が出ている`);
+
+    // 2. エンジンの自己申告を鵜呑みにせず、幾何を独立に検算する。
+    //    経路が無関係なノードを貫通したら図として破綻している。
+    const quality = measureQuality(diagram.source);
+    assert.equal(quality.nodeHits, 0, `${where} の経路が無関係なノードを貫通している`);
+    assert.equal(quality.labelHits, 0, `${where} のラベルが無関係なノードに乗っている`);
+  }
+});
+
+test("shipped diagrams stay deterministic across independent parses", async () => {
+  const diagrams = await collectShippedDiagrams();
+  assert.ok(diagrams.length >= MINIMUM_SHIPPED_DIAGRAMS);
+
+  for (const diagram of diagrams) {
+    // 同一ソースを 2 回パースして経路点まで完全一致すること。
+    // ここが崩れるとビジュアル回帰が原因不明にちらつく。
+    const first = architectureSemanticSnapshot(parseArchitecture(diagram.source));
+    const second = architectureSemanticSnapshot(parseArchitecture(diagram.source));
+    assert.deepEqual(second, first, `${diagram.file}#${diagram.index} の出力が決定的でない`);
+  }
+});
+
+test("a shipped diagram actually covers the 8-12 node dense case", async () => {
+  // 受け入れ基準が名指ししている規模を、出荷物の側で満たしていることを固定する。
+  // これが無いと、代表図を 3 ノードに縮めても上の 2 本は緑のままになる。
+  const diagrams = await collectShippedDiagrams();
+  const dense = [];
+  for (const diagram of diagrams) {
+    const model = parseArchitecture(diagram.source);
+    const snapshot = architectureSemanticSnapshot(model);
+    const nodes = snapshot.elements.filter((element) => element.type === "node").length;
+    const connectors = snapshot.elements.filter((element) => element.type === "connector").length;
+    // 手動 polyline は作者が経路を書いたものなので、自動配線の証跡にはならない。
+    // parser は全 connector に `points` を埋めるので、判定は `routing` で行う。
+    const manual = model.elements.filter(
+      (element) => element.type === "connector" && element.routing === "polyline",
+    ).length;
+    if (nodes >= 8 && nodes <= 12 && connectors >= 10 && manual === 0) {
+      dense.push(`${diagram.file}#${diagram.index}`);
+    }
+  }
+  assert.ok(
+    dense.length > 0,
+    "8〜12 ノードかつ connector 10 本以上を手動 polyline なしで捌く図が出荷物に存在しない",
   );
 });

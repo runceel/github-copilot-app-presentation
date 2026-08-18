@@ -151,16 +151,21 @@ flowchart LR
 - Mermaid.js は拡張機能に**同梱**（`.github/extensions/presentation/vendor/`）。オフラインでも描画されます。
 - 記法に誤りがあってもスライドは**空白になりません**。エラー表示と他の本文はそのまま表示されます。
 
-### 図: Architecture JSON DSL（Experimental）
+### 図: Architecture JSON DSL
 ` ```architecture ` は、ノードの座標・サイズ・コンテナ・重なりを固定して再現したい
 プレゼン資料向けの構成図です。`version: 1`、`canvas`、`elements`、`node`、
 `group`、`connector` の詳細と完全な例は
 `.github/extensions/presentation/README.md` を参照してください。
-DSL と描画結果の互換性は正式版まで保証されないため、重要な資料では PDF 出力を
-事前確認してください。
-group の `layout` は `row` / `column` / `grid`、node の内蔵 `icon` は
-`cloud` / `database` / `api` / `user` / `server`、connector の port は
-`top` / `right` / `bottom` / `left` を使えます。外部 URL や任意 SVG は指定しません。
+**DSL v1 は安定版（stable）で、v1 として受理された文書は以後も v1 として受理されます。**
+ピクセル単位の描画結果は保証対象外なので、重要な資料では PDF 出力を事前確認してください。
+group の `layout` は `row` / `column` / `grid` / `layered`（`layered` は `direction` に
+`down` 既定 / `right`）、node の内蔵 `icon` は `cloud` / `database` / `api` / `user` /
+`server` / `analytics` / `browser` / `mobile` / `network` / `queue` / `shield` の 11 種、
+connector の port は `auto` 既定 / `top` / `right` / `bottom` / `left` を使えます。
+外部 URL や任意 SVG は指定しません。内蔵アイコン以外を使いたいときは、リポジトリ直下の
+`assets/` に画像を置いて `icon: "assets/foo.svg"` で参照します（**先頭スラッシュなし**。
+Markdown 画像の `/assets/...` とは書式が違うので注意。`.svg` / `.png` / `.webp` /
+`.jpg` / `.jpeg` のみ、`..` と非 ASCII のファイル名は拒否されます）。
 同じ port から分岐する connector は自動 lane で分離され、orthogonal routing は
 node と既存 connector の重なりを避ける候補を優先します。複雑な経路だけは
 `routing: "polyline"` と `points` で明示します。

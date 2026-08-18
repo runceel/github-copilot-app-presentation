@@ -38,14 +38,21 @@ canvas iframe（renderer/）
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
 - コードフェンスに `csharp` / `json` / `diff` などの言語名を付けると、highlight.js がシンタックスハイライトします。
 
-## Architecture DSL v1（Experimental）
+## Architecture DSL v1
 
 `architecture` コードフェンスは、プレゼン資料で位置・サイズ・重なりを再現しやすい
 JSON DSL を SVG として描画します。`canvas` は論理座標で、表示時は `viewBox` により
 canvas、外部 presenter、PDF のすべてで同じ比率に縮尺されます。
 
-> **Experimental:** DSL と描画結果の互換性は正式版まで保証されません。重要な資料では
-> PDF 出力を事前確認し、複雑な自動配置が必要な図には Mermaid を使用してください。
+> **Architecture DSL v1 は安定版（stable）です。** 後述の
+> [編集モード](#編集モード位置調整)も v1 の一部で、実験的な別機能ではありません。
+> v1 として受理された文書は以後も v1 として受理され、図の**意味**（どの要素がどこに
+> あり、何がどこへつながるか）は保たれます。保証の範囲・互換とみなす変更・破壊的変更が
+> 必要になったときの手順は [`schema/README.md`](./schema/README.md) に記載しています。
+>
+> **保証に含まないもの**: ピクセル単位の描画結果（フォント指標・テーマトークン・
+> connector の経路探索の改善で見た目は変わり得ます）と、診断メッセージの文言。
+> 複雑な自動配置が必要な図には引き続き Mermaid を使ってください。
 
 ````markdown
 ```architecture
@@ -383,8 +390,10 @@ icon name (...) or a path under assets/; ...` のように修正指針まで示�
 ### layered レイアウト
 
 `layout: { "type": "layered" }` は、group の子を connector の向きに沿って階層に
-積みます。`direction` で流れる向きを選べます（`down` 既定 / `up` / `right` / `left`）。
-`direction` は `layered` 以外のレイアウトでは拒否されます。
+積みます。`direction` で流れる向きを選べます（`down` 既定 = 上から下 / `right` = 左から右）。
+受け付けるのはこの 2 つだけで、`up` と `left` は拒否されます（逆向きに流したいときは
+connector の `from` / `to` を入れ替えます）。`direction` は `layered` 以外のレイアウトでも
+拒否されます。
 
 閉路があっても停止します（宣言順で後から現れる後戻り辺を無視して階層を決めます）。
 座標を 1 つずつ書かずに、依存関係だけから構成図を作りたいときに使います。
@@ -393,6 +402,19 @@ icon name (...) or a path under assets/; ...` のように修正指針まで示�
 
 Architecture 図はレンダリング結果の上で直接動かせます。編集した内容は**元の Markdown の
 ```architecture フェンスへ書き戻り**、再描画・再読み込み後も残ります。
+
+**編集モードは Architecture DSL v1 の一部で、stable です。** 実験的な付属機能ではなく、
+以下は v1 の契約として維持します。
+
+- 書き戻し先は**元の ```architecture フェンスだけ**で、フェンス外の地の文・front matter・
+  改行コードは変更しません。
+- 保存の成否は**必ず画面に出ます**（後述）。黙って失敗することはありません。
+- `?present=1` と `?print=1` では編集 UI を**生成しません**。
+- 編集モードはサーバー側の状態で、デッキと一緒には永続化しません。
+
+下の「layout 管理下のノードは動きません」「既知のトレードオフ」も、**将来直す予定の
+暫定仕様ではなく、v1 で意図してこう決めた挙動**です。変えるときは
+[`schema/README.md`](./schema/README.md) の互換ポリシーに従います。
 
 **入り方**は 2 通りです。
 
