@@ -64,6 +64,35 @@
       ],
       "description": "テーマトークン名、または限定されたリテラル色。任意の CSS 色は受け付けません。"
     },
+    "iconName": {
+      "enum": [
+        "cloud",
+        "database",
+        "api",
+        "user",
+        "server",
+        "analytics",
+        "browser",
+        "mobile",
+        "network",
+        "queue",
+        "shield"
+      ],
+      "description": "組み込みアイコン名。24x24 の線画で描かれ、stroke にノードの textColor が入るため 4 テーマすべてで配色が自動的に追従します。"
+    },
+    "iconAsset": {
+      "type": "string",
+      "maxLength": 200,
+      "pattern": "^assets/(?:[A-Za-z0-9][A-Za-z0-9_-]*(?:\\.[A-Za-z0-9_-]+)*/)*[A-Za-z0-9][A-Za-z0-9_-]*(?:\\.[A-Za-z0-9_-]+)*\\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp]|[Jj][Pp][Gg]|[Jj][Pp][Ee][Gg])$",
+      "description": "リポジトリの assets/ フォルダーに置いたアイコン。拡張子は .svg / .png / .webp / .jpg / .jpeg のみ（大文字も可）。'..' を含むパス、data: URI、外部 URL は構文上作れません。ラスター画像や <image> で読み込む SVG はテーマ色に追従しないため、どのテーマの背景でも判読できる素材を用意してください。"
+    },
+    "icon": {
+      "anyOf": [
+        { "$ref": "#/$defs/iconName" },
+        { "$ref": "#/$defs/iconAsset" }
+      ],
+      "description": "組み込みアイコン名、または assets/ 配下のアイコンへのパス。"
+    },
     "identifier": {
       "type": "string",
       "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,63}$",
@@ -177,7 +206,7 @@
         "width": { "$ref": "#/$defs/extent" },
         "height": { "$ref": "#/$defs/extent" },
         "text": { "type": "string", "maxLength": 500 },
-        "icon": { "enum": ["cloud", "database", "api", "user", "server"] },
+        "icon": { "$ref": "#/$defs/icon" },
         "ariaLabel": { "type": "string", "maxLength": 300 },
         "z": { "$ref": "#/$defs/zIndex" },
         "style": { "$ref": "#/$defs/style" }

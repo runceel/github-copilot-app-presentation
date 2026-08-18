@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
   ArchitectureError,
+  ICONS,
   LAYOUT_DIRECTIONS,
   MAX_ELEMENTS,
   MAX_ROUTING_GRID_COORDINATES,
@@ -600,6 +601,213 @@ test("renders only built-in primitive icons and exposes semantic accessibility l
   assert.equal(firstVisualText.attributes.get("font-size"), "8");
 });
 
+test("built-in icons inherit the theme text colour instead of hard-coding one", () => {
+  // 組み込みアイコンは stroke にテーマトークンをそのまま流し込むので、
+  // 4 テーマのどれで表示されても CSS 変数経由で配色が追従する。
+  const build = (style) =>
+    parseArchitecture(
+      JSON.stringify({
+        elements: [...ICONS].map((icon, index) => ({
+          type: "node",
+          id: `n${index}`,
+          x: index * 130,
+          y: 0,
+          width: 120,
+          height: 120,
+          icon,
+          style,
+        })),
+      }),
+    );
+
+  for (const [style, expected] of [
+    [undefined, "var(--fg)"],
+    [{ textColor: "accent" }, "var(--accent)"],
+    [{ textColor: "#ff00aa" }, "#ff00aa"],
+  ]) {
+    const nodes = descendants(renderArchitectureDiagram(build(style), new FakeDocument()));
+    const groups = nodes.filter(
+      (node) => node.attributes.get("data-architecture-icon-source") === "builtin",
+    );
+    assert.equal(groups.length, ICONS.size, "every built-in icon should render");
+    const strokes = new Set();
+    const fills = new Set();
+    for (const group of groups) {
+      strokes.add(group.attributes.get("stroke"));
+      fills.add(group.attributes.get("fill"));
+      for (const shape of group.children) {
+        // 子に stroke を焼き込むとテーマ追従が壊れるので、継承のみを許す。
+        assert.equal(shape.attributes.has("stroke"), false);
+        if (shape.attributes.has("fill")) fills.add(shape.attributes.get("fill"));
+      }
+    }
+    assert.deepEqual([...strokes], [expected], "icon strokes must come from the node text colour");
+    // 塗りは「線画のための none」か「テキスト色と同じ」しか許さない。
+    // 固定色を焼き込むとテーマ追従が壊れる。
+    assert.deepEqual([...fills].sort(), ["none", expected].sort());
+  }
+});
+
+test("every theme keeps built-in icon strokes legible against the slide surface", async () => {
+  // 組み込みアイコンは --fg で描かれるので、4 テーマそれぞれで
+  // --fg と背景（--surface / --bg）のコントラストが確保されている必要がある。
+  const css = await readFile(new URL("../renderer/slides.css", import.meta.url), "utf8");
+  const channel = (value) => {
+    const ratio = value / 255;
+    return ratio <= 0.03928 ? ratio / 12.92 : ((ratio + 0.055) / 1.055) ** 2.4;
+  };
+  const luminance = (hex) => {
+    const [r, g, b] = [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
+    return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b);
+  };
+  const contrast = (a, b) => {
+    const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (high + 0.05) / (low + 0.05);
+  };
+
+  const themes = ["dark", "light", "microsoft", "ms-modern"];
+  for (const theme of themes) {
+    const block = css.match(
+      new RegExp(`\\.deck\\[data-theme="${theme}"\\]\\{([^}]*)\\}`),
+    );
+    assert.ok(block, `slides.css must define the ${theme} theme`);
+    const read = (name) => {
+      const found = block[1].match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`));
+      assert.ok(found, `${theme} must define --${name} as a 6-digit hex colour`);
+      return found[1];
+    };
+    const fg = read("fg");
+    for (const background of ["surface", "bg"]) {
+      const ratio = contrast(fg, read(background));
+      // WCAG 2.1 SC 1.4.11 (non-text contrast) の 3:1。アイコンは線画なのでこの基準。
+      assert.ok(
+        ratio >= 3,
+        `${theme}: --fg on --${background} is ${ratio.toFixed(2)}:1, below the 3:1 minimum`,
+      );
+    }
+  }
+});
+
+test("user-supplied icons render as a sandboxed same-origin image reference", () => {
+  const assets = [
+    "assets/sample.svg",
+    "assets/kazuki-san-post.png",
+    "assets/profile.jpg",
+    "assets/icons/brand/logo.webp",
+    "assets/Logo.PNG",
+  ];
+  const model = parseArchitecture(
+    JSON.stringify({
+      elements: [
+        ...assets.map((icon, index) => ({
+          type: "node",
+          id: `a${index}`,
+          x: index * 150,
+          y: 0,
+          width: 140,
+          height: 140,
+          icon,
+        })),
+        { type: "node", id: "builtin", x: 0, y: 300, width: 140, height: 140, icon: "cloud" },
+      ],
+    }),
+  );
+  const nodes = descendants(renderArchitectureDiagram(model, new FakeDocument()));
+
+  const assetGroups = nodes.filter(
+    (node) => node.attributes.get("data-architecture-icon-source") === "asset",
+  );
+  assert.deepEqual(
+    assetGroups.map((node) => node.attributes.get("data-architecture-icon")),
+    assets,
+  );
+
+  const images = nodes.filter((node) => node.tagName === "image");
+  assert.equal(images.length, assets.length);
+  assert.deepEqual(
+    images.map((node) => node.attributes.get("href")),
+    assets.map((icon) => `/${icon}`),
+  );
+
+  // href はループバックサーバー配下の /assets/ 以外に現れてはならない。
+  // 外部 URL や data: URI が混ざっていないことの最終防衛線。
+  for (const node of nodes) {
+    for (const [name, value] of node.attributes) {
+      assert.doesNotMatch(name, /^on/i);
+      assert.notEqual(name, "xlink:href");
+      if (name === "href") {
+        assert.equal(node.tagName, "image");
+        assert.match(value, /^\/assets\//);
+        assert.doesNotMatch(value, /^[a-z][a-z0-9+.-]*:/i);
+        assert.doesNotMatch(value, /\.\./);
+      }
+    }
+  }
+
+  // アセットのパスはアクセシブル名に漏らさない。読み上げても意味を成さないため。
+  const labels = nodes
+    .filter((node) => node.attributes.get("data-architecture-type") === "node")
+    .map((node) => node.attributes.get("aria-label"));
+  assert.deepEqual(labels, [...assets.map((_, index) => `a${index}`), "cloud icon, builtin"]);
+});
+
+test("rejects icon references that leave the assets folder or name a remote resource", () => {
+  const unsafe = [
+    "assets/../extension.mjs",
+    "assets/icons/../../secret.svg",
+    "../assets/logo.svg",
+    "/assets/logo.svg",
+    "assets//logo.svg",
+    "assets/.hidden.svg",
+    "images/logo.svg",
+    "data:image/svg+xml;base64,PHN2Zy8+",
+    "https://example.com/logo.svg",
+    "http://example.com/logo.svg",
+    "//example.com/logo.svg",
+    "assets\\logo.svg",
+    "assets/logo.gif",
+    "assets/logo.js",
+    "assets/logo.svg?v=2",
+    "assets/logo",
+  ];
+  for (const icon of unsafe) {
+    assert.throws(
+      () =>
+        parseArchitecture(
+          JSON.stringify({
+            elements: [{ type: "node", id: "n", x: 0, y: 0, width: 100, height: 100, icon }],
+          }),
+        ),
+      (error) => {
+        assert.ok(error instanceof ArchitectureError);
+        assert.match(error.message, /^elements\[0\]\.icon: must be a built-in icon name/);
+        assert.match(error.message, /assets\/icons\/logo\.svg/);
+        return true;
+      },
+      `${icon} must be rejected`,
+    );
+  }
+  assert.throws(
+    () =>
+      parseArchitecture(
+        JSON.stringify({
+          elements: [
+            {
+              type: "node",
+              id: "n",
+              x: 0,
+              y: 0,
+              width: 100,
+              height: 100,
+              icon: `assets/${"a".repeat(190)}.svg`,
+            },
+          ],
+        }),
+      ),
+    /elements\[0\]\.icon: must be at most 200 characters/,
+  );
+});
+
 test("fits connector labels inside a bounded Unicode-aware background", () => {
   for (const label of ["イベント".repeat(50), "W".repeat(100), "m".repeat(100)]) {
     const model = parseArchitecture(
@@ -727,7 +935,7 @@ test("diagnostics pair every problem with remediation guidance", () => {
     ],
     [
       { elements: [{ type: "node", id: "n", x: 0, y: 0, width: 100, height: 100, icon: "remote" }] },
-      /icon: must be one of: [^;]+; replace 'remote' with one of them/,
+      /icon: must be a built-in icon name \([^)]+\) or a path under assets\/; replace 'remote' with a built-in name, or with a repository asset/,
     ],
   ];
   for (const [diagram, pattern] of cases) {

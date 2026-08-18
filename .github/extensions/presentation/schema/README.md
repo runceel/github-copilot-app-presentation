@@ -61,6 +61,7 @@
 | source 64 KiB | パース前の文字列長 |
 | `layout` の収まり判定（`children do not fit`） | 子のサイズと group の内寸から動的に決まる |
 | `layout` 配下の子 `width` / `height` の上限 | 上限が `cellWidth` / `cellHeight` に依存する |
+| `icon` が指す `assets/` のファイルが実在するか | パーサーはファイルシステムを見ない（欠落時は空のアイコン領域が描かれる） |
 
 スキーマが通っても、`parseArchitecture` が落ちることはあります。**図が描けるかどうかの
 最終的な判定は常にパーサー**です。
@@ -90,6 +91,15 @@ JSON Schema の `pattern` にはフラグの概念が無いため、スキーマ
 等価性は「同じ入力に同じ判定を返すか」で検証しています
 （`literal colour pattern is behaviourally equivalent to LITERAL_COLORS`）。
 
+`icon` のアセットパスでは同じ罠を**回避する側**の設計を選びました。
+`ICON_ASSET_PATTERN` は `/i` フラグを**使わず**、許可拡張子を
+`[Ss][Vv][Gg]` のように機械的に大小展開して組み立てています。そのため
+`.source` をそのまま `pattern` へ写せます（`/` は `RegExp.prototype.source` が
+必ず `\/` へ正規化するので、比較の前に両辺を `new RegExp(...)` に通しています）。
+`schema pattern matches ICON_ASSET_PATTERN` が文字列一致を、
+`icon asset pattern is behaviourally equivalent between schema and parser` が
+受理・拒否の具体例を固定しています。
+
 ## バージョニング / 互換性 / 移行ポリシー
 
 ### v1 の保証範囲
@@ -111,8 +121,8 @@ JSON Schema の `pattern` にはフラグの概念が無いため、スキーマ
 | 変更 | 例 |
 | --- | --- |
 | 新しい省略可能キーの追加 | `node` に新しい省略可能な style キーを足す |
-| 列挙値の追加 | `shape` に新しい形状を足す |
-| これまで拒否していた入力の受理 | ルートの `$schema` を受理する（本フェーズで実施） |
+| 列挙値の追加 | `shape` に新しい形状を足す / `icon` に組み込みアイコンを足す（本フェーズで 5 → 11 種） |
+| これまで拒否していた入力の受理 | ルートの `$schema` を受理する / `icon` に `assets/` 配下のパスを受理する（本フェーズで実施） |
 | 上限の緩和 | `points` の上限を 12 から増やす |
 | 診断メッセージの改善 | 修正指針の追記（本フェーズで実施） |
 

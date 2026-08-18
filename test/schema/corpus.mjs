@@ -121,11 +121,52 @@ export const corpus = [
   {
     name: "every icon",
     expect: "accept",
+    // 組み込みアイコンの全数。ICONS との一致は architecture-schema.test.mjs が検証する。
     source: doc(
-      ["cloud", "database", "api", "user", "server"].map((icon, index) =>
-        node({ id: `i${index}`, icon, x: index * 160 }),
+      [
+        "cloud",
+        "database",
+        "api",
+        "user",
+        "server",
+        "analytics",
+        "browser",
+        "mobile",
+        "network",
+        "queue",
+        "shield",
+      ].map((icon, index) => node({ id: `i${index}`, icon, x: index * 160 })),
+    ),
+  },
+  {
+    name: "asset icon in every allowed format",
+    expect: "accept",
+    source: doc(
+      ["assets/sample.svg", "assets/logo.png", "assets/logo.webp", "assets/profile.jpg", "assets/photo.jpeg"].map(
+        (icon, index) => node({ id: `a${index}`, icon, x: index * 160 }),
       ),
     ),
+  },
+  {
+    name: "asset icon in a nested folder",
+    expect: "accept",
+    source: doc([node({ icon: "assets/icons/brand/logo.svg" })]),
+  },
+  {
+    name: "asset icon with an uppercase extension",
+    expect: "accept",
+    source: doc([node({ icon: "assets/Logo.PNG" })]),
+  },
+  {
+    name: "asset icon with dots inside the file name",
+    expect: "accept",
+    source: doc([node({ icon: "assets/my.brand.logo.svg" })]),
+  },
+  {
+    name: "asset icon at maximum length",
+    expect: "accept",
+    // "assets/" (7) + name + ".svg" (4) = 200
+    source: doc([node({ icon: `assets/${repeat(189, "a")}.svg` })]),
   },
   {
     name: "text and ariaLabel at maximum length",
@@ -492,6 +533,89 @@ export const corpus = [
     name: "unknown icon",
     expect: "reject",
     source: doc([node({ icon: "rocket" })]),
+    parserMessage: /elements\[0\]\.icon: must be a built-in icon name/,
+  },
+  {
+    name: "icon escaping the assets folder",
+    expect: "reject",
+    source: doc([node({ icon: "assets/../.github/extensions/presentation/extension.mjs" })]),
+    parserMessage: /elements\[0\]\.icon: must be a built-in icon name/,
+  },
+  {
+    name: "icon with a parent segment in the middle",
+    expect: "reject",
+    source: doc([node({ icon: "assets/icons/../../secret.svg" })]),
+  },
+  {
+    name: "icon outside the assets folder",
+    expect: "reject",
+    source: doc([node({ icon: "../assets/logo.svg" })]),
+  },
+  {
+    name: "icon rooted at an absolute path",
+    expect: "reject",
+    source: doc([node({ icon: "/assets/logo.svg" })]),
+  },
+  {
+    name: "icon in a folder other than assets",
+    expect: "reject",
+    source: doc([node({ icon: "images/logo.svg" })]),
+  },
+  {
+    name: "icon as a data URI",
+    expect: "reject",
+    source: doc([node({ icon: "data:image/svg+xml;base64,PHN2Zy8+" })]),
+  },
+  {
+    name: "icon as an https URL",
+    expect: "reject",
+    source: doc([node({ icon: "https://example.com/logo.svg" })]),
+  },
+  {
+    name: "icon as a protocol-relative URL",
+    expect: "reject",
+    source: doc([node({ icon: "//example.com/logo.svg" })]),
+  },
+  {
+    name: "icon with a disallowed extension",
+    expect: "reject",
+    source: doc([node({ icon: "assets/logo.gif" })]),
+  },
+  {
+    name: "icon with no extension",
+    expect: "reject",
+    source: doc([node({ icon: "assets/logo" })]),
+  },
+  {
+    name: "icon with a backslash separator",
+    expect: "reject",
+    source: doc([node({ icon: "assets\\logo.svg" })]),
+  },
+  {
+    name: "icon with a query string",
+    expect: "reject",
+    source: doc([node({ icon: "assets/logo.svg?v=2" })]),
+  },
+  {
+    name: "icon with a leading dot in the file name",
+    expect: "reject",
+    source: doc([node({ icon: "assets/.hidden.svg" })]),
+  },
+  {
+    name: "icon with an empty path segment",
+    expect: "reject",
+    source: doc([node({ icon: "assets//logo.svg" })]),
+  },
+  {
+    name: "icon longer than the maximum reference length",
+    expect: "reject",
+    // "assets/" (7) + name + ".svg" (4) = 201
+    source: doc([node({ icon: `assets/${repeat(190, "a")}.svg` })]),
+  },
+  {
+    name: "icon as a number",
+    expect: "reject",
+    source: doc([node({ icon: 3 })]),
   },
   {
     name: "unknown routing",

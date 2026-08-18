@@ -67,7 +67,90 @@ const LAYOUT_DIRECTIONS = new Set(["down", "right"]);
 const MAX_GRAPH_SCAN_DEPTH = 16;
 // バリセンター法のスイープ回数。決定性のため固定する。
 const LAYERED_ORDERING_SWEEPS = 4;
-const ICONS = new Set(["cloud", "database", "api", "user", "server"]);
+// 組み込みアイコンのカタログ。ここが唯一の出典で、ICONS も描画も同じ表から作る。
+//
+// 命名規則: 小文字の kebab-case（`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`）で、製品名や
+// ベンダー名ではなく一般的な概念を表す名詞にする。名前は DSL の公開語彙なので、
+// 一度公開した名前の改名・削除は破壊的変更として扱う（schema/README.md 参照）。
+//
+// 図形は 24x24 座標系の線画で、描画時に stroke へノードの textColor が入る。
+// そのため 4 テーマすべてで配色が自動的に追従する。`solid: true` の図形だけは
+// 塗り（fill）にも textColor を入れる（線画のアクセントとして使う小さな点）。
+const ICON_SHAPES = Object.freeze({
+  cloud: [
+    {
+      tag: "path",
+      attributes: { d: "M6 18h11.5a4.5 4.5 0 0 0 .7-8.95A6.5 6.5 0 0 0 5.7 8.2 5 5 0 0 0 6 18Z" },
+    },
+  ],
+  database: [
+    { tag: "ellipse", attributes: { cx: 12, cy: 5, rx: 8, ry: 3 } },
+    {
+      tag: "path",
+      attributes: { d: "M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7" },
+    },
+  ],
+  api: [{ tag: "path", attributes: { d: "m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16" } }],
+  user: [
+    { tag: "circle", attributes: { cx: 12, cy: 8, r: 4 } },
+    { tag: "path", attributes: { d: "M4 22a8 8 0 0 1 16 0" } },
+  ],
+  server: [
+    { tag: "rect", attributes: { x: 3, y: 3, width: 18, height: 7, rx: 1.5 } },
+    { tag: "rect", attributes: { x: 3, y: 14, width: 18, height: 7, rx: 1.5 } },
+    { tag: "circle", attributes: { cx: 7, cy: 6.5, r: 0.8 }, solid: true },
+    { tag: "circle", attributes: { cx: 7, cy: 17.5, r: 0.8 }, solid: true },
+  ],
+  analytics: [
+    { tag: "path", attributes: { d: "M4 3.5v16.5h16" } },
+    { tag: "path", attributes: { d: "M8 20v-5.5M12.5 20v-10.5M17 20v-3.5" } },
+  ],
+  browser: [
+    { tag: "rect", attributes: { x: 2.5, y: 4, width: 19, height: 16, rx: 2 } },
+    { tag: "path", attributes: { d: "M2.5 9h19" } },
+    { tag: "circle", attributes: { cx: 5.5, cy: 6.5, r: 0.8 }, solid: true },
+    { tag: "circle", attributes: { cx: 8, cy: 6.5, r: 0.8 }, solid: true },
+  ],
+  mobile: [
+    { tag: "rect", attributes: { x: 7, y: 2.5, width: 10, height: 19, rx: 2.5 } },
+    { tag: "path", attributes: { d: "M10.5 5.5h3" } },
+    { tag: "circle", attributes: { cx: 12, cy: 18.5, r: 0.9 }, solid: true },
+  ],
+  network: [
+    { tag: "circle", attributes: { cx: 12, cy: 4.5, r: 2.5 } },
+    { tag: "circle", attributes: { cx: 5, cy: 18, r: 2.5 } },
+    { tag: "circle", attributes: { cx: 19, cy: 18, r: 2.5 } },
+    { tag: "path", attributes: { d: "M10.9 6.7 6.2 15.8M13.1 6.7l4.7 9.1M7.5 18h9" } },
+  ],
+  queue: [
+    { tag: "path", attributes: { d: "M3 6.5h18M3 17.5h18" } },
+    { tag: "rect", attributes: { x: 4.5, y: 10, width: 4, height: 4, rx: 1 } },
+    { tag: "rect", attributes: { x: 10, y: 10, width: 4, height: 4, rx: 1 } },
+    { tag: "rect", attributes: { x: 15.5, y: 10, width: 4, height: 4, rx: 1 } },
+  ],
+  shield: [
+    { tag: "path", attributes: { d: "M12 2.5 20 5.5v6.2c0 4.6-3.2 8.1-8 9.8-4.8-1.7-8-5.2-8-9.8V5.5Z" } },
+    { tag: "path", attributes: { d: "m8.5 12 2.5 2.5 4.5-4.5" } },
+  ],
+});
+const ICONS = new Set(Object.keys(ICON_SHAPES));
+// ユーザーが持ち込むアイコンは `assets/` 配下のリポジトリ内ファイルだけを許す。
+// 描画は <image href="/assets/..."> で、extension.mjs / テストハーネスの
+// `/assets/*` ルートが safeJoin 経由で配信する。
+const ICON_ASSET_EXTENSIONS = Object.freeze(["svg", "png", "webp", "jpg", "jpeg"]);
+// JSON Schema の `pattern` にはフラグの概念が無いので `/i` を使わず、大小両方の
+// 文字クラスを機械的に展開する。こうすると `.source` をそのままスキーマへ写せて、
+// パーサーとスキーマで大文字拡張子（.PNG など）の扱いが必ず一致する。
+const ICON_ASSET_EXTENSION_PATTERN = ICON_ASSET_EXTENSIONS.map((extension) =>
+  [...extension].map((character) => `[${character.toUpperCase()}${character}]`).join(""),
+).join("|");
+// パス要素は英数字で始まり、'.' の後には必ず 1 文字以上が続く。これだけで
+// '..' / '.' / 空要素 / ':' を含む値（data: や http:// など）が構文的に作れなくなる。
+const ICON_ASSET_SEGMENT = "[A-Za-z0-9][A-Za-z0-9_-]*(?:\\.[A-Za-z0-9_-]+)*";
+const ICON_ASSET_PATTERN = new RegExp(
+  `^assets/(?:${ICON_ASSET_SEGMENT}/)*${ICON_ASSET_SEGMENT}\\.(?:${ICON_ASSET_EXTENSION_PATTERN})$`,
+);
+const MAX_ICON_REFERENCE = 200;
 const THEME_TOKENS = Object.freeze({
   accent: "var(--accent)",
   accentStrong: "var(--accent-strong)",
@@ -247,6 +330,22 @@ function enumValue(value, path, values, fallback) {
     );
   }
   return candidate;
+}
+
+// icon は「組み込み名の enum」または「assets/ 配下のパス」の合成型。
+// 受理集合は schema/architecture-v1.schema.json の $defs.icon と一致させること。
+function iconValue(value, path) {
+  if (value === undefined) return "";
+  const candidate = textValue(value, path, "", MAX_ICON_REFERENCE);
+  if (ICONS.has(candidate)) return candidate;
+  if (ICON_ASSET_PATTERN.test(candidate)) return candidate;
+  fail(
+    path,
+    `must be a built-in icon name (${[...ICONS].join(", ")}) or a path under assets/`,
+    `replace ${describeValue(candidate)} with a built-in name, or with a repository asset such as 'assets/icons/logo.svg' (${ICON_ASSET_EXTENSIONS.map(
+      (extension) => `.${extension}`,
+    ).join(", ")} only; '..', 'data:' URIs and external URLs are rejected)`,
+  );
 }
 
 function colorValue(value, path, fallback) {
@@ -741,10 +840,7 @@ function flattenElements(
         SHAPES,
         "rounded-rect",
       );
-      const icon =
-        element.icon === undefined
-          ? ""
-          : enumValue(element.icon, `${elementPath}.icon`, ICONS);
+      const icon = iconValue(element.icon, `${elementPath}.icon`);
       output.push({
         type,
         id,
@@ -2362,6 +2458,12 @@ function pointAtHalfLength(points) {
   return points[0];
 }
 
+function iconShapeAttributes(shape, textColor) {
+  // solid な図形だけ塗りにも textColor を入れる。属性の挿入順は表の記載順 + fill で、
+  // 既存アイコンの出力を 1 バイトも変えないために順序を保つ。
+  return shape.solid ? { ...shape.attributes, fill: textColor } : shape.attributes;
+}
+
 function renderIcon(documentRef, element) {
   if (!element.icon) return null;
   const size = Math.min(58, element.height * 0.36, element.width * 0.2);
@@ -2369,8 +2471,32 @@ function renderIcon(documentRef, element) {
     ? element.x + Math.max(20, element.width * 0.08)
     : element.x + element.width / 2 - size / 2;
   const y = element.y + element.height / 2 - size / 2;
+  const shapes = ICON_SHAPES[element.icon];
+  if (!shapes) {
+    // ユーザー提供アイコン。テーマ色は適用できない（<image> の中身は差し替えられない）。
+    // stroke / fill を付けても効かないので、意味のある属性だけを残す。
+    const group = svgElement(documentRef, "g", {
+      "data-architecture-icon": element.icon,
+      "data-architecture-icon-source": "asset",
+      transform: `translate(${x} ${y}) scale(${size / 24})`,
+      "aria-hidden": "true",
+      "pointer-events": "none",
+    });
+    group.appendChild(
+      svgElement(documentRef, "image", {
+        x: 0,
+        y: 0,
+        width: 24,
+        height: 24,
+        href: `/${element.icon}`,
+        preserveAspectRatio: "xMidYMid meet",
+      }),
+    );
+    return { group, size, x };
+  }
   const group = svgElement(documentRef, "g", {
     "data-architecture-icon": element.icon,
+    "data-architecture-icon-source": "builtin",
     transform: `translate(${x} ${y}) scale(${size / 24})`,
     fill: "none",
     stroke: element.style.textColor,
@@ -2380,25 +2506,10 @@ function renderIcon(documentRef, element) {
     "aria-hidden": "true",
     "pointer-events": "none",
   });
-  if (element.icon === "cloud") {
+  for (const shape of shapes) {
     group.appendChild(
-      svgElement(documentRef, "path", {
-        d: "M6 18h11.5a4.5 4.5 0 0 0 .7-8.95A6.5 6.5 0 0 0 5.7 8.2 5 5 0 0 0 6 18Z",
-      }),
+      svgElement(documentRef, shape.tag, iconShapeAttributes(shape, element.style.textColor)),
     );
-  } else if (element.icon === "database") {
-    group.appendChild(svgElement(documentRef, "ellipse", { cx: 12, cy: 5, rx: 8, ry: 3 }));
-    group.appendChild(svgElement(documentRef, "path", { d: "M4 5v7c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 12v7c0 1.7 3.6 3 8 3s8-1.3 8-3v-7" }));
-  } else if (element.icon === "api") {
-    group.appendChild(svgElement(documentRef, "path", { d: "m8 7-5 5 5 5M16 7l5 5-5 5M14 4l-4 16" }));
-  } else if (element.icon === "user") {
-    group.appendChild(svgElement(documentRef, "circle", { cx: 12, cy: 8, r: 4 }));
-    group.appendChild(svgElement(documentRef, "path", { d: "M4 22a8 8 0 0 1 16 0" }));
-  } else {
-    group.appendChild(svgElement(documentRef, "rect", { x: 3, y: 3, width: 18, height: 7, rx: 1.5 }));
-    group.appendChild(svgElement(documentRef, "rect", { x: 3, y: 14, width: 18, height: 7, rx: 1.5 }));
-    group.appendChild(svgElement(documentRef, "circle", { cx: 7, cy: 6.5, r: 0.8, fill: element.style.textColor }));
-    group.appendChild(svgElement(documentRef, "circle", { cx: 7, cy: 17.5, r: 0.8, fill: element.style.textColor }));
   }
   return { group, size, x };
 }
@@ -2442,9 +2553,12 @@ function renderGroup(documentRef, element) {
 }
 
 function renderNode(documentRef, element) {
+  // 組み込みアイコンの名前は意味のある語なのでアクセシブル名に含める。ユーザー提供
+  // アイコンはファイルパスでしかなく、読み上げても意味を成さないので含めない
+  // （意味が要るときは text / ariaLabel に書く）。
   const label =
     element.ariaLabel ||
-    [element.icon ? `${element.icon} icon` : "", element.text || element.id]
+    [ICONS.has(element.icon) ? `${element.icon} icon` : "", element.text || element.id]
       .filter(Boolean)
       .join(", ");
   const group = svgElement(documentRef, "g", {
@@ -2807,6 +2921,7 @@ export {
   ArchitectureError,
   DSL_VERSION,
   ICONS,
+  ICON_ASSET_PATTERN,
   ID_PATTERN,
   LAYOUT_DIRECTIONS,
   LAYOUTS,
@@ -2814,6 +2929,7 @@ export {
   MAX_CONNECTORS,
   MAX_DEPTH,
   MAX_ELEMENTS,
+  MAX_ICON_REFERENCE,
   MAX_POINTS,
   MAX_ROUTE_REFINEMENT_PASSES,
   MAX_ROUTING_GRID_COORDINATES,

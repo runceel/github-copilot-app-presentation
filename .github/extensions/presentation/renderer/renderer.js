@@ -453,11 +453,19 @@ function renderSlide(markdown) {
   scheduleLayoutRefresh();
   // Mermaid diagrams and images resolve their size asynchronously, so the
   // scroll decision has to be revisited once they have settled.
-  runMermaid(slide.bodyEl, slide.theme, token).finally(() => {
+  //
+  // The loading veil is lifted only once *both* have settled: it is the signal
+  // that the slide is fully painted, and PDF export and the visual regression
+  // suite rely on it. Revealing while an architecture icon under `assets/` is
+  // still loading would capture a half-drawn slide.
+  const images = waitForImages(slide.bodyEl).then(() => {
     if (token === renderToken) scheduleLayoutRefresh();
   });
-  waitForImages(slide.bodyEl).then(() => {
+  const mermaid = runMermaid(slide.bodyEl, slide.theme, token, false).finally(() => {
     if (token === renderToken) scheduleLayoutRefresh();
+  });
+  Promise.all([mermaid, images]).finally(() => {
+    if (token === renderToken) document.body.classList.remove("mermaid-loading");
   });
 }
 
@@ -477,6 +485,23 @@ function waitForImages(root) {
           image.addEventListener("error", resolve, { once: true });
         }),
     );
+  // SVG の <image> は HTMLImageElement ではないので complete / load を持たない。
+  // 同じ URL を HTMLImageElement で先読みして解決を待つ（2 回目は HTTP キャッシュに乗る）。
+  // これをしないと、アーキテクチャ図のアイコンが描かれる前に PDF 出力や
+  // ビジュアル回帰のキャプチャが走ってしまう。
+  for (const image of root.querySelectorAll("image")) {
+    const href = image.getAttribute("href") || image.getAttribute("xlink:href");
+    if (!href) continue;
+    pending.push(
+      new Promise((resolve) => {
+        const probe = new Image();
+        probe.addEventListener("load", resolve, { once: true });
+        probe.addEventListener("error", resolve, { once: true });
+        probe.src = href;
+        if (probe.complete) resolve();
+      }),
+    );
+  }
   return Promise.all(pending);
 }
 
