@@ -256,6 +256,11 @@ const enumSyncCases = [
   ["PORTS (toPort)", architecture.PORTS, schema.$defs.connector.properties.toPort.enum],
   ["LAYOUTS (shorthand)", architecture.LAYOUTS, schema.$defs.layout.anyOf[0].enum],
   ["LAYOUTS (object)", architecture.LAYOUTS, schema.$defs.layoutObject.properties.type.enum],
+  [
+    "LAYOUT_DIRECTIONS",
+    architecture.LAYOUT_DIRECTIONS,
+    schema.$defs.layoutObject.properties.direction.enum,
+  ],
   ["THEME_TOKENS", Object.keys(architecture.THEME_TOKENS), schema.$defs.themeToken.enum],
 ];
 
@@ -298,14 +303,16 @@ test("schema nesting chain matches MAX_DEPTH", () => {
   assert.ok(inner.includes("group"));
 });
 
-test("every exported constant is classified as schema-encoded or parser-only", () => {
-  // スキーマが焼き込む定数と、意味検証だけが持つ定数を明示的に分類する。
-  // 新しい定数を export したときにここが落ちるので、同期テストの網から漏れない。
+test("every exported constant is classified as schema-encoded, parser-only, or renderer-only", () => {
+  // スキーマが焼き込む定数と、意味検証だけが持つ定数、描画時にしか効かない定数を
+  // 明示的に分類する。新しい定数を export したときにここが落ちるので、
+  // 同期テストの網から漏れない。
   const schemaEncoded = new Set([
     "DSL_VERSION",
     "ICONS",
     "ID_PATTERN",
     "LAYOUTS",
+    "LAYOUT_DIRECTIONS",
     "LITERAL_COLORS",
     "MAX_DEPTH",
     "MAX_ELEMENTS",
@@ -317,10 +324,19 @@ test("every exported constant is classified as schema-encoded or parser-only", (
   ]);
   // JSON Schema では表現できない（flatten 後の集計・パース前の文字列長）。
   const parserOnly = new Set(["MAX_CONNECTORS", "MAX_SOURCE_LENGTH", "MAX_TOTAL_TEXT"]);
+  // DSL の入力を一切制約しない。経路探索の打ち切り予算と、打ち切り理由の語彙。
+  // ソースには現れないのでスキーマ側に対応物が存在しない。
+  const rendererOnly = new Set([
+    "MAX_ROUTE_REFINEMENT_PASSES",
+    "MAX_ROUTING_GRID_COORDINATES",
+    "MAX_ROUTING_GRID_POINTS",
+    "MAX_ROUTING_GRID_VISITS",
+    "ROUTE_FALLBACK_REASONS",
+  ]);
 
   const exported = Object.keys(architecture).filter((name) => /^[A-Z][A-Z0-9_]*$/.test(name));
   const unclassified = exported.filter(
-    (name) => !schemaEncoded.has(name) && !parserOnly.has(name),
+    (name) => !schemaEncoded.has(name) && !parserOnly.has(name) && !rendererOnly.has(name),
   );
   assert.deepEqual(
     unclassified,
@@ -328,7 +344,16 @@ test("every exported constant is classified as schema-encoded or parser-only", (
     "classify the new constant in test/schema/architecture-schema.test.mjs, then extend the sync assertions",
   );
 
-  for (const name of [...schemaEncoded, ...parserOnly]) {
+  for (const name of [...schemaEncoded, ...parserOnly, ...rendererOnly]) {
     assert.ok(exported.includes(name), `${name} must be exported from architecture.mjs`);
+  }
+
+  // renderer-only はスキーマに現れてはいけない。現れたなら分類が誤っている。
+  const schemaText = JSON.stringify(schema);
+  for (const name of rendererOnly) {
+    assert.ok(
+      !schemaText.includes(name),
+      `${name} is classified renderer-only but appears in the schema`,
+    );
   }
 });

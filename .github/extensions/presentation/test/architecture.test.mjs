@@ -3,8 +3,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
   ArchitectureError,
+  LAYOUT_DIRECTIONS,
   MAX_ELEMENTS,
+  MAX_ROUTING_GRID_COORDINATES,
   MAX_SOURCE_LENGTH,
+  ROUTE_FALLBACK_REASONS,
   architectureSemanticSnapshot,
   computeConnectorRoute,
   createOverridePayload,
@@ -120,6 +123,27 @@ function routeIntersectsNode(points, node, margin = 18) {
     }
     return false;
   });
+}
+
+function countRouteCrossings(first, second) {
+  const firstSegments = first.slice(1).map((end, index) => [first[index], end]);
+  const secondSegments = second.slice(1).map((end, index) => [second[index], end]);
+  const cross = (origin, firstPoint, secondPoint) =>
+    (firstPoint.x - origin.x) * (secondPoint.y - origin.y) -
+    (firstPoint.y - origin.y) * (secondPoint.x - origin.x);
+  let crossings = 0;
+  for (const [firstStart, firstEnd] of firstSegments) {
+    for (const [secondStart, secondEnd] of secondSegments) {
+      const firstSideA = cross(firstStart, firstEnd, secondStart);
+      const firstSideB = cross(firstStart, firstEnd, secondEnd);
+      const secondSideA = cross(secondStart, secondEnd, firstStart);
+      const secondSideB = cross(secondStart, secondEnd, firstEnd);
+      if (firstSideA * firstSideB < -0.001 && secondSideA * secondSideB < -0.001) {
+        crossings += 1;
+      }
+    }
+  }
+  return crossings;
 }
 
 function routesInteract(first, second) {
@@ -735,6 +759,9 @@ test("semantic snapshot and edit overrides contain deterministic geometry only",
   assert.deepEqual(architectureSemanticSnapshot(model), {
     version: 1,
     canvas: { width: 800, height: 450 },
+    // Phase 3 で追加。ルーティングが劣化したかどうかを機械可読な形で載せる。
+    // この図は素直に引けるので degraded は false。
+    routing: { degraded: false, diagnostics: [] },
     elements: [
       {
         type: "connector",
@@ -876,4 +903,533 @@ test("dense diagrams stay within the routing work budget", () => {
   const started = performance.now();
   architectureSemanticSnapshot(model);
   assert.ok(performance.now() - started < 1500);
+});
+
+// ---------------------------------------------------------------- Phase 3
+// 描画品質。交差の少なさ・ラベル領域の考慮・階層レイアウト・
+// 予算枯渇時の「決定的かつ作者に伝わる」挙動を守る。
+
+// 図全体の品質を測る。交差だけでなくラベルの衝突も数える。
+function measureQuality(source) {
+  const model = parseArchitecture(source);
+  const snapshot = architectureSemanticSnapshot(model);
+  const nodes = snapshot.elements.filter((element) => element.type === "node");
+  const connectors = snapshot.elements.filter((element) => element.type === "connector");
+  const overlaps = (first, second) =>
+    first.x < second.x + second.width &&
+    second.x < first.x + first.width &&
+    first.y < second.y + second.height &&
+    second.y < first.y + first.height;
+
+  const result = { crossings: 0, nodeHits: 0, labelHits: 0, degraded: snapshot.routing.degraded };
+  for (let index = 0; index < connectors.length; index += 1) {
+    const current = connectors[index];
+    const excluded = new Set([current.from, current.to]);
+    for (const node of nodes) {
+      if (!excluded.has(node.id) && routeIntersectsNode(current.points, node)) result.nodeHits += 1;
+    }
+    // ラベルは経路の中点に置かれる。実寸は描画時にしか分からないため、
+    // 保守的な最大幅で近似して「ノードを覆っていないか」だけを見る。
+    if (current.label) {
+      const mid = current.points[Math.floor(current.points.length / 2)];
+      const box = { x: mid.x - 60, y: mid.y - 15, width: 120, height: 30 };
+      for (const node of nodes) {
+        if (!excluded.has(node.id) && overlaps(box, node)) result.labelHits += 1;
+      }
+    }
+    for (let other = index + 1; other < connectors.length; other += 1) {
+      result.crossings += countRouteCrossings(current.points, connectors[other].points);
+    }
+  }
+  return result;
+}
+
+// 手動 polyline を一切使わない密な図。ノードは格子状、connector は意図的に交差させる。
+function denseDiagram({ columns, rows, pairs, label = true }) {
+  const total = columns * rows;
+  const ids = Array.from({ length: total }, (_, index) => `n${index}`);
+  const elements = ids.map((id, index) => ({
+    type: "node",
+    id,
+    text: id,
+    x: 90 + (index % columns) * Math.floor(1420 / columns),
+    y: 120 + Math.floor(index / columns) * Math.floor(760 / rows),
+    width: Math.floor(1420 / columns) - 90,
+    height: 100,
+  }));
+  for (const [from, to] of pairs) {
+    elements.push({
+      type: "connector",
+      from: ids[from],
+      to: ids[to],
+      routing: "orthogonal",
+      ...(label ? { label: `${from}-${to}` } : {}),
+    });
+  }
+  return JSON.stringify({ version: 1, canvas: { width: 1600, height: 900 }, elements });
+}
+
+const NINE_NODE_PAIRS = [
+  [0, 4], [1, 3], [2, 5], [3, 7], [4, 6], [5, 8],
+  [0, 8], [2, 6], [1, 7], [0, 5], [3, 8], [2, 4],
+];
+const TWELVE_NODE_PAIRS = [
+  [0, 5], [1, 4], [2, 7], [3, 6], [4, 9], [5, 8],
+  [6, 11], [7, 10], [0, 11], [3, 8], [1, 10], [2, 9],
+];
+// 総当たりに近い交差を意図的に作る 12 ノード / 14 connector。
+const CRISSCROSS_NODE_PAIRS = [
+  [0, 7], [1, 6], [2, 9], [3, 8], [4, 11], [5, 10], [6, 3],
+  [7, 2], [8, 1], [9, 0], [10, 5], [11, 4], [0, 5], [2, 11],
+];
+
+test("dense 9-node diagrams route around every node without manual polylines", () => {
+  const quality = measureQuality(
+    denseDiagram({ columns: 3, rows: 3, pairs: NINE_NODE_PAIRS }),
+  );
+  // 経路がノードを貫通したら図として破綻している。ここは 0 でなければならない。
+  assert.equal(quality.nodeHits, 0);
+  assert.equal(quality.labelHits, 0);
+  assert.equal(quality.degraded, false);
+});
+
+test("dense 12-node diagrams never route a path through an unrelated node", () => {
+  const quality = measureQuality(
+    denseDiagram({ columns: 4, rows: 3, pairs: TWELVE_NODE_PAIRS }),
+  );
+  // 「破綻しない」の定義は経路がノードを貫通しないこと。ここは無条件に 0。
+  assert.equal(quality.nodeHits, 0);
+});
+
+test("unavoidable label collisions are reported rather than silently drawn", () => {
+  // 4 列 x 3 行にノードを敷き詰めて長い斜め connector を張ると、ラベルを置く
+  // 余白が物理的に足りなくなる。経路自体は健全でもラベルはノードに乗る。
+  // 重要なのは「黙って乗せない」こと。
+  const model = parseArchitecture(
+    denseDiagram({ columns: 4, rows: 3, pairs: TWELVE_NODE_PAIRS }),
+  );
+  const snapshot = architectureSemanticSnapshot(model);
+  assert.equal(snapshot.routing.degraded, true);
+  assert.ok(snapshot.routing.diagnostics.length > 0);
+  for (const diagnostic of snapshot.routing.diagnostics) {
+    // 経路がノードを貫通した報告は出ていないはず（貫通していないので）。
+    assert.equal(diagnostic.kind, "label-overlaps-node");
+    assert.equal(diagnostic.pathOverlaps, 0);
+    assert.ok(diagnostic.labelOverlaps > 0);
+  }
+  // ラベルを外せば劣化は消える。つまり報告はラベル起因だと作者が確かめられる。
+  const unlabelled = architectureSemanticSnapshot(
+    parseArchitecture(
+      denseDiagram({ columns: 4, rows: 3, pairs: TWELVE_NODE_PAIRS, label: false }),
+    ),
+  );
+  assert.equal(unlabelled.routing.degraded, false);
+});
+
+test("global refinement lowers crossings below the greedy-only result", () => {
+  // 交差の数え方は「交差点の個数」。再配線の受理条件がまさにこの値を
+  // 増やさないことを保証しているので、テストもこの値で見る。
+  //
+  // 12 ノード / 12 connector（ラベル付き）は逐次配置だけだと 13 交差になる。
+  // 再配線が効いていれば 6 まで下がる。上限 8 は「再配線を無効化すると必ず
+  // 落ちる」位置に置いてある。
+  const quality = measureQuality(
+    denseDiagram({ columns: 4, rows: 3, pairs: TWELVE_NODE_PAIRS }),
+  );
+  assert.ok(
+    quality.crossings <= 8,
+    `expected refinement to keep crossings at or below 8, got ${quality.crossings}`,
+  );
+});
+
+test("refinement never trades a crossing away for label placement", () => {
+  // 再配線は「総コストが下がる」だけでは採用しない。交差が増えるなら棄却する。
+  // このガードが無いと、ラベル penalty（ノードを隠す = 24,000）が交差
+  // （約 10,000）より重いせいで、ラベルを避けるために交差を増やす取引が通る。
+  //
+  // 12 ノード / 14 connector の総当たり交差図での実測（交差点の個数）:
+  //   ガードあり 22 / ガードなし 25 / 再配線なし 29
+  // 上限 22 はガードを外すと必ず落ちる位置に置いてある。
+  const quality = measureQuality(
+    denseDiagram({ columns: 4, rows: 3, pairs: CRISSCROSS_NODE_PAIRS }),
+  );
+  assert.ok(
+    quality.crossings <= 22,
+    `expected the crossing guard to hold crossings at or below 22, got ${quality.crossings}`,
+  );
+  assert.equal(quality.nodeHits, 0);
+});
+
+test("routing avoids parking a connector label on top of an unrelated node", () => {
+  // src -> dst の最短経路上に blocker がある。ラベル領域を見ていなければ
+  // ラベルが blocker を覆う。
+  //
+  // 注意: この単独 connector のケースは ROUTE_COST_LABEL_OVER_NODE を 0 にしても
+  // 落ちない。ノード貫通コスト（1,000,000）だけで blocker を回避する経路が
+  // 選ばれ、その結果ラベルも自然に空きスペースへ落ちるため。ラベルコストが
+  // 単独で効いていることは下の crisscross のテストで担保している。
+  const source = JSON.stringify({
+    version: 1,
+    canvas: { width: 1600, height: 900 },
+    elements: [
+      { type: "node", id: "src", x: 80, y: 400, width: 200, height: 120, text: "Source" },
+      { type: "node", id: "blocker", x: 660, y: 380, width: 280, height: 160, text: "Blocker" },
+      { type: "node", id: "dst", x: 1320, y: 400, width: 200, height: 120, text: "Target" },
+      {
+        type: "connector",
+        from: "src",
+        to: "dst",
+        routing: "orthogonal",
+        label: "replicates to",
+      },
+    ],
+  });
+  const quality = measureQuality(source);
+  assert.equal(quality.nodeHits, 0);
+  assert.equal(quality.labelHits, 0);
+});
+
+test("label area cost buys a crossing to stop a label from hiding a node", () => {
+  // ラベル領域を考慮した経路決定が、密な図で単独で効いていることの証明。
+  //
+  // 12 ノード / 14 connector の総当たり交差図にラベルを付けると、交差ガードを
+  // そのまま適用した場合はラベルが 1 個ノードを覆ったまま残る。ガードには
+  // 「隠れている中身が減るなら交差 1 本の増加を許す」という例外があり、
+  // ROUTE_COST_LABEL_OVER_NODE がその再配線を動機づける。
+  //
+  // 実測（ラベル付き crisscross）:
+  //   ラベルコスト 24,000 -> 交差 22 / 隠れ 0
+  //   ラベルコスト 0      -> 交差 21 / 隠れ 1
+  // 交差 1 本と引き換えにノードが 1 個読めるようになる、という意図した取引。
+  const model = parseArchitecture(
+    denseDiagram({ columns: 4, rows: 3, pairs: CRISSCROSS_NODE_PAIRS }),
+  );
+  const snapshot = architectureSemanticSnapshot(model);
+  const labelOverlaps = snapshot.routing.diagnostics.filter(
+    (diagnostic) => diagnostic.kind === "label-overlaps-node",
+  );
+  assert.deepEqual(
+    labelOverlaps,
+    [],
+    `expected label-area cost to clear every hidden node, got ${JSON.stringify(labelOverlaps)}`,
+  );
+  assert.equal(snapshot.routing.degraded, false);
+});
+
+test("routing budget exhaustion is reported instead of silently drawing through nodes", () => {
+  // 座標軸あたりの候補が MAX_ROUTING_GRID_COORDINATES を超えると格子探索は
+  // 打ち切られる。従来はそのまま無警告でノードを貫通した経路が描かれていた。
+  const elements = [];
+  const filler = MAX_ROUTING_GRID_COORDINATES - 50;
+  for (let index = 0; index < filler; index += 1) {
+    elements.push({
+      type: "node",
+      id: `filler${index}`,
+      x: 20 + index * 21,
+      y: 20 + index * 11,
+      width: 17,
+      height: 13,
+    });
+  }
+  elements.push({ type: "node", id: "src", x: 40, y: 700, width: 120, height: 80 });
+  elements.push({ type: "node", id: "dst", x: 1400, y: 700, width: 120, height: 80 });
+  elements.push({ type: "node", id: "wall", x: 700, y: 620, width: 200, height: 240 });
+  elements.push({
+    type: "connector",
+    from: "src",
+    to: "dst",
+    routing: "orthogonal",
+    fromPort: "right",
+    toPort: "left",
+  });
+  const source = JSON.stringify({
+    version: 1,
+    canvas: { width: 1600, height: 900 },
+    elements,
+  });
+
+  const snapshot = architectureSemanticSnapshot(parseArchitecture(source));
+  assert.equal(snapshot.routing.degraded, true);
+  assert.equal(snapshot.routing.diagnostics.length, 1);
+  const [diagnostic] = snapshot.routing.diagnostics;
+  assert.equal(diagnostic.from, "src");
+  assert.equal(diagnostic.to, "dst");
+  assert.equal(diagnostic.kind, "path-overlaps-node");
+  // 打ち切りの理由が「予算切れ」だと分かること。no-clean-candidate に
+  // 丸められてしまうと、作者は配置が悪いのか探索が諦めたのか区別できない。
+  assert.equal(diagnostic.reason, ROUTE_FALLBACK_REASONS.gridTooLarge);
+  assert.ok(diagnostic.pathOverlaps > 0);
+  assert.ok(diagnostic.sourcePath.startsWith("elements["));
+
+  // 劣化していても決定的であること。
+  const again = architectureSemanticSnapshot(parseArchitecture(source));
+  assert.deepEqual(again.routing, snapshot.routing);
+  assert.deepEqual(again.elements, snapshot.elements);
+});
+
+test("degraded routing surfaces a non-fatal warning in the rendered diagram", () => {
+  const elements = [];
+  const filler = MAX_ROUTING_GRID_COORDINATES - 50;
+  for (let index = 0; index < filler; index += 1) {
+    elements.push({
+      type: "node",
+      id: `filler${index}`,
+      x: 20 + index * 21,
+      y: 20 + index * 11,
+      width: 17,
+      height: 13,
+    });
+  }
+  elements.push({ type: "node", id: "src", x: 40, y: 700, width: 120, height: 80 });
+  elements.push({ type: "node", id: "dst", x: 1400, y: 700, width: 120, height: 80 });
+  elements.push({ type: "node", id: "wall", x: 700, y: 620, width: 200, height: 240 });
+  elements.push({
+    type: "connector",
+    from: "src",
+    to: "dst",
+    routing: "orthogonal",
+    fromPort: "right",
+    toPort: "left",
+  });
+  const source = JSON.stringify({
+    version: 1,
+    canvas: { width: 1600, height: 900 },
+    elements,
+  });
+
+  const warnings = [];
+  const originalWarn = globalThis.console.warn;
+  globalThis.console.warn = (message) => warnings.push(message);
+  let wrapper;
+  try {
+    wrapper = renderArchitectureDiagram(parseArchitecture(source), new FakeDocument());
+  } finally {
+    globalThis.console.warn = originalWarn;
+  }
+
+  // 破壊的変更を避けるため throw はしない。図は描かれ続ける。
+  assert.equal(wrapper.attributes.get("data-architecture-routing"), "degraded");
+  const svg = wrapper.children.find((child) => child.tagName === "svg");
+  assert.ok(svg, "the diagram itself must still render");
+
+  const banner = wrapper.children.find(
+    (child) => child.className === "architecture-routing-warning",
+  );
+  assert.ok(banner, "a routing warning banner must be appended");
+  assert.equal(banner.attributes.get("role"), "status");
+  assert.equal(banner.attributes.get("aria-live"), "polite");
+  assert.ok(banner.textContent.includes("src"));
+  assert.ok(banner.textContent.includes("polyline"), "the banner must point at the remedy");
+
+  assert.equal(warnings.length, 1);
+  assert.ok(warnings[0].includes("grid-too-large"));
+});
+
+test("clean diagrams emit no routing warning at all", () => {
+  const warnings = [];
+  const originalWarn = globalThis.console.warn;
+  globalThis.console.warn = (message) => warnings.push(message);
+  let wrapper;
+  try {
+    wrapper = renderArchitectureDiagram(parseArchitecture(JSON.stringify(validDiagram)), new FakeDocument());
+  } finally {
+    globalThis.console.warn = originalWarn;
+  }
+  assert.equal(wrapper.attributes.get("data-architecture-routing"), undefined);
+  assert.equal(
+    wrapper.children.some((child) => child.className === "architecture-routing-warning"),
+    false,
+  );
+  assert.deepEqual(warnings, []);
+});
+
+test("routing is deterministic: the same source renders identical markup twice", () => {
+  // FakeElement を安定した文字列へ落として比較する。
+  // architecture-{title,description,arrow}-<n> の <n> だけは renderSequence 由来で、
+  // 1 ページに複数の図を置いたときに ID が衝突しないよう意図的に増える
+  // （main 時点から存在する既存の仕組み）。ここでは伏せて比較する。
+  // 幾何そのものの決定性は architectureSemanticSnapshot を突き合わせる
+  // 隣のテストが担保している。
+  const serializeElement = (element) =>
+    JSON.stringify({
+      tagName: element.tagName,
+      namespaceURI: element.namespaceURI,
+      className: element.className,
+      attributes: [...element.attributes.entries()],
+      text: element._textContent,
+      children: element.children.map(serializeElement),
+    }).replace(/(architecture-(?:title|description|arrow))-\d+/g, "$1-N");
+  const sources = [
+    denseDiagram({ columns: 3, rows: 3, pairs: NINE_NODE_PAIRS }),
+    denseDiagram({ columns: 4, rows: 3, pairs: TWELVE_NODE_PAIRS, label: false }),
+    JSON.stringify(validDiagram),
+  ];
+  for (const source of sources) {
+    const first = serializeElement(
+      renderArchitectureDiagram(parseArchitecture(source), new FakeDocument()),
+    );
+    const second = serializeElement(
+      renderArchitectureDiagram(parseArchitecture(source), new FakeDocument()),
+    );
+    assert.equal(first, second);
+  }
+});
+
+test("connector declaration order does not depend on object identity across parses", () => {
+  // 同一入力を 2 回パースして経路点まで完全一致することを確認する。
+  // ここが崩れるとビジュアル回帰が不安定になる。
+  const source = denseDiagram({ columns: 4, rows: 3, pairs: TWELVE_NODE_PAIRS });
+  const first = architectureSemanticSnapshot(parseArchitecture(source));
+  const second = architectureSemanticSnapshot(parseArchitecture(source));
+  assert.deepEqual(second, first);
+});
+
+test("layered layout stacks children by connector depth", () => {
+  const source = JSON.stringify({
+    version: 1,
+    canvas: { width: 1600, height: 900 },
+    elements: [
+      {
+        type: "group",
+        id: "flow",
+        x: 100,
+        y: 100,
+        width: 1200,
+        height: 700,
+        layout: "layered",
+        children: [
+          { type: "node", id: "sink", text: "Sink" },
+          { type: "node", id: "middle", text: "Middle" },
+          { type: "node", id: "source", text: "Source" },
+          { type: "connector", from: "source", to: "middle" },
+          { type: "connector", from: "middle", to: "sink" },
+        ],
+      },
+    ],
+  });
+  const model = parseArchitecture(source);
+  const byId = new Map(model.elements.map((element) => [element.id, element]));
+  // 宣言順は sink -> middle -> source だが、階層は source -> middle -> sink。
+  assert.ok(byId.get("source").y < byId.get("middle").y);
+  assert.ok(byId.get("middle").y < byId.get("sink").y);
+  // down が既定なので x は揃う（各層 1 ノードなので中央寄せ）。
+  assert.equal(byId.get("source").x, byId.get("sink").x);
+});
+
+test("layered layout honours direction right", () => {
+  const source = JSON.stringify({
+    version: 1,
+    canvas: { width: 1600, height: 900 },
+    elements: [
+      {
+        type: "group",
+        id: "flow",
+        x: 100,
+        y: 100,
+        width: 1200,
+        height: 700,
+        layout: { type: "layered", direction: "right" },
+        children: [
+          { type: "node", id: "sink", text: "Sink" },
+          { type: "node", id: "source", text: "Source" },
+          { type: "connector", from: "source", to: "sink" },
+        ],
+      },
+    ],
+  });
+  const model = parseArchitecture(source);
+  const byId = new Map(model.elements.map((element) => [element.id, element]));
+  assert.ok(byId.get("source").x < byId.get("sink").x);
+  assert.equal(byId.get("source").y, byId.get("sink").y);
+});
+
+test("layered layout breaks cycles deterministically instead of hanging", () => {
+  const source = JSON.stringify({
+    version: 1,
+    canvas: { width: 1600, height: 900 },
+    elements: [
+      {
+        type: "group",
+        id: "loop",
+        x: 100,
+        y: 100,
+        width: 1200,
+        height: 700,
+        layout: "layered",
+        children: [
+          { type: "node", id: "a" },
+          { type: "node", id: "b" },
+          { type: "node", id: "c" },
+          { type: "connector", from: "a", to: "b" },
+          { type: "connector", from: "b", to: "c" },
+          { type: "connector", from: "c", to: "a" },
+        ],
+      },
+    ],
+  });
+  const first = architectureSemanticSnapshot(parseArchitecture(source));
+  const second = architectureSemanticSnapshot(parseArchitecture(source));
+  assert.deepEqual(second, first);
+  const nodes = first.elements.filter((element) => element.type === "node");
+  assert.equal(nodes.length, 3);
+});
+
+test("direction is rejected on layouts other than layered", () => {
+  for (const type of ["row", "column", "grid"]) {
+    assert.throws(
+      () =>
+        parseArchitecture(
+          JSON.stringify({
+            version: 1,
+            elements: [
+              {
+                type: "group",
+                id: "g",
+                x: 100,
+                y: 100,
+                width: 600,
+                height: 400,
+                layout: { type, direction: "down" },
+                children: [{ type: "node", id: "n" }],
+              },
+            ],
+          }),
+        ),
+      (error) => {
+        assert.ok(error instanceof ArchitectureError);
+        assert.match(error.message, /direction/);
+        assert.match(error.message, /;/, "diagnostics must keep the problem; remedy shape");
+        return true;
+      },
+      `layout type ${type} must reject direction`,
+    );
+  }
+});
+
+test("unknown layered direction is rejected with the allowed values", () => {
+  assert.throws(
+    () =>
+      parseArchitecture(
+        JSON.stringify({
+          version: 1,
+          elements: [
+            {
+              type: "group",
+              id: "g",
+              x: 100,
+              y: 100,
+              width: 600,
+              height: 400,
+              layout: { type: "layered", direction: "up" },
+              children: [{ type: "node", id: "n" }],
+            },
+          ],
+        }),
+      ),
+    (error) => {
+      assert.ok(error instanceof ArchitectureError);
+      for (const allowed of LAYOUT_DIRECTIONS) assert.ok(error.message.includes(allowed));
+      return true;
+    },
+  );
 });

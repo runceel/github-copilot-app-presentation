@@ -158,9 +158,21 @@ CI（`npm run test:schema`）は、**リポジトリ内の Markdown を動的に
 3. 適合コーパス（`corpus.mjs`）で両検証器の判定が一致する
 4. スキーマが焼き込む定数が `architecture.mjs` の export と一致する
 
-4 では、`architecture.mjs` が export する大文字定数を
-「スキーマが焼き込むもの」と「意味検証だけが持つもの」に**必ず分類**させています。
-新しい定数を export したまま分類し忘れると、テストが落ちて気づけます。
+4 では、`architecture.mjs` が export する大文字定数を「スキーマが焼き込むもの」
+「意味検証だけが持つもの」「描画（レイアウト / ルーティング）だけが持つもの」に
+**必ず分類**させています。新しい定数を export したまま分類し忘れると、テストが
+落ちて気づけます。3 つ目のバケット（`rendererOnly`）は、スキーマに現れては
+**いけない**ことも同時に検査します。ルーティングのコスト重みや再配線回数のような
+描画チューニング用の数値が、うっかり DSL の一部として固定されるのを防ぐためです。
+
+### 条件付きプロパティ（`layered` の `direction`）
+
+`layout.direction` は `type` が `"layered"` のときだけ許されます。これは
+`allOf` / `if` / `not` / `then` でスキーマ側にも表現してあり、パーサーと同じ判定を
+します。`layered` 以外で `direction` を書くと、両方が拒否します。
+
+`layered` はパーサーが connector の向きから階層を計算するため、**子の `x` / `y` は
+書きません**。この点は既存の `grid` / `row` / `column` と同じ扱いです。
 
 検証ライブラリ（`ajv`）は**ルートの devDependency** です。拡張機能本体は ZIP で配布され
 `node_modules` なしで動く必要があるため、`renderer/architecture.mjs` からスキーマや
