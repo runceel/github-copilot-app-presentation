@@ -151,11 +151,13 @@ flowchart LR
 - Mermaid.js は拡張機能に**同梱**（`.github/extensions/presentation/vendor/`）。オフラインでも描画されます。
 - 記法に誤りがあってもスライドは**空白になりません**。エラー表示と他の本文はそのまま表示されます。
 
-### 図: Architecture JSON DSL（PoC）
+### 図: Architecture JSON DSL（Experimental）
 ` ```architecture ` は、ノードの座標・サイズ・コンテナ・重なりを固定して再現したい
 プレゼン資料向けの構成図です。`version: 1`、`canvas`、`elements`、`node`、
 `group`、`connector` の詳細と完全な例は
 `.github/extensions/presentation/README.md` を参照してください。
+DSL と描画結果の互換性は正式版まで保証されないため、重要な資料では PDF 出力を
+事前確認してください。
 group の `layout` は `row` / `column` / `grid`、node の内蔵 `icon` は
 `cloud` / `database` / `api` / `user` / `server`、connector の port は
 `top` / `right` / `bottom` / `left` を使えます。外部 URL や任意 SVG は指定しません。

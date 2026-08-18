@@ -187,6 +187,31 @@ test("rejects malformed JSON, unknown references, unsafe colors, and unsupported
       ),
     /theme token/,
   );
+  for (const inheritedName of ["constructor", "toString", "__proto__"]) {
+    assert.throws(
+      () =>
+        parseArchitecture(
+          JSON.stringify({
+            elements: [
+              {
+                type: "node",
+                id: "a",
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+                style: { fill: inheritedName },
+              },
+            ],
+          }),
+        ),
+      ArchitectureError,
+    );
+    assert.throws(
+      () => parseArchitecture(JSON.stringify({ elements: [{ type: inheritedName }] })),
+      ArchitectureError,
+    );
+  }
   assert.throws(
     () =>
       parseArchitecture(

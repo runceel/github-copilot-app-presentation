@@ -160,7 +160,9 @@ function enumValue(value, path, values, fallback) {
 function colorValue(value, path, fallback) {
   const candidate = value === undefined ? fallback : value;
   if (typeof candidate !== "string") fail(path, "must be a theme token or color string");
-  if (THEME_TOKENS[candidate]) return THEME_TOKENS[candidate];
+  if (Object.prototype.hasOwnProperty.call(THEME_TOKENS, candidate)) {
+    return THEME_TOKENS[candidate];
+  }
   if (LITERAL_COLORS.test(candidate)) return candidate;
   fail(path, "must be a theme token, hex color, black, white, transparent, or none");
 }
@@ -323,7 +325,9 @@ function flattenElements(
     const elementPath = `${path}[${localIndex}]`;
     const element = expectObject(raw, elementPath);
     const type = textValue(element.type, `${elementPath}.type`, "", 20);
-    if (!ELEMENT_KEYS[type]) fail(`${elementPath}.type`, "must be node, group, or connector");
+    if (!Object.prototype.hasOwnProperty.call(ELEMENT_KEYS, type)) {
+      fail(`${elementPath}.type`, "must be node, group, or connector");
+    }
     rejectUnknownKeys(element, ELEMENT_KEYS[type], elementPath);
     const order = output.length;
     const defaultZ = type === "group" ? -50 : type === "connector" ? -10 : 0;

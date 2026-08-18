@@ -38,11 +38,14 @@ canvas iframe（renderer/）
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
 - コードフェンスに `csharp` / `json` / `diff` などの言語名を付けると、highlight.js がシンタックスハイライトします。
 
-## Architecture DSL v1 PoC
+## Architecture DSL v1（Experimental）
 
 `architecture` コードフェンスは、プレゼン資料で位置・サイズ・重なりを再現しやすい
 JSON DSL を SVG として描画します。`canvas` は論理座標で、表示時は `viewBox` により
 canvas、外部 presenter、PDF のすべてで同じ比率に縮尺されます。
+
+> **Experimental:** DSL と描画結果の互換性は正式版まで保証されません。重要な資料では
+> PDF 出力を事前確認し、複雑な自動配置が必要な図には Mermaid を使用してください。
 
 ````markdown
 ```architecture
