@@ -2667,78 +2667,6 @@ function renderConnector(documentRef, element, points, markerId) {
   return group;
 }
 
-export function createOverridePayload(offsets) {
-  const overrides = [...offsets.entries()]
-    .filter(([, offset]) => offset.x !== 0 || offset.y !== 0)
-    .map(([id, offset]) => ({ id, x: offset.x, y: offset.y }));
-  return { version: DSL_VERSION, overrides };
-}
-
-function attachArchitectureEditor(wrapper, documentRef) {
-  const svg = wrapper.querySelector("svg");
-  if (!svg) return;
-  wrapper.classList.add("architecture-editable");
-  const toolbar = documentRef.createElement("div");
-  toolbar.className = "architecture-editor-toolbar";
-  const copy = documentRef.createElement("button");
-  copy.type = "button";
-  copy.textContent = "Copy overrides";
-  const status = documentRef.createElement("span");
-  status.className = "architecture-editor-status";
-  status.setAttribute("aria-live", "polite");
-  toolbar.appendChild(copy);
-  toolbar.appendChild(status);
-  wrapper.prepend(toolbar);
-
-  const offsets = new Map();
-  let selected = null;
-  const select = (node) => {
-    if (selected === node) return;
-    selected?.classList.remove("architecture-selected");
-    selected = node;
-    if (!selected) return;
-    selected.classList.add("architecture-selected");
-    selected.focus();
-    status.textContent = `Selected ${selected.dataset.architectureId}`;
-  };
-  const move = (node, event) => {
-    if (!["ArrowUp", "ArrowRight", "ArrowDown", "ArrowLeft"].includes(event.key)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    select(node);
-    const step = event.shiftKey ? 1 : 10;
-    const id = node.dataset.architectureId;
-    const offset = offsets.get(id) || { x: 0, y: 0 };
-    if (event.key === "ArrowLeft") offset.x -= step;
-    if (event.key === "ArrowRight") offset.x += step;
-    if (event.key === "ArrowUp") offset.y -= step;
-    if (event.key === "ArrowDown") offset.y += step;
-    offsets.set(id, offset);
-    node.setAttribute("transform", `translate(${offset.x} ${offset.y})`);
-    status.textContent = `${id}: x ${offset.x}, y ${offset.y}`;
-  };
-  svg.querySelectorAll('[data-architecture-type="node"]').forEach((node) => {
-    node.setAttribute("tabindex", "0");
-    node.setAttribute("aria-keyshortcuts", "ArrowUp ArrowRight ArrowDown ArrowLeft");
-    node.addEventListener("click", (event) => {
-      event.stopPropagation();
-      select(node);
-    });
-    node.addEventListener("focus", () => select(node));
-    node.addEventListener("keydown", (event) => move(node, event));
-  });
-  svg.addEventListener("click", () => select(null));
-  copy.addEventListener("click", async () => {
-    const payload = JSON.stringify(createOverridePayload(offsets), null, 2);
-    try {
-      await globalThis.navigator.clipboard.writeText(payload);
-      status.textContent = "Override JSON copied";
-    } catch (error) {
-      status.textContent = `Copy failed: ${error?.message || "clipboard unavailable"}`;
-    }
-  });
-}
-
 export function architectureSemanticSnapshot(model) {
   const lookup = new Map(
     model.elements
@@ -2781,7 +2709,6 @@ export function architectureSemanticSnapshot(model) {
 export function renderArchitectureDiagram(
   model,
   documentRef = globalThis.document,
-  options = {},
 ) {
   if (!documentRef?.createElementNS || !documentRef?.createElement) {
     throw new ArchitectureError("diagram: a DOM document is required for SVG rendering");
@@ -2854,7 +2781,6 @@ export function renderArchitectureDiagram(
   });
   wrapper.appendChild(svg);
   appendRoutingWarning(documentRef, wrapper, routingDiagnostics);
-  if (options.editable) attachArchitectureEditor(wrapper, documentRef);
   return wrapper;
 }
 
@@ -2899,10 +2825,9 @@ function appendRoutingWarning(documentRef, wrapper, diagnostics) {
 export function renderArchitectureBlock(
   source,
   documentRef = globalThis.document,
-  options = {},
 ) {
   try {
-    return renderArchitectureDiagram(parseArchitecture(source), documentRef, options);
+    return renderArchitectureDiagram(parseArchitecture(source), documentRef);
   } catch (error) {
     const wrapper = documentRef.createElement("div");
     wrapper.className = "architecture-error";

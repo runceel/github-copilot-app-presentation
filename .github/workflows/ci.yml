@@ -57,6 +57,11 @@ jobs:
       - name: 単体テスト
         run: npm run test:unit
 
+      - name: 編集ワークフロー回帰
+        # 編集 UI が presenter / 印刷へ漏れていないことを含めて、ブラウザー上の
+        # 振る舞いを固定する。ビジュアル回帰より先に流して原因を切り分けやすくする。
+        run: npm run test:editing
+
       - name: ビジュアル回帰
         run: npm run test:visual
 

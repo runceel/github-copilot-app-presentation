@@ -1,4 +1,5 @@
 import { renderArchitectureBlock } from "./architecture.mjs";
+import { attachArchitectureEditor } from "./architecture-editor.mjs";
 
 // Client-side slide renderer for the presentation canvas.
 //
@@ -77,7 +78,14 @@ let deckTheme = DEFAULT_THEME;
 // reveal a newer, still-rendering one.
 let renderToken = 0;
 let lastMermaidTheme = null;
+// 編集モードは「presenter でも印刷でもない通常表示」でだけ有効になる。
+// 印刷は init の早期 return でここへ到達しないので、実質の分岐は presenterMode。
 let architectureEditMode = false;
+let presenterMode = false;
+// 直近に描画したスライドの Markdown。編集モードの切り替えで描き直すために持つ。
+let lastMarkdown = "";
+// 描画中のスライドに取り付けた編集 UI。再描画のたびに破棄する。
+let architectureEditors = [];
 // `layoutTarget` is the slide currently on screen (cover and back cover
 // included); `autoSize` says whether it also takes part in the font auto-fit.
 let layoutTarget = null;
@@ -378,13 +386,32 @@ function createSlide(markdown, fallbackTheme) {
   });
   // Architecture fences contain a constrained JSON DSL. The renderer builds its
   // SVG with createElementNS/textContent instead of injecting generated markup.
-  bodyEl.querySelectorAll("code.language-architecture").forEach((code) => {
+  bodyEl.querySelectorAll("code.language-architecture").forEach((code, blockIndex) => {
     const target = code.closest("pre") || code;
-    target.replaceWith(
-      renderArchitectureBlock(code.textContent, document, {
-        editable: architectureEditMode,
-      }),
-    );
+    const source = code.textContent;
+    if (!architectureEditMode) {
+      target.replaceWith(renderArchitectureBlock(source, document));
+      return;
+    }
+    // 編集モードのときだけ編集 UI を差し込む。通常表示はこの経路を通らないので、
+    // ツールバーや tabindex が本番の描画へ漏れることがない。
+    const host = document.createElement("div");
+    host.className = "architecture-edit-host";
+    host.setAttribute("data-architecture-block", String(blockIndex));
+    target.replaceWith(host);
+    const editor = attachArchitectureEditor(host, {
+      source,
+      documentRef: document,
+      onCommit: (next) => {
+        saveArchitectureBlock(blockIndex, next);
+      },
+    });
+    if (!editor) {
+      // DSL が不正なら編集させず、通常のエラー表示へ戻す。
+      host.replaceWith(renderArchitectureBlock(source, document));
+      return;
+    }
+    architectureEditors.push(editor);
   });
   applySyntaxHighlighting(bodyEl);
   deck.appendChild(bodyEl);
@@ -433,6 +460,10 @@ function createSlide(markdown, fallbackTheme) {
 }
 
 function renderSlide(markdown) {
+  lastMarkdown = typeof markdown === "string" ? markdown : "";
+  // 前のスライドに取り付けた編集 UI は document 側のリスナーを持つので必ず外す。
+  architectureEditors.forEach((editor) => editor.destroy());
+  architectureEditors = [];
   const slide = createSlide(markdown, deckTheme);
   document.title = slide.title;
   document.documentElement.setAttribute("data-theme", slide.theme);
@@ -626,6 +657,42 @@ async function fetchDeck() {
   }
 }
 
+/**
+ * 編集モードを切り替える。presenter では常に無効（印刷は init で早期 return する
+ * ため、そもそもここへ到達しない）。実際に変わったときだけ true を返す。
+ */
+function setArchitectureEditMode(enabled) {
+  const next = Boolean(enabled) && !presenterMode;
+  if (next === architectureEditMode) return false;
+  architectureEditMode = next;
+  document.body.classList.toggle("architecture-edit-mode", next);
+  return true;
+}
+
+/**
+ * 編集した図をサーバーへ書き戻す。サーバーは元スライドの n 番目の
+ * ```architecture フェンスを差し替えるので、元の DSL がそのまま更新される。
+ */
+async function saveArchitectureBlock(block, source) {
+  try {
+    const res = await fetch("./edit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index: navIndex, block, source }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    // 自分が起こした更新なので、SSE のこだまで再描画しないよう版を進めておく
+    // （再描画すると編集中の選択とフォーカスが飛ぶ）。
+    if (typeof data.version === "number" && data.version > currentVersion) {
+      currentVersion = data.version;
+    }
+    if (typeof data.markdown === "string") lastMarkdown = data.markdown;
+  } catch (_) {
+    /* ignore; the safety poll will resync */
+  }
+}
+
 async function fetchState() {
   const res = await fetch("./state", { cache: "no-store" });
   if (!res.ok) return;
@@ -633,6 +700,11 @@ async function fetchState() {
   if (typeof data.theme === "string") deckTheme = normalizeTheme(data.theme);
   if (typeof data.presenterRunning === "boolean") {
     updatePresenterButton(data.presenterRunning);
+  }
+  // 編集モードの切り替えは版番号を伴わないので、バージョンガードより前に見る。
+  if (typeof data.architectureEdit === "boolean" && setArchitectureEditMode(data.architectureEdit)) {
+    renderSlide(lastMarkdown);
+    updateNav();
   }
   // Refresh the deck (titles for the overview) when its content changed.
   if (typeof data.deckVersion === "number" && data.deckVersion !== knownDeckVersion) {
@@ -987,14 +1059,17 @@ function init() {
 
   const params = new URLSearchParams(window.location.search);
   if (params.get("print") === "1") {
+    // 印刷は編集モードの分岐へ到達しない。ここを return から落とすと
+    // PDF に編集 UI が焼き込まれるので、回帰テストで固定してある。
     initPrint(params);
     return;
   }
   if (params.get("present") === "1") {
+    presenterMode = true;
     document.body.classList.add("presenter-mode");
   } else if (params.get("architectureEdit") === "1") {
-    architectureEditMode = true;
-    document.body.classList.add("architecture-edit-mode");
+    // ローカル確認用の導線。presenter とは else-if で排他になっている。
+    setArchitectureEditMode(true);
   }
 
   wireControls();

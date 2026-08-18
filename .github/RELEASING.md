@@ -58,6 +58,7 @@ Extension の動作には影響しません。
 | `npm run test:vendor` | 分割された vendor 資産のハッシュ整合性を検証 |
 | `npm run test:schema` | Architecture DSL の JSON Schema と `parseArchitecture` の判定一致を検証 |
 | `npm run test:unit` | Extension 同梱の `node --test`（Node 標準のみ、npm 依存なし） |
+| `npm run test:editing` | Architecture 図の編集ワークフロー（書き戻し・Undo/Redo・presenter/印刷での非表示） |
 | `npm run test:visual` | Playwright によるビジュアル回帰（4 テーマ） |
 | `npm run test:pdf` | 印刷モードを PDF 化してページ数・16:9・SVG 構造を検証 |
 | `npm test` | 上記すべて |

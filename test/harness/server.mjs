@@ -16,6 +16,7 @@
 //   GET  /export-data?token=    → 印刷モードのデッキ供給（?print=1 で必須）
 //   POST /export-status?token=  → 印刷モードの完了報告（200 を返さないと renderer が throw）
 //   POST /navigate              → ページ送り（index / delta）
+//   POST /edit                  → Architecture 図の書き戻し（編集モード時のみ）
 //   POST /present, /export      → 未対応を返すだけのスタブ
 //   GET  /vendor/mermaid.min.js → 分割チャンクから復元（ファイルとしては存在しない）
 //   GET  /renderer/*, /vendor/* → 拡張ディレクトリからの静的配信
@@ -27,6 +28,7 @@ import { join, resolve, normalize, sep, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { reconstructAsset } from "../../.github/extensions/presentation/scripts/vendor-assets.mjs";
+import { replaceArchitectureBlock } from "../../.github/extensions/presentation/scripts/markdown-blocks.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "..", "..");
@@ -117,6 +119,7 @@ export async function startHarness({
   theme = "dark",
   index = 0,
   printToken = "test-print-token",
+  architectureEdit = false,
 } = {}) {
   if (!Array.isArray(slides) || slides.length === 0) {
     throw new Error("startHarness requires a non-empty slides array");
@@ -135,9 +138,14 @@ export async function startHarness({
     slides: slides.slice(),
     index: Math.min(Math.max(index, 0), slides.length - 1),
     theme,
+    // Architecture 図の編集モード。本番の extension.mjs では canvas アクションで
+    // 切り替わるが、ハーネスでは起動時のオプションで固定する。
+    architectureEdit: Boolean(architectureEdit),
   };
   // renderer が POST してきた印刷結果。テスト側が "ready" を確認するために保持する。
   const printReports = [];
+  // renderer が POST してきた図の編集結果。テスト側が書き戻しを確認するために保持する。
+  const editReports = [];
   const sseClients = new Set();
 
   function broadcast() {
@@ -184,6 +192,7 @@ export async function startHarness({
         theme: state.theme,
         mode: "deck",
         presenterRunning: false,
+        architectureEdit: state.architectureEdit,
       });
       return;
     }
@@ -282,6 +291,59 @@ export async function startHarness({
       return;
     }
 
+    // Architecture 図の書き戻し。本番と同じ共有ユーティリティで n 番目の
+    // ```architecture フェンスを差し替える（フェンス走査を写経しないため）。
+    if (pathname === "/edit") {
+      if (req.method !== "POST") {
+        res.setHeader("Allow", "POST");
+        sendJson(res, 405, { ok: false, error: "method_not_allowed" });
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, error?.message === "payload_too_large" ? 413 : 400, {
+          ok: false,
+          error: "bad_request",
+        });
+        return;
+      }
+      if (!state.architectureEdit) {
+        sendJson(res, 409, { ok: false, error: "edit_mode_disabled" });
+        return;
+      }
+      if (typeof body.source !== "string" || !body.source.trim()) {
+        sendJson(res, 400, { ok: false, error: "source (string) is required" });
+        return;
+      }
+      const target = Number.isInteger(body.index) ? body.index : state.index;
+      const block = Number.isInteger(body.block) ? body.block : 0;
+      if (target < 0 || target >= state.slides.length) {
+        sendJson(res, 400, { ok: false, error: "index_out_of_range" });
+        return;
+      }
+      const next = replaceArchitectureBlock(state.slides[target], block, body.source);
+      if (next === null) {
+        sendJson(res, 404, { ok: false, error: "block_not_found" });
+        return;
+      }
+      state.slides[target] = next;
+      state.deckVersion += 1;
+      state.version += 1;
+      editReports.push({ index: target, block, source: body.source });
+      broadcast();
+      sendJson(res, 200, {
+        ok: true,
+        version: state.version,
+        deckVersion: state.deckVersion,
+        index: target,
+        block,
+        markdown: state.slides[state.index] ?? "",
+      });
+      return;
+    }
+
     // presenter 起動と PDF 書き出しは SDK / 外部ブラウザ側の責務なのでスタブに留める。
     if (pathname === "/present" || pathname === "/export") {
       if (req.method !== "POST") {
@@ -343,6 +405,8 @@ export async function startHarness({
     theme: state.theme,
     /** renderer が POST してきた印刷完了報告（{ status, error } の配列）。 */
     printReports,
+    /** renderer が POST してきた図の編集（{ index, block, source } の配列）。 */
+    editReports,
     /** 表示中スライドの番号（0 始まり）。 */
     get index() {
       return state.index;
