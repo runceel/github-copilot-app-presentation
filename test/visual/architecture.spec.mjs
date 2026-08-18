@@ -24,7 +24,13 @@ const FIXTURE = join(REPO_ROOT, "test", "fixtures", "architecture-visual.md");
 const SLIDES = splitFixtureDeck(readFileSync(FIXTURE, "utf8"));
 
 // スナップショット名。フィクスチャのスライド構成と 1:1 で対応させる。
-const SLIDE_NAMES = ["01-cover", "02-layout-groups", "03-shapes-routing", "04-backcover"];
+const SLIDE_NAMES = [
+  "01-cover",
+  "02-layout-groups",
+  "03-shapes-routing",
+  "04-dense-routing",
+  "05-backcover",
+];
 
 test("フィクスチャのスライド数がスナップショット名と一致する", () => {
   expect(SLIDES).toHaveLength(SLIDE_NAMES.length);

@@ -14,7 +14,7 @@ title: Architecture DSL visual regression
 deck: Architecture DSL
 kicker: Layout
 page: 2
-total: 4
+total: 5
 ---
 
 ## レイアウト駆動の構成図
@@ -162,7 +162,7 @@ total: 4
 deck: Architecture DSL
 kicker: Shapes & routing
 page: 3
-total: 4
+total: 5
 ---
 
 ## 図形・スタイル・経路の網羅
@@ -330,8 +330,54 @@ total: 4
 <!-- slide -->
 
 ---
+deck: Architecture DSL
+kicker: Routing
+page: 4
+total: 5
+---
+
+## 密な構成図の自動ルーティング
+
+10 ノード / 12 connector を手動 polyline なしで配線する
+
+```architecture
+{
+  "version": 1,
+  "title": "Dense routing regression",
+  "description": "Ten services wired with twelve crossing connectors, routed without any manual polyline.",
+  "canvas": { "width": 1600, "height": 900 },
+  "elements": [
+    { "type": "node", "id": "web", "x": 90, "y": 150, "width": 250, "height": 96, "text": "Web app", "icon": "user" },
+    { "type": "node", "id": "mobile", "x": 90, "y": 400, "width": 250, "height": 96, "text": "Mobile app", "icon": "user" },
+    { "type": "node", "id": "batch", "x": 90, "y": 650, "width": 250, "height": 96, "text": "Batch jobs", "icon": "server" },
+    { "type": "node", "id": "gateway", "x": 500, "y": 150, "width": 250, "height": 96, "text": "API gateway", "icon": "api" },
+    { "type": "node", "id": "auth", "x": 500, "y": 400, "width": 250, "height": 96, "text": "Auth service", "icon": "api" },
+    { "type": "node", "id": "queue", "x": 500, "y": 650, "width": 250, "height": 96, "text": "Message queue", "icon": "server" },
+    { "type": "node", "id": "orders", "x": 910, "y": 150, "width": 250, "height": 96, "text": "Orders", "icon": "server" },
+    { "type": "node", "id": "billing", "x": 910, "y": 400, "width": 250, "height": 96, "text": "Billing", "icon": "server" },
+    { "type": "node", "id": "search", "x": 910, "y": 650, "width": 250, "height": 96, "text": "Search", "icon": "server" },
+    { "type": "node", "id": "store", "x": 1320, "y": 400, "width": 200, "height": 96, "text": "Data store", "icon": "database" },
+    { "type": "connector", "from": "web", "to": "gateway", "routing": "orthogonal" },
+    { "type": "connector", "from": "mobile", "to": "gateway", "routing": "orthogonal" },
+    { "type": "connector", "from": "batch", "to": "queue", "routing": "orthogonal" },
+    { "type": "connector", "from": "gateway", "to": "auth", "routing": "orthogonal", "label": "verify" },
+    { "type": "connector", "from": "gateway", "to": "orders", "routing": "orthogonal" },
+    { "type": "connector", "from": "auth", "to": "billing", "routing": "orthogonal" },
+    { "type": "connector", "from": "queue", "to": "search", "routing": "orthogonal" },
+    { "type": "connector", "from": "orders", "to": "store", "routing": "orthogonal" },
+    { "type": "connector", "from": "billing", "to": "store", "routing": "orthogonal" },
+    { "type": "connector", "from": "search", "to": "store", "routing": "orthogonal" },
+    { "type": "connector", "from": "web", "to": "search", "routing": "orthogonal", "label": "query" },
+    { "type": "connector", "from": "batch", "to": "orders", "routing": "orthogonal", "label": "reconcile" }
+  ]
+}
+```
+
+<!-- slide -->
+
+---
 layout: backcover
 deck: Architecture DSL
-page: 4
-total: 4
+page: 5
+total: 5
 ---

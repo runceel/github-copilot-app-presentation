@@ -276,6 +276,15 @@ body.mermaid-loading .mermaid{visibility:hidden;}
 .architecture-error strong{color:#d13438;}
 .architecture-error span{font-family:"Cascadia Code","Cascadia Mono",Consolas,monospace;
      font-size:.75em;overflow-wrap:anywhere;}
+/* Connector routing degraded: a non-fatal notice. The diagram still renders,
+   so this is amber (not red) and uses role="status" rather than role="alert". */
+.architecture-routing-warning{display:flex;flex-direction:column;gap:.3em;margin:.4em 0 0;
+     padding:.55em .9em;border:1px solid #b26a00;border-radius:8px;
+     color:var(--body);background:color-mix(in srgb,#b26a00 12%,var(--surface));
+     font-size:.8em;}
+.architecture-routing-warning strong{color:#b26a00;}
+.architecture-routing-warning span{font-family:"Cascadia Code","Cascadia Mono",Consolas,monospace;
+     font-size:.85em;overflow-wrap:anywhere;}
 hr{border:0;border-top:1px solid var(--border);margin:.7em 0;}
 footer{flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;
        color:var(--muted);font-size:clamp(12px,1.7vh,16px);

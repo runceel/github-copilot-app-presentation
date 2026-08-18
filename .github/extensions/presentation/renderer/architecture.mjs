@@ -15,11 +15,58 @@ const MIN_FONT_SIZE = 8;
 const MAX_ROUTING_GRID_COORDINATES = 120;
 const MAX_ROUTING_GRID_POINTS = 10_000;
 const MAX_ROUTING_GRID_VISITS = 20_000;
+
+// ---------------------------------------------------------------- ルート費用
+// 経路の良し悪しを 1 本のスカラーに畳み込む。桁を大きく離してあるので比較は
+// 実質「ノード貫通 > ラベルがノードを隠す > 交差 > ラベル衝突 > 曲がり > 長さ」
+// の辞書式順序になる。逐次配置と後段の再配線が同じ物差しを使うことで、
+// 全体費用が下がったときだけ経路を差し替えられる。
+//
+// 重みの根拠: 「内容が読めなくなる」ものを最優先で潰す。ノード貫通は図が破綻する
+// ので最大。ラベルがノードを覆うと文字が消えるので交差より重い。交差 1 本は
+// routeInteractionScore が 100 を返すので実効 10,000。ラベル同士やラベルと線の
+// 重なりは読み取りに手間はかかるが情報は残るため、交差より軽くしてある。
+const ROUTE_COST_NODE_HIT = 1_000_000;
+const ROUTE_COST_INTERACTION = 100;
+const ROUTE_COST_LABEL_OVER_NODE = 24_000;
+const ROUTE_COST_LABEL_OVER_LABEL = 4_000;
+const ROUTE_COST_LABEL_OVER_ROUTE = 2_000;
+const ROUTE_COST_BEND = 30;
+// 浮動小数の誤差で「改善した」と誤判定しないための下限。
+const ROUTE_IMPROVEMENT_EPSILON = 0.5;
+// 再配線（rip-up and reroute）の上限。決定的に打ち切るための予算。
+const MAX_ROUTE_REFINEMENT_PASSES = 3;
+const MAX_ROUTE_REFINEMENT_REROUTES = 600;
+
+// ルーティングが劣化したときの理由。作者に出す文言と 1:1 で対応させる。
+const ROUTE_FALLBACK_REASONS = Object.freeze({
+  gridTooLarge: "grid-too-large",
+  gridVisitBudget: "grid-visit-budget",
+  gridUnreachable: "grid-unreachable",
+  endpointBlocked: "endpoint-blocked",
+  noCleanCandidate: "no-clean-candidate",
+});
+const ROUTE_FALLBACK_REMEDIES = Object.freeze({
+  "grid-too-large":
+    "the detour grid exceeded its size budget, so the diagram is too dense to route automatically",
+  "grid-visit-budget":
+    "the detour search exceeded its work budget before reaching the target",
+  "grid-unreachable": "no obstacle-free orthogonal corridor exists between the ports",
+  "endpoint-blocked": "the connector ports are enclosed by other elements",
+  "no-clean-candidate": "every candidate route is blocked by another element",
+});
+
 const ID_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
 const SHAPES = new Set(["rect", "rounded-rect", "ellipse"]);
 const ROUTINGS = new Set(["straight", "orthogonal", "polyline"]);
 const PORTS = new Set(["auto", "top", "right", "bottom", "left"]);
-const LAYOUTS = new Set(["row", "column", "grid"]);
+const LAYOUTS = new Set(["row", "column", "grid", "layered"]);
+const LAYOUT_DIRECTIONS = new Set(["down", "right"]);
+// layered レイアウトが接続グラフを読むときの再帰上限。MAX_DEPTH の検証より前に
+// 走るため、未検証の入力でスタックを溢れさせないよう独自に打ち切る。
+const MAX_GRAPH_SCAN_DEPTH = 16;
+// バリセンター法のスイープ回数。決定性のため固定する。
+const LAYERED_ORDERING_SWEEPS = 4;
 const ICONS = new Set(["cloud", "database", "api", "user", "server"]);
 const THEME_TOKENS = Object.freeze({
   accent: "var(--accent)",
@@ -51,6 +98,7 @@ const LAYOUT_KEYS = new Set([
   "columnGap",
   "padding",
   "columns",
+  "direction",
 ]);
 const ELEMENT_KEYS = Object.freeze({
   node: new Set([
@@ -279,22 +327,177 @@ function parseLayout(value, path) {
       columnGap: 36,
       padding: 54,
       columns: 3,
+      direction: "down",
     };
   }
   const layout = expectObject(value, path);
   rejectUnknownKeys(layout, LAYOUT_KEYS, path);
   const gap = numberIn(layout.gap, `${path}.gap`, 0, 240, 36);
+  const type = enumValue(layout.type, `${path}.type`, LAYOUTS);
+  if (layout.direction !== undefined && type !== "layered") {
+    fail(
+      `${path}.direction`,
+      "is only valid with layered layout",
+      'set "type": "layered" or remove the direction',
+    );
+  }
   return {
-    type: enumValue(layout.type, `${path}.type`, LAYOUTS),
+    type,
     gap,
     rowGap: numberIn(layout.rowGap, `${path}.rowGap`, 0, 240, gap),
     columnGap: numberIn(layout.columnGap, `${path}.columnGap`, 0, 240, gap),
     padding: numberIn(layout.padding, `${path}.padding`, 0, 400, 54),
     columns: Math.trunc(numberIn(layout.columns, `${path}.columns`, 1, 12, 3)),
+    direction: enumValue(
+      layout.direction,
+      `${path}.direction`,
+      LAYOUT_DIRECTIONS,
+      "down",
+    ),
   };
 }
 
-function layoutPlacements(children, group, layout, path) {
+/**
+ * 未検証の生 JSON から、要素 id と connector の辺だけを拾う先読みパス。
+ *
+ * layered レイアウトは「その group の直下の子」同士の接続を知る必要があるが、
+ * connector はルート直下に書かれることが多く、group の children だけを見ても
+ * 辺が見つからない。そこで flatten の前にツリー全体を 1 度走査しておく。
+ *
+ * ここはまだ検証前なので、壊れた入力でも決して throw しないこと。
+ * 本来の診断は後段の flattenElements / parseArchitecture が出す。
+ */
+function collectGraphEdges(rawElements, edges = [], depth = 0) {
+  if (!Array.isArray(rawElements) || depth > MAX_GRAPH_SCAN_DEPTH) return edges;
+  for (const raw of rawElements) {
+    if (!isObject(raw)) continue;
+    if (raw.type === "connector") {
+      if (typeof raw.from === "string" && typeof raw.to === "string") {
+        edges.push({ from: raw.from, to: raw.to });
+      }
+      continue;
+    }
+    collectGraphEdges(raw.children, edges, depth + 1);
+  }
+  return edges;
+}
+
+/** 生の子要素 1 つが抱える id をすべて集める（自分自身と子孫）。 */
+function collectSubtreeIds(raw, into = new Set(), depth = 0) {
+  if (!isObject(raw) || depth > MAX_GRAPH_SCAN_DEPTH) return into;
+  if (typeof raw.id === "string") into.add(raw.id);
+  if (Array.isArray(raw.children)) {
+    for (const child of raw.children) collectSubtreeIds(child, into, depth + 1);
+  }
+  return into;
+}
+
+/**
+ * 接続グラフから層を割り当てる。
+ *
+ * 層 = 「入力元からの最長距離」。閉路があると単調増加してしまうため、緩和回数を
+ * 要素数で打ち切り、最後に層番号を要素数未満へ丸める。これで閉路入りでも必ず
+ * 停止し、同じ入力からは必ず同じ層構成になる。
+ */
+function assignLayers(count, edges) {
+  const layers = new Array(count).fill(0);
+  for (let pass = 0; pass < count; pass += 1) {
+    let changed = false;
+    for (const [from, to] of edges) {
+      if (layers[to] < layers[from] + 1) {
+        layers[to] = layers[from] + 1;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return layers.map((layer) => Math.min(layer, Math.max(0, count - 1)));
+}
+
+/**
+ * 層内の並び順をバリセンター法で決める。隣接層での平均位置に寄せる操作を
+ * 上下方向へ交互に固定回数だけ繰り返す。安定ソート + 固定回数なので決定的。
+ */
+function orderLayers(layers, edges) {
+  const position = new Map();
+  layers.forEach((layer) => {
+    layer.forEach((item, index) => position.set(item, index));
+  });
+  const neighbours = new Map();
+  const addNeighbour = (key, value) => {
+    if (!neighbours.has(key)) neighbours.set(key, []);
+    neighbours.get(key).push(value);
+  };
+  for (const [from, to] of edges) {
+    addNeighbour(`down:${to}`, from);
+    addNeighbour(`up:${from}`, to);
+  }
+  const sweep = (layer, key) => {
+    const scored = layer.map((item, index) => {
+      const related = neighbours.get(`${key}:${item}`) || [];
+      const known = related
+        .map((other) => position.get(other))
+        .filter((value) => value !== undefined);
+      const barycenter = known.length
+        ? known.reduce((total, value) => total + value, 0) / known.length
+        : index;
+      return { item, index, barycenter };
+    });
+    scored.sort(
+      (left, right) =>
+        left.barycenter - right.barycenter || left.index - right.index,
+    );
+    const ordered = scored.map((entry) => entry.item);
+    ordered.forEach((item, index) => position.set(item, index));
+    return ordered;
+  };
+  let current = layers.map((layer) => layer.slice());
+  for (let sweepIndex = 0; sweepIndex < LAYERED_ORDERING_SWEEPS; sweepIndex += 1) {
+    if (sweepIndex % 2 === 0) {
+      for (let index = 1; index < current.length; index += 1) {
+        current[index] = sweep(current[index], "down");
+      }
+    } else {
+      for (let index = current.length - 2; index >= 0; index -= 1) {
+        current[index] = sweep(current[index], "up");
+      }
+    }
+  }
+  return current;
+}
+
+/** layered レイアウトの層構成（層ごとの flowIndex の並び）を返す。 */
+function layeredGrouping(flowItems, children, graphEdges) {
+  const owner = new Map();
+  flowItems.forEach(({ index }, flowIndex) => {
+    for (const id of collectSubtreeIds(children[index])) {
+      if (!owner.has(id)) owner.set(id, flowIndex);
+    }
+  });
+  const seen = new Set();
+  const edges = [];
+  for (const edge of graphEdges) {
+    const from = owner.get(edge.from);
+    const to = owner.get(edge.to);
+    if (from === undefined || to === undefined || from === to) continue;
+    const key = `${from}>${to}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    edges.push([from, to]);
+  }
+  const layerOf = assignLayers(flowItems.length, edges);
+  const grouped = [];
+  layerOf.forEach((layer, flowIndex) => {
+    if (!grouped[layer]) grouped[layer] = [];
+    grouped[layer].push(flowIndex);
+  });
+  return orderLayers(
+    grouped.filter((layer) => layer && layer.length),
+    edges,
+  );
+}
+
+function layoutPlacements(children, group, layout, path, graphEdges = []) {
   if (!layout) return new Map();
   const flowItems = children
     .map((child, index) => ({ child, index }))
@@ -316,13 +519,32 @@ function layoutPlacements(children, group, layout, path) {
     );
   }
   const count = flowItems.length;
-  const columns =
-    layout.type === "column"
-      ? 1
-      : layout.type === "row"
-        ? count
-        : Math.min(layout.columns, count);
-  const rows = Math.ceil(count / columns);
+  // 「主軸に何本並ぶか（tracks）」と「各 track の中身」に正規化してから配置する。
+  // row / column / grid は宣言順で機械的に切り、layered だけ接続グラフから決める。
+  let tracks;
+  let vertical;
+  if (layout.type === "layered") {
+    tracks = layeredGrouping(flowItems, children, graphEdges);
+    vertical = layout.direction === "down";
+  } else {
+    const columns =
+      layout.type === "column"
+        ? 1
+        : layout.type === "row"
+          ? count
+          : Math.min(layout.columns, count);
+    tracks = [];
+    for (let flowIndex = 0; flowIndex < count; flowIndex += 1) {
+      const row = Math.floor(flowIndex / columns);
+      if (!tracks[row]) tracks[row] = [];
+      tracks[row].push(flowIndex);
+    }
+    vertical = true;
+  }
+  const trackCount = tracks.length;
+  const widest = Math.max(...tracks.map((track) => track.length));
+  const rows = vertical ? trackCount : widest;
+  const columns = vertical ? widest : trackCount;
   const cellWidth = (inner.width - layout.columnGap * (columns - 1)) / columns;
   const cellHeight = (inner.height - layout.rowGap * (rows - 1)) / rows;
   if (cellWidth < 24 || cellHeight < 24) {
@@ -332,38 +554,51 @@ function layoutPlacements(children, group, layout, path) {
       "reduce layout gap/padding, enlarge the group, or move some children out",
     );
   }
-  flowItems.forEach(({ child, index }, flowIndex) => {
-    const column = flowIndex % columns;
-    const row = Math.floor(flowIndex / columns);
-    const defaultWidth = child.type === "group" ? cellWidth : Math.min(cellWidth, 340);
-    const defaultHeight = child.type === "group" ? cellHeight : Math.min(cellHeight, 170);
-    const width = numberIn(
-      child.width,
-      `${path}.children[${index}].width`,
-      1,
-      cellWidth,
-      defaultWidth,
-      "the parent layout limits each cell; reduce the value, enlarge the group, or drop width to use the automatic size",
-    );
-    const height = numberIn(
-      child.height,
-      `${path}.children[${index}].height`,
-      1,
-      cellHeight,
-      defaultHeight,
-      "the parent layout limits each cell; reduce the value, enlarge the group, or drop height to use the automatic size",
-    );
-    placements.set(index, {
-      x:
-        inner.x +
-        column * (cellWidth + layout.columnGap) +
-        (cellWidth - width) / 2,
-      y:
-        inner.y +
-        row * (cellHeight + layout.rowGap) +
-        (cellHeight - height) / 2,
-      width,
-      height,
+  tracks.forEach((track, trackIndex) => {
+    // layered は層ごとに本数が違うので track 全体を副軸方向で中央へ寄せる。
+    // row / column / grid は従来どおり先頭詰めのまま（既存の図をずらさない）。
+    const spanCells = track.length;
+    const span = vertical
+      ? spanCells * cellWidth + layout.columnGap * (spanCells - 1)
+      : spanCells * cellHeight + layout.rowGap * (spanCells - 1);
+    const offset =
+      layout.type !== "layered"
+        ? 0
+        : vertical
+          ? (inner.width - span) / 2
+          : (inner.height - span) / 2;
+    track.forEach((flowIndex, positionInTrack) => {
+      const { child, index } = flowItems[flowIndex];
+      const defaultWidth = child.type === "group" ? cellWidth : Math.min(cellWidth, 340);
+      const defaultHeight = child.type === "group" ? cellHeight : Math.min(cellHeight, 170);
+      const width = numberIn(
+        child.width,
+        `${path}.children[${index}].width`,
+        1,
+        cellWidth,
+        defaultWidth,
+        "the parent layout limits each cell; reduce the value, enlarge the group, or drop width to use the automatic size",
+      );
+      const height = numberIn(
+        child.height,
+        `${path}.children[${index}].height`,
+        1,
+        cellHeight,
+        defaultHeight,
+        "the parent layout limits each cell; reduce the value, enlarge the group, or drop height to use the automatic size",
+      );
+      const cellX = vertical
+        ? inner.x + offset + positionInTrack * (cellWidth + layout.columnGap)
+        : inner.x + trackIndex * (cellWidth + layout.columnGap);
+      const cellY = vertical
+        ? inner.y + trackIndex * (cellHeight + layout.rowGap)
+        : inner.y + offset + positionInTrack * (cellHeight + layout.rowGap);
+      placements.set(index, {
+        x: cellX + (cellWidth - width) / 2,
+        y: cellY + (cellHeight - height) / 2,
+        width,
+        height,
+      });
     });
   });
   return placements;
@@ -390,6 +625,7 @@ function flattenElements(
   ids,
   path = "elements",
   placements = new Map(),
+  graphEdges = [],
 ) {
   if (!Array.isArray(rawElements)) fail(path, "must be an array", "use a JSON array such as [ ]");
   if (depth > MAX_DEPTH) {
@@ -557,7 +793,13 @@ function flattenElements(
     };
     output.push(group);
     const children = element.children === undefined ? [] : element.children;
-    const childPlacements = layoutPlacements(children, group, group.layout, elementPath);
+    const childPlacements = layoutPlacements(
+      children,
+      group,
+      group.layout,
+      elementPath,
+      graphEdges,
+    );
     flattenElements(
       children,
       { x: group.x, y: group.y },
@@ -566,6 +808,7 @@ function flattenElements(
       ids,
       `${elementPath}.children`,
       childPlacements,
+      graphEdges,
     );
   });
 }
@@ -784,7 +1027,16 @@ export function parseArchitecture(source) {
     elements: [],
   };
   const ids = new Set();
-  flattenElements(root.elements, { x: 0, y: 0 }, 0, model.elements, ids);
+  flattenElements(
+    root.elements,
+    { x: 0, y: 0 },
+    0,
+    model.elements,
+    ids,
+    "elements",
+    new Map(),
+    collectGraphEdges(root.elements),
+  );
   const connectable = new Set(
     model.elements.filter((element) => element.type !== "connector").map((element) => element.id),
   );
@@ -1031,12 +1283,68 @@ function segmentIntersectsBox(start, end, box, margin = 18) {
   return false;
 }
 
-function routeHitsNodes(points, nodes, excludedIds) {
+function countNodeHits(points, nodes, excludedIds) {
+  let hits = 0;
   for (let index = 1; index < points.length; index++) {
     for (const node of nodes) {
       if (excludedIds.has(node.id)) continue;
-      if (segmentIntersectsBox(points[index - 1], points[index], node)) return true;
+      if (segmentIntersectsBox(points[index - 1], points[index], node)) hits += 1;
     }
+  }
+  return hits;
+}
+
+function routeHitsNodes(points, nodes, excludedIds) {
+  return countNodeHits(points, nodes, excludedIds) > 0;
+}
+
+function boxesOverlap(first, second) {
+  return (
+    first.x < second.x + second.width &&
+    second.x < first.x + first.width &&
+    first.y < second.y + second.height &&
+    second.y < first.y + first.height
+  );
+}
+
+/**
+ * ラベルのピル（角丸矩形）の寸法。renderConnector と経路計算が同じ関数を使うことで
+ * 「見えているラベル」と「経路計算が避けようとしたラベル」がずれないようにする。
+ */
+function connectorLabelMetrics(element) {
+  const fitted = fitTextToWidth(
+    element.label,
+    element.style.fontSize,
+    MAX_CONNECTOR_LABEL_WIDTH - CONNECTOR_LABEL_PADDING,
+  );
+  return {
+    text: fitted.text,
+    fontSize: fitted.fontSize,
+    width: Math.min(
+      MAX_CONNECTOR_LABEL_WIDTH,
+      Math.max(70, fitted.width + CONNECTOR_LABEL_PADDING),
+    ),
+    height: fitted.fontSize * 1.55,
+  };
+}
+
+/** ラベルが実際に占める矩形。ラベルが無い connector は null。 */
+function connectorLabelBox(element, points) {
+  if (!element?.label || points.length < 2) return null;
+  const metrics = connectorLabelMetrics(element);
+  const position = pointAtHalfLength(points);
+  return {
+    x: position.x - metrics.width / 2,
+    y: position.y - metrics.height / 2,
+    width: metrics.width,
+    height: metrics.height,
+  };
+}
+
+/** ラベルの矩形を経路が横切るか。矩形との交差判定は margin 0 で行う。 */
+function boxOverlapsRoute(box, points) {
+  for (let index = 1; index < points.length; index++) {
+    if (segmentIntersectsBox(points[index - 1], points[index], box, 0)) return true;
   }
   return false;
 }
@@ -1113,18 +1421,135 @@ function routeInteractionScore(points, occupiedRoutes) {
   return score;
 }
 
-function chooseRoute(candidates, nodes, excludedIds, occupiedRoutes) {
-  const safe = candidates.filter(
-    (points) => !routeHitsNodes(points, nodes, excludedIds),
-  );
-  const available = safe.length ? safe : candidates;
-  if (!occupiedRoutes.length) return available[0];
-  return available.reduce((best, candidate) =>
-    routeInteractionScore(candidate, occupiedRoutes) <
-    routeInteractionScore(best, occupiedRoutes)
-      ? candidate
-      : best,
-  );
+// 「重なり」ではなく純粋な交差だけを数える。
+// 再配線でこの値が増えないことを保証するために使う。交差の最小化が
+// このフェーズの第一目標であり、ラベルの見やすさと引き換えにしてはいけない。
+function countRouteCrossings(points, occupiedRoutes) {
+  let crossings = 0;
+  for (let index = 1; index < points.length; index++) {
+    for (const occupied of occupiedRoutes) {
+      for (let occupiedIndex = 1; occupiedIndex < occupied.length; occupiedIndex++) {
+        const score = segmentInteractionScore(
+          points[index - 1],
+          points[index],
+          occupied[occupiedIndex - 1],
+          occupied[occupiedIndex],
+        );
+        if (score === 100) crossings += 1;
+      }
+    }
+  }
+  return crossings;
+}
+
+/**
+ * この経路が隠してしまう「読めるはずだった中身」の数。
+ *
+ * 線がノードを貫いた数と、ラベルのピルがノードに重なった数の合計。両端の
+ * ノードは接続先なので数えない。交差は読みにくいだけだが、これは情報が
+ * 消えるので、refinement のガードで交差より重く扱うための指標。
+ */
+function countHiddenContent(connector, points, nodes) {
+  const excludedIds = new Set([connector.from, connector.to]);
+  let hidden = countNodeHits(points, nodes, excludedIds);
+  const labelBox = connectorLabelBox(connector, points);
+  if (!labelBox) return hidden;
+  for (const node of nodes) {
+    if (excludedIds.has(node.id)) continue;
+    if (boxesOverlap(labelBox, node)) hidden += 1;
+  }
+  return hidden;
+}
+
+function routeLength(points) {
+  let total = 0;
+  for (let index = 1; index < points.length; index++) {
+    total += Math.hypot(
+      points[index].x - points[index - 1].x,
+      points[index].y - points[index - 1].y,
+    );
+  }
+  return total;
+}
+
+function countBends(points) {
+  let bends = 0;
+  for (let index = 1; index < points.length - 1; index++) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const next = points[index + 1];
+    const incoming = Math.sign(current.x - previous.x) || Math.sign(current.y - previous.y) * 2;
+    const outgoing = Math.sign(next.x - current.x) || Math.sign(next.y - current.y) * 2;
+    const horizontalIn = Math.abs(current.x - previous.x) > 0.001;
+    const horizontalOut = Math.abs(next.x - current.x) > 0.001;
+    if (horizontalIn !== horizontalOut || incoming !== outgoing) bends += 1;
+  }
+  return bends;
+}
+
+/**
+ * 経路 1 本の総合コスト。逐次配置・格子探索・再配線がすべてこの 1 本の物差しを使う。
+ *
+ * ラベル項を「自分のラベル vs 他人の経路」と「他人のラベル vs 自分の経路」の
+ * 両方向で数えているのが要点。片側だけだと、1 本だけ引き直したときのコスト差が
+ * 図全体のコスト差と一致せず、再配線が振動しうる。両方向を数えれば差分は厳密で、
+ * 「改善したときだけ採用」が図全体の単調改善になることを保証できる。
+ *
+ * ラベル項は connector の両端ノードを除外する。除外しないと、短い connector が
+ * 自分の接続先からラベルを逃がすためだけに不自然な大回りをしてしまう。
+ */
+function routeCost(points, context) {
+  const {
+    nodes = [],
+    excludedIds = new Set(),
+    occupiedRoutes = [],
+    occupiedLabels = [],
+    connector = null,
+  } = context;
+  let cost = countNodeHits(points, nodes, excludedIds) * ROUTE_COST_NODE_HIT;
+  cost += routeInteractionScore(points, occupiedRoutes) * ROUTE_COST_INTERACTION;
+  const labelBox = connectorLabelBox(connector, points);
+  if (labelBox) {
+    for (const node of nodes) {
+      if (excludedIds.has(node.id)) continue;
+      if (boxesOverlap(labelBox, node)) cost += ROUTE_COST_LABEL_OVER_NODE;
+    }
+    for (const other of occupiedLabels) {
+      if (boxesOverlap(labelBox, other)) cost += ROUTE_COST_LABEL_OVER_LABEL;
+    }
+    for (const route of occupiedRoutes) {
+      if (boxOverlapsRoute(labelBox, route)) cost += ROUTE_COST_LABEL_OVER_ROUTE;
+    }
+  }
+  for (const other of occupiedLabels) {
+    if (boxOverlapsRoute(other, points)) cost += ROUTE_COST_LABEL_OVER_ROUTE;
+  }
+  cost += countBends(points) * ROUTE_COST_BEND;
+  return cost + routeLength(points);
+}
+
+/**
+ * 候補からコスト最小のものを選ぶ。同点なら先に並んでいるほうを残すので、
+ * 候補の生成順（＝宣言順に対して安定）がそのまま決定性になる。
+ */
+function chooseRoute(candidates, nodes, excludedIds, occupiedRoutes, options = {}) {
+  const context = {
+    nodes,
+    excludedIds,
+    occupiedRoutes,
+    occupiedLabels: options.occupiedLabels || [],
+    connector: options.connector || null,
+  };
+  let best = candidates[0];
+  let bestCost = routeCost(best, context);
+  for (let index = 1; index < candidates.length; index++) {
+    const cost = routeCost(candidates[index], context);
+    if (cost < bestCost) {
+      best = candidates[index];
+      bestCost = cost;
+    }
+  }
+  return best;
 }
 
 function gridRoute(start, end, nodes, excludedIds, canvas, occupiedRoutes) {
@@ -1154,7 +1579,7 @@ function gridRoute(start, end, nodes, excludedIds, canvas, occupiedRoutes) {
     ys.size > MAX_ROUTING_GRID_COORDINATES ||
     xs.size * ys.size > MAX_ROUTING_GRID_POINTS
   ) {
-    return null;
+    return { points: null, reason: ROUTE_FALLBACK_REASONS.gridTooLarge };
   }
   const xValues = [...xs].sort((left, right) => left - right);
   const yValues = [...ys].sort((left, right) => left - right);
@@ -1199,7 +1624,9 @@ function gridRoute(start, end, nodes, excludedIds, canvas, occupiedRoutes) {
 
   const startKey = keyOf(start);
   const endKey = keyOf(end);
-  if (!points.has(startKey) || !points.has(endKey)) return null;
+  if (!points.has(startKey) || !points.has(endKey)) {
+    return { points: null, reason: ROUTE_FALLBACK_REASONS.endpointBlocked };
+  }
   const stateKey = (pointKey, direction) => `${pointKey}|${direction}`;
   const initialState = stateKey(startKey, "N");
   const distances = new Map([[initialState, 0]]);
@@ -1272,20 +1699,45 @@ function gridRoute(start, end, nodes, excludedIds, canvas, occupiedRoutes) {
       push({ state: nextState, distance: nextDistance });
     }
   }
-  if (!finalState) return null;
+  if (!finalState) {
+    // 打ち切りと「そもそも通れない」を区別する。作者への案内が変わるため。
+    return {
+      points: null,
+      reason:
+        visits >= MAX_ROUTING_GRID_VISITS
+          ? ROUTE_FALLBACK_REASONS.gridVisitBudget
+          : ROUTE_FALLBACK_REASONS.gridUnreachable,
+    };
+  }
   const route = [];
   for (let state = finalState; state; state = previous.get(state)) {
     route.push(points.get(state.slice(0, state.lastIndexOf("|"))));
   }
-  return compressPoints(route.reverse());
+  return { points: compressPoints(route.reverse()), reason: null };
 }
 
+/**
+ * connector 1 本の経路を決める。
+ *
+ * フォールバックの段取り（仕様として固定）:
+ *   1. 候補列挙 → routeCost 最小を選ぶ
+ *   2. それがノードを貫通する / 既存経路と干渉するときだけ格子探索へ
+ *   3. 格子解も routeCost で測り、改善したときだけ採用する
+ *   4. それでもノードやラベルを覆っているなら options.report へ通知する
+ *      （throw はしない。今まで描けていた図をエラーに変えないため）
+ *
+ * options は純粋な追加。4 引数で呼ぶ既存コードはそのまま動く。
+ */
 export function computeConnectorRoute(
   connector,
   lookup,
   canvas = DEFAULT_CANVAS,
   occupiedRoutes = [],
+  options = {},
 ) {
+  const occupiedLabels = options.occupiedLabels || [];
+  const report = options.report || null;
+  const onReason = options.onReason || null;
   const from = lookup.get(connector.from);
   const to = lookup.get(connector.to);
   if (!from || !to) throw new ArchitectureError("connector: references an unknown element");
@@ -1672,11 +2124,26 @@ export function computeConnectorRoute(
       ]),
     ];
   }
-  const selected = chooseRoute(candidates, nodes, excluded, occupiedRoutes);
+  const routingContext = {
+    nodes,
+    excludedIds: excluded,
+    occupiedRoutes,
+    occupiedLabels,
+    connector,
+  };
+  const selected = chooseRoute(candidates, nodes, excluded, occupiedRoutes, {
+    occupiedLabels,
+    connector,
+  });
+  const selectedCost = routeCost(selected, routingContext);
   const selectedHitsNodes = routeHitsNodes(selected, nodes, excluded);
   const selectedInteraction = routeInteractionScore(selected, occupiedRoutes);
+  let chosen = selected;
+  let gridReason = null;
+  // フォールバック段階 2: 候補が汚れているときだけ格子探索へエスカレートする。
+  // 格子探索は高価なので、無条件には走らせない。
   if (selectedHitsNodes || (occupiedRoutes.length && selectedInteraction > 0)) {
-    const alternateCore = gridRoute(
+    const grid = gridRoute(
       fromStub,
       toStub,
       nodes,
@@ -1684,21 +2151,64 @@ export function computeConnectorRoute(
       canvas,
       occupiedRoutes,
     );
-    const alternate = alternateCore
-      ? compressPoints([start, fromStub, ...alternateCore, toStub, end])
+    gridReason = grid.reason;
+    const alternate = grid.points
+      ? compressPoints([start, fromStub, ...grid.points, toStub, end])
       : null;
-    if (
-      alternate &&
-      (!routeHitsNodes(alternate, nodes, excluded)) &&
-      (selectedHitsNodes ||
-        routeInteractionScore(alternate, occupiedRoutes) < selectedInteraction)
-    ) {
-      return alternate;
+    // フォールバック段階 3: 格子解も同じ物差しで測り、改善したときだけ採る。
+    if (alternate && routeCost(alternate, routingContext) < selectedCost) {
+      chosen = alternate;
     }
   }
-  return selected;
+  // フォールバック段階 4: それでも内容を隠しているなら、黙って出さずに報告する。
+  // onReason は「なぜ格子探索に頼れなかったか」を呼び出し元へ渡すためのフック。
+  // planConnectorRoutes は経路確定後にまとめて診断を採るので、途中で分かった
+  // 打ち切り理由をここで拾っておかないと no-clean-candidate に丸められてしまう。
+  if (typeof onReason === "function") onReason(gridReason);
+  reportRouteDegradation(report, connector, chosen, routingContext, gridReason);
+  return chosen;
 }
 
+/**
+ * 描画結果が「内容を隠している」ときだけ診断を積む。
+ *
+ * 交差そのものは報告しない。平面的でないグラフでは交差は避けようがなく、
+ * すべて報告するとノイズになって本当に困っている図が埋もれる。
+ * 報告するのは経路がノードを貫通した場合とラベルがノードを覆った場合だけ。
+ */
+function reportRouteDegradation(report, connector, points, context, gridReason) {
+  if (typeof report !== "function") return;
+  const { nodes, excludedIds } = context;
+  const pathHits = countNodeHits(points, nodes, excludedIds);
+  const labelBox = connectorLabelBox(connector, points);
+  const labelHits = labelBox
+    ? nodes.filter(
+        (node) => !excludedIds.has(node.id) && boxesOverlap(labelBox, node),
+      ).length
+    : 0;
+  if (!pathHits && !labelHits) return;
+  report({
+    from: connector.from,
+    to: connector.to,
+    sourcePath: connector.sourcePath,
+    kind: pathHits ? "path-overlaps-node" : "label-overlaps-node",
+    reason: gridReason || ROUTE_FALLBACK_REASONS.noCleanCandidate,
+    pathOverlaps: pathHits,
+    labelOverlaps: labelHits,
+  });
+}
+
+/**
+ * 図全体の経路を決める。
+ *
+ * パス 0 は従来どおりの逐次配置。その後 rip-up and reroute を固定回数だけ回す。
+ * 逐次配置は最初の 1 本が「まだ何も置かれていない」状態で決まってしまうため、
+ * 全体を見れば明らかに損な経路が残る。再配線では各 connector を「自分以外の
+ * すべての経路」に対して引き直し、routeCost が確実に下がったときだけ差し替える。
+ *
+ * 決定性: connector の走査順は固定、乱数なし、採用条件は厳密な不等号。
+ * 停止性: コストは単調非増加で、パス数と再配線本数の両方に上限がある。
+ */
 function planConnectorRoutes(model, lookup) {
   const connectors = model.elements
     .filter((element) => element.type === "connector")
@@ -1714,19 +2224,117 @@ function planConnectorRoutes(model, lookup) {
         Math.abs(rightFrom.x - rightTo.x) + Math.abs(rightFrom.y - rightTo.y);
       return leftDistance - rightDistance || left.order - right.order;
     });
+  const nodes = [...lookup.values()].filter((element) => element.type === "node");
   const routes = new Map();
   const occupied = [];
+  const labels = new Map();
+  // 経路ごとの「格子探索を諦めた理由」。最後の診断でこれを使う。
+  const reasons = new Map();
+  const noteReason = (connector) => (reason) => {
+    if (reason) reasons.set(connector, reason);
+    else reasons.delete(connector);
+  };
   for (const connector of connectors) {
-    const route = computeConnectorRoute(
-      connector,
-      lookup,
-      model.canvas,
-      occupied,
-    );
+    const route = computeConnectorRoute(connector, lookup, model.canvas, occupied, {
+      occupiedLabels: [...labels.values()],
+      onReason: noteReason(connector),
+    });
     routes.set(connector, route);
     occupied.push(route);
+    const box = connectorLabelBox(connector, route);
+    if (box) labels.set(connector, box);
   }
-  return routes;
+
+  const othersOf = (target) =>
+    connectors.filter((c) => c !== target).map((c) => routes.get(c));
+  const otherLabelsOf = (target) =>
+    connectors.filter((c) => c !== target).map((c) => labels.get(c)).filter(Boolean);
+  const costOf = (connector, points, others, otherLabels) =>
+    routeCost(points, {
+      nodes,
+      excludedIds: new Set([connector.from, connector.to]),
+      occupiedRoutes: others,
+      occupiedLabels: otherLabels,
+      connector,
+    });
+
+  let reroutes = 0;
+  for (let pass = 0; pass < MAX_ROUTE_REFINEMENT_PASSES; pass += 1) {
+    let improved = false;
+    for (const connector of connectors) {
+      // straight / polyline は作者が明示した形。勝手に引き直さない。
+      if (connector.routing !== "orthogonal") continue;
+      if (reroutes >= MAX_ROUTE_REFINEMENT_REROUTES) break;
+      reroutes += 1;
+      const others = othersOf(connector);
+      const otherLabels = otherLabelsOf(connector);
+      const current = routes.get(connector);
+      const currentCost = costOf(connector, current, others, otherLabels);
+      const currentCrossings = countRouteCrossings(current, others);
+      const currentHidden = countHiddenContent(connector, current, nodes);
+      let candidateReason = null;
+      const candidate = computeConnectorRoute(
+        connector,
+        lookup,
+        model.canvas,
+        others,
+        {
+          occupiedLabels: otherLabels,
+          onReason: (reason) => {
+            candidateReason = reason;
+          },
+        },
+      );
+      if (costOf(connector, candidate, others, otherLabels) >= currentCost - ROUTE_IMPROVEMENT_EPSILON) {
+        continue;
+      }
+      // コストが下がっても交差が増えるなら原則として採らない。ラベルを
+      // 見やすくするために交差を増やす取引を禁じるガード。connector 1 本しか
+      // 変わらないので、この差分はそのままグラフ全体の交差数の差分になる。
+      //
+      // 例外は「ノードが隠れている状態を解消する」場合だけ。読めない図より
+      // 交差が 1 本増えた図のほうがましなので、そこだけ通す。
+      if (countRouteCrossings(candidate, others) > currentCrossings) {
+        if (countHiddenContent(connector, candidate, nodes) >= currentHidden) continue;
+      }
+      routes.set(connector, candidate);
+      // 経路を差し替えたときだけ理由も差し替える。棄却した候補の理由は残さない。
+      if (candidateReason) reasons.set(connector, candidateReason);
+      else reasons.delete(connector);
+      const box = connectorLabelBox(connector, candidate);
+      if (box) labels.set(connector, box);
+      else labels.delete(connector);
+      improved = true;
+    }
+    if (!improved) break;
+  }
+
+  // 最終形が確定してから 1 度だけ診断を採る。途中経過で警告を出すと、
+  // 後で解消された劣化まで報告してしまう。
+  const diagnostics = [];
+  for (const connector of connectors) {
+    if (connector.routing !== "orthogonal") continue;
+    reportRouteDegradation(
+      (entry) => diagnostics.push(entry),
+      connector,
+      routes.get(connector),
+      {
+        nodes,
+        excludedIds: new Set([connector.from, connector.to]),
+        occupiedRoutes: othersOf(connector),
+        occupiedLabels: otherLabelsOf(connector),
+        connector,
+      },
+      reasons.get(connector) || null,
+    );
+  }
+  diagnostics.sort(
+    (left, right) =>
+      left.sourcePath.localeCompare(right.sourcePath) ||
+      left.from.localeCompare(right.from) ||
+      left.to.localeCompare(right.to),
+  );
+  return { routes, diagnostics };
 }
 
 function pointAtHalfLength(points) {
@@ -1915,16 +2523,8 @@ function renderConnector(documentRef, element, points, markerId) {
   );
   if (element.label) {
     const position = pointAtHalfLength(points);
-    const fittedLabel = fitTextToWidth(
-      element.label,
-      element.style.fontSize,
-      MAX_CONNECTOR_LABEL_WIDTH - CONNECTOR_LABEL_PADDING,
-    );
-    const width = Math.min(
-      MAX_CONNECTOR_LABEL_WIDTH,
-      Math.max(70, fittedLabel.width + CONNECTOR_LABEL_PADDING),
-    );
-    const height = fittedLabel.fontSize * 1.55;
+    const fittedLabel = connectorLabelMetrics(element);
+    const { width, height } = fittedLabel;
     group.appendChild(
       svgElement(documentRef, "rect", {
         x: position.x - width / 2,
@@ -2031,10 +2631,14 @@ export function architectureSemanticSnapshot(model) {
       .filter((element) => element.type !== "connector")
       .map((element) => [element.id, element]),
   );
-  const connectorRoutes = planConnectorRoutes(model, lookup);
+  const { routes: connectorRoutes, diagnostics } = planConnectorRoutes(model, lookup);
   return {
     version: model.version,
     canvas: model.canvas,
+    routing: {
+      degraded: diagnostics.length > 0,
+      diagnostics,
+    },
     elements: model.elements.map((element) => {
       if (element.type === "connector") {
         return {
@@ -2093,7 +2697,8 @@ export function renderArchitectureDiagram(
       .filter((element) => element.type !== "connector")
       .map((element) => [element.id, element]),
   );
-  const connectorRoutes = planConnectorRoutes(model, lookup);
+  const { routes: connectorRoutes, diagnostics: routingDiagnostics } =
+    planConnectorRoutes(model, lookup);
   model.elements.forEach((element, index) => {
     if (element.type !== "connector" || !element.arrow) return;
     const markerId = `architecture-arrow-${renderId}-${index}`;
@@ -2134,8 +2739,47 @@ export function renderArchitectureDiagram(
     }
   });
   wrapper.appendChild(svg);
+  appendRoutingWarning(documentRef, wrapper, routingDiagnostics);
   if (options.editable) attachArchitectureEditor(wrapper, documentRef);
   return wrapper;
+}
+
+/**
+ * ルーティングが劣化したことを作者に伝える。
+ *
+ * ArchitectureError は投げない。投げると、これまで描けていた図が突然エラー
+ * ブロックに変わる破壊的変更になるため。代わりに次の 3 経路で知らせる。
+ *
+ *  1. 図の下の帯（role="status" / aria-live="polite"）
+ *     - "alert" ではなく "status" にしてある。これはエラーではなく品質劣化で、
+ *       発表中の読み上げに割り込むほどの緊急度ではないため。
+ *  2. wrapper の data-architecture-routing 属性（テストや自動化からの参照用）
+ *  3. console.warn（オーサリング中に気づくため。error にすると
+ *     ビジュアル回帰テストが「ページの JS エラー」として落ちてしまう）
+ */
+function appendRoutingWarning(documentRef, wrapper, diagnostics) {
+  if (!diagnostics?.length) return;
+  wrapper.setAttribute("data-architecture-routing", "degraded");
+  const summary = diagnostics
+    .map(
+      (entry) =>
+        `${entry.sourcePath}: ${entry.from} -> ${entry.to} (${entry.kind}, ${entry.reason})`,
+    )
+    .join("; ");
+  globalThis.console?.warn?.(
+    `architecture: ${diagnostics.length} connector route(s) could not avoid other elements; ${summary}`,
+  );
+  const banner = documentRef.createElement("div");
+  banner.className = "architecture-routing-warning";
+  banner.setAttribute("role", "status");
+  banner.setAttribute("aria-live", "polite");
+  const heading = documentRef.createElement("strong");
+  heading.textContent = `Connector routing degraded (${diagnostics.length})`;
+  banner.appendChild(heading);
+  const detail = documentRef.createElement("span");
+  detail.textContent = `${summary}. Add "routing": "polyline" with explicit points, or move the elements apart.`;
+  banner.appendChild(detail);
+  wrapper.appendChild(banner);
 }
 
 export function renderArchitectureBlock(
@@ -2164,15 +2808,21 @@ export {
   DSL_VERSION,
   ICONS,
   ID_PATTERN,
+  LAYOUT_DIRECTIONS,
   LAYOUTS,
   LITERAL_COLORS,
   MAX_CONNECTORS,
   MAX_DEPTH,
   MAX_ELEMENTS,
   MAX_POINTS,
+  MAX_ROUTE_REFINEMENT_PASSES,
+  MAX_ROUTING_GRID_COORDINATES,
+  MAX_ROUTING_GRID_POINTS,
+  MAX_ROUTING_GRID_VISITS,
   MAX_SOURCE_LENGTH,
   MAX_TOTAL_TEXT,
   PORTS,
+  ROUTE_FALLBACK_REASONS,
   ROUTINGS,
   SHAPES,
   THEME_TOKENS,

@@ -314,6 +314,47 @@ export const corpus = [
       }),
     ]),
   },
+  {
+    name: "layered layout shorthand string",
+    expect: "accept",
+    source: doc([
+      group({
+        layout: "layered",
+        children: [
+          { type: "node", id: "c1" },
+          { type: "node", id: "c2" },
+          { type: "connector", from: "c1", to: "c2" },
+        ],
+      }),
+    ]),
+  },
+  {
+    name: "layered layout with direction down",
+    expect: "accept",
+    source: doc([
+      group({
+        layout: { type: "layered", direction: "down", gap: 40 },
+        children: [
+          { type: "node", id: "c1" },
+          { type: "node", id: "c2" },
+          { type: "connector", from: "c1", to: "c2" },
+        ],
+      }),
+    ]),
+  },
+  {
+    name: "layered layout with direction right",
+    expect: "accept",
+    source: doc([
+      group({
+        layout: { type: "layered", direction: "right" },
+        children: [
+          { type: "node", id: "c1" },
+          { type: "node", id: "c2" },
+        ],
+      }),
+    ]),
+  },
   { name: "group nesting depth 1", expect: "accept", source: nest(1) },
   { name: "group nesting depth 4", expect: "accept", source: nest(4) },
   {
@@ -481,6 +522,26 @@ export const corpus = [
     name: "layout as an array",
     expect: "reject",
     source: doc([group({ layout: ["row"], children: [] })]),
+  },
+  {
+    name: "direction on a row layout",
+    expect: "reject",
+    source: doc([group({ layout: { type: "row", direction: "down" }, children: [] })]),
+  },
+  {
+    name: "direction on a grid layout",
+    expect: "reject",
+    source: doc([group({ layout: { type: "grid", direction: "right" }, children: [] })]),
+  },
+  {
+    name: "unknown layered direction",
+    expect: "reject",
+    source: doc([group({ layout: { type: "layered", direction: "up" }, children: [] })]),
+  },
+  {
+    name: "layered direction as a number",
+    expect: "reject",
+    source: doc([group({ layout: { type: "layered", direction: 1 }, children: [] })]),
   },
   {
     name: "arbitrary CSS colour name",
