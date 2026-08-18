@@ -1,0 +1,119 @@
+{
+  "$schema": "../architecture-v1.schema.json",
+  "version": 1,
+  "canvas": { "width": 1600, "height": 900 },
+  "title": "Web application overview",
+  "description": "A three-tier web application: clients, the application platform, and stored state.",
+  "elements": [
+    {
+      "type": "group",
+      "id": "clients",
+      "title": "Clients",
+      "x": 80,
+      "y": 220,
+      "width": 360,
+      "height": 420,
+      "layout": { "type": "column", "gap": 36, "padding": 54 },
+      "children": [
+        {
+          "type": "node",
+          "id": "browser",
+          "shape": "rounded-rect",
+          "icon": "user",
+          "text": "Browser"
+        },
+        {
+          "type": "node",
+          "id": "mobile",
+          "shape": "rounded-rect",
+          "icon": "user",
+          "text": "Mobile app"
+        }
+      ]
+    },
+    {
+      "type": "group",
+      "id": "platform",
+      "title": "Application platform",
+      "x": 560,
+      "y": 180,
+      "width": 480,
+      "height": 500,
+      "layout": { "type": "column", "gap": 36, "padding": 54 },
+      "style": { "stroke": "accentLine" },
+      "children": [
+        {
+          "type": "node",
+          "id": "gateway",
+          "shape": "rounded-rect",
+          "icon": "api",
+          "text": "API gateway"
+        },
+        {
+          "type": "node",
+          "id": "service",
+          "shape": "rounded-rect",
+          "icon": "server",
+          "text": "Order service"
+        },
+        {
+          "type": "node",
+          "id": "worker",
+          "shape": "rounded-rect",
+          "icon": "cloud",
+          "text": "Background worker"
+        }
+      ]
+    },
+    {
+      "type": "node",
+      "id": "database",
+      "shape": "rounded-rect",
+      "icon": "database",
+      "text": "Managed database",
+      "ariaLabel": "Managed relational database",
+      "x": 1160,
+      "y": 300,
+      "width": 320,
+      "height": 160,
+      "style": { "fill": "accentSoft" }
+    },
+    {
+      "type": "connector",
+      "from": "browser",
+      "to": "gateway",
+      "label": "HTTPS",
+      "routing": "orthogonal"
+    },
+    {
+      "type": "connector",
+      "from": "mobile",
+      "to": "gateway",
+      "label": "HTTPS",
+      "routing": "orthogonal",
+      "lane": 1
+    },
+    {
+      "type": "connector",
+      "from": "gateway",
+      "to": "service",
+      "routing": "straight"
+    },
+    {
+      "type": "connector",
+      "from": "service",
+      "to": "database",
+      "label": "SQL",
+      "routing": "orthogonal"
+    },
+    {
+      "type": "connector",
+      "from": "worker",
+      "to": "database",
+      "label": "batch",
+      "routing": "orthogonal",
+      "lane": -1,
+      "style": { "dash": "8 6" }
+    }
+  ]
+}

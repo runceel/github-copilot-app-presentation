@@ -640,6 +640,78 @@ test("enforces DSL version, icon allowlist, nested JSON paths, and resource limi
   assert.throws(() => parseArchitecture(" ".repeat(MAX_SOURCE_LENGTH + 1)), /at most 65536/);
 });
 
+test("accepts a root $schema reference and keeps it out of the model", () => {
+  const model = parseArchitecture(
+    JSON.stringify({
+      $schema: "../schema/architecture-v1.schema.json",
+      elements: [{ type: "node", id: "n", x: 0, y: 0, width: 100, height: 100 }],
+    }),
+  );
+  assert.equal(model.version, 1);
+  assert.equal(Object.prototype.hasOwnProperty.call(model, "$schema"), false);
+  assert.equal(model.elements.length, 1);
+
+  // $schema declares the whole document, so it stays rejected on elements.
+  assert.throws(
+    () =>
+      parseArchitecture(
+        JSON.stringify({
+          elements: [
+            { type: "node", id: "n", x: 0, y: 0, width: 100, height: 100, $schema: "x" },
+          ],
+        }),
+      ),
+    /elements\[0\]\.\$schema: is not supported/,
+  );
+});
+
+test("diagnostics pair every problem with remediation guidance", () => {
+  const cases = [
+    [
+      { elements: [{ type: "node", id: "n", x: 0, y: 0, width: 100, height: 100, onclick: "x" }] },
+      /onclick: is not supported; remove it or use one of: type, id, shape/,
+    ],
+    [
+      { version: 2, elements: [] },
+      /version: must be between 1 and 1; set "version": 1 or omit the field/,
+    ],
+    [
+      {
+        elements: [
+          { type: "node", id: "n", x: 0, y: 0, width: 100, height: 100, style: { fill: "red" } },
+        ],
+      },
+      /theme token[^;]*; replace 'red' with a theme token such as accent/,
+    ],
+    [
+      {
+        elements: [
+          { type: "node", id: "n", x: 0, y: 0, width: 100, height: 100 },
+          { type: "connector", from: "n", to: "ghost" },
+        ],
+      },
+      /references unknown element 'ghost'; add a node or group with id 'ghost'/,
+    ],
+    [
+      {
+        elements: [
+          { type: "node", id: "dup", x: 0, y: 0, width: 10, height: 10 },
+          { type: "node", id: "dup", x: 0, y: 0, width: 10, height: 10 },
+        ],
+      },
+      /duplicates 'dup'; give every node and group a unique id/,
+    ],
+    [
+      { elements: [{ type: "node", id: "n", x: 0, y: 0, width: 100, height: 100, icon: "remote" }] },
+      /icon: must be one of: [^;]+; replace 'remote' with one of them/,
+    ],
+  ];
+  for (const [diagram, pattern] of cases) {
+    assert.throws(() => parseArchitecture(JSON.stringify(diagram)), pattern);
+  }
+  assert.throws(() => parseArchitecture("{"), /contains invalid JSON[^;]*; check for trailing commas/);
+});
+
 test("semantic snapshot and edit overrides contain deterministic geometry only", () => {
   const model = parseArchitecture(
     JSON.stringify({

@@ -4,8 +4,9 @@
   "type": "module",
   "description": "presentation canvas extension のテスト・CI 基盤（配布物には含めません）",
   "scripts": {
-    "test": "npm run test:vendor && npm run test:unit && npm run test:visual && npm run test:pdf",
+    "test": "npm run test:vendor && npm run test:schema && npm run test:unit && npm run test:visual && npm run test:pdf",
     "test:vendor": "cd .github/extensions/presentation && node scripts/vendor-assets.mjs verify vendor vendor/vendor-assets.lock.json",
+    "test:schema": "node --test test/schema/architecture-schema.test.mjs",
     "test:unit": "cd .github/extensions/presentation && node --test",
     "test:visual": "playwright test --project=visual",
     "test:pdf": "playwright test --project=pdf",
@@ -14,6 +15,7 @@
     "test:visual:update:linux": "node test/scripts/playwright-docker.mjs --project=visual --update-snapshots"
   },
   "devDependencies": {
-    "@playwright/test": "1.62.1"
+    "@playwright/test": "1.62.1",
+    "ajv": "8.20.0"
   }
 }

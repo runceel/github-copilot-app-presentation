@@ -1,0 +1,695 @@
+// スキーマ (形状検証) と parseArchitecture (意味検証) の判定一致を固定するコーパス。
+//
+// 既定は「両方が同じ判定を返す」こと。実装とスキーマがどうしても一致しない箇所は
+// `divergence` を明示しないとテストが落ちる。つまり黙った乖離は必ず検出される。
+//
+//   expect      : parseArchitecture と（既定では）スキーマの期待判定
+//   divergence  : スキーマ側だけ判定が違う場合に、判定と理由を明示する
+//   parserMessage: パーサーが「意図した理由で」落ちていることを固定する任意の正規表現
+
+const node = (over = {}) => ({
+  type: "node",
+  id: "a",
+  x: 0,
+  y: 0,
+  width: 120,
+  height: 60,
+  ...over,
+});
+
+const group = (over = {}) => ({
+  type: "group",
+  id: "g",
+  x: 0,
+  y: 0,
+  width: 400,
+  height: 300,
+  children: [],
+  ...over,
+});
+
+const connector = (over = {}) => ({ type: "connector", from: "a", to: "b", ...over });
+
+const doc = (elements, over = {}) => JSON.stringify({ elements, ...over });
+
+/** a→b を張れる最小の 2 ノード。connector の参照整合性はパーサーだけが検証する。 */
+const twoNodes = () => [node({ id: "a" }), node({ id: "b", x: 300 })];
+
+const withConnector = (over = {}) => doc([...twoNodes(), connector(over)]);
+
+const nest = (depth) => {
+  // depth 段の group 入れ子を作る。depth=1 なら group 1 つ。
+  let current = node({ id: "leaf", x: 10, y: 10, width: 40, height: 20 });
+  for (let level = depth; level >= 1; level -= 1) {
+    current = group({ id: `g${level}`, children: [current] });
+  }
+  return doc([current]);
+};
+
+const repeat = (count, char = "x") => char.repeat(count);
+const dashOfLength = (length) => {
+  // "1 1 1 ..." は数字 k 個で長さ 2k-1。
+  const digits = (length + 1) / 2;
+  return Array.from({ length: digits }, () => "1").join(" ");
+};
+
+export const corpus = [
+  // ---------------------------------------------------------------- 受理される
+  { name: "minimal document", expect: "accept", source: doc([]) },
+  { name: "version omitted", expect: "accept", source: doc([node()]) },
+  { name: "version 1", expect: "accept", source: doc([node()], { version: 1 }) },
+  {
+    name: "version 1.0 (JSON has no integer type)",
+    expect: "accept",
+    source: doc([node()], { version: 1.0 }),
+  },
+  {
+    name: "$schema at root is accepted and ignored",
+    expect: "accept",
+    source: JSON.stringify({
+      $schema: "../architecture-v1.schema.json",
+      elements: [node()],
+    }),
+  },
+  {
+    name: "full root metadata",
+    expect: "accept",
+    source: doc([node()], {
+      version: 1,
+      canvas: { width: 1600, height: 900 },
+      title: "Diagram",
+      description: "Description",
+    }),
+  },
+  {
+    name: "canvas lower bounds",
+    expect: "accept",
+    source: doc([], { canvas: { width: 320, height: 180 } }),
+  },
+  {
+    name: "canvas upper bounds",
+    expect: "accept",
+    source: doc([], { canvas: { width: 4000, height: 4000 } }),
+  },
+  {
+    name: "coordinate bounds",
+    expect: "accept",
+    source: doc([
+      node({ id: "lo", x: -4000, y: -4000, width: 1, height: 1 }),
+      node({ id: "hi", x: 4000, y: 4000, width: 4000, height: 4000 }),
+    ]),
+  },
+  {
+    name: "id at maximum length (64)",
+    expect: "accept",
+    source: doc([node({ id: `a${repeat(63, "b")}` })]),
+  },
+  {
+    name: "id with dot, dash and underscore",
+    expect: "accept",
+    source: doc([node({ id: "Web.api_gateway-01" })]),
+  },
+  {
+    name: "every shape",
+    expect: "accept",
+    source: doc([
+      node({ id: "s1", shape: "rect" }),
+      node({ id: "s2", shape: "rounded-rect", x: 200 }),
+      node({ id: "s3", shape: "ellipse", x: 400 }),
+    ]),
+  },
+  {
+    name: "every icon",
+    expect: "accept",
+    source: doc(
+      ["cloud", "database", "api", "user", "server"].map((icon, index) =>
+        node({ id: `i${index}`, icon, x: index * 160 }),
+      ),
+    ),
+  },
+  {
+    name: "text and ariaLabel at maximum length",
+    expect: "accept",
+    source: doc([node({ text: repeat(500), ariaLabel: repeat(300) })]),
+  },
+  {
+    name: "root title and description at maximum length",
+    expect: "accept",
+    source: doc([], { title: repeat(200), description: repeat(1000) }),
+  },
+  {
+    name: "theme token colors",
+    expect: "accept",
+    source: doc([
+      node({ style: { fill: "surface", stroke: "border", textColor: "fg" } }),
+    ]),
+  },
+  // LITERAL_COLORS には /i フラグが付いており、パーサーは大文字も受理する。
+  // JSON Schema の pattern にはフラグが無いので、スキーマ側は大小両方の文字クラスを
+  // 手で書き下している（意図的に .source と表現が異なる唯一の箇所）。
+  {
+    name: "uppercase hex color (#ABC) — /i flag equivalence",
+    expect: "accept",
+    source: doc([node({ style: { fill: "#ABC" } })]),
+  },
+  {
+    name: "uppercase hex color (#AABBCCDD)",
+    expect: "accept",
+    source: doc([node({ style: { fill: "#AABBCCDD" } })]),
+  },
+  {
+    name: "uppercase keyword color (BLACK) — /i flag equivalence",
+    expect: "accept",
+    source: doc([node({ style: { fill: "BLACK" } })]),
+  },
+  {
+    name: "mixed case keyword color (Transparent)",
+    expect: "accept",
+    source: doc([node({ style: { stroke: "Transparent" } })]),
+  },
+  {
+    name: "five digit hex color (#12345)",
+    expect: "accept",
+    source: doc([node({ style: { fill: "#12345" } })]),
+  },
+  {
+    name: "literal colors white / none",
+    expect: "accept",
+    source: doc([node({ style: { fill: "white", stroke: "none" } })]),
+  },
+  {
+    name: "style numeric bounds (low)",
+    expect: "accept",
+    source: doc([
+      node({
+        style: { strokeWidth: 0.5, fontSize: 8, opacity: 0, cornerRadius: 0 },
+      }),
+    ]),
+  },
+  {
+    name: "style numeric bounds (high)",
+    expect: "accept",
+    source: doc([
+      node({
+        style: { strokeWidth: 20, fontSize: 160, opacity: 1, cornerRadius: 200 },
+      }),
+    ]),
+  },
+  {
+    name: "empty dash string",
+    expect: "accept",
+    source: doc([node({ style: { dash: "" } })]),
+  },
+  {
+    name: "dash with spaces, commas and decimals",
+    expect: "accept",
+    source: doc([node({ style: { dash: "12 8,4 1.5" } })]),
+  },
+  {
+    name: "dash at maximum length",
+    expect: "accept",
+    source: doc([node({ style: { dash: dashOfLength(39) } })]),
+  },
+  {
+    name: "fractional z and lane",
+    expect: "accept",
+    source: doc([...twoNodes(), connector({ z: 1.5, lane: 2.7 })]),
+  },
+  {
+    name: "connector with all optional keys",
+    expect: "accept",
+    source: withConnector({
+      fromPort: "right",
+      toPort: "left",
+      label: "calls",
+      ariaLabel: "a calls b",
+      routing: "orthogonal",
+      arrow: false,
+      lane: -12,
+      z: 3,
+      style: { stroke: "accentLine", strokeWidth: 2, dash: "6 4" },
+    }),
+  },
+  {
+    name: "polyline connector with maximum points",
+    expect: "accept",
+    source: withConnector({
+      routing: "polyline",
+      points: Array.from({ length: 12 }, (_value, index) => ({
+        x: index * 10,
+        y: index * 5,
+      })),
+    }),
+  },
+  {
+    name: "empty points array with straight routing",
+    expect: "accept",
+    source: withConnector({ routing: "straight", points: [] }),
+  },
+  {
+    name: "every routing and port",
+    expect: "accept",
+    source: doc([
+      ...twoNodes(),
+      connector({ routing: "straight", fromPort: "auto", toPort: "top" }),
+      connector({ routing: "orthogonal", fromPort: "right", toPort: "bottom" }),
+      connector({ routing: "polyline", fromPort: "left", toPort: "auto", points: [] }),
+    ]),
+  },
+  {
+    name: "group with layout shorthand string",
+    expect: "accept",
+    source: doc([
+      group({ layout: "row", children: [node({ id: "c1" }), node({ id: "c2" })] }),
+    ]),
+  },
+  {
+    name: "group with layout object and all keys",
+    expect: "accept",
+    source: doc([
+      group({
+        layout: {
+          type: "grid",
+          columns: 2,
+          gap: 24,
+          rowGap: 12,
+          columnGap: 12,
+          padding: 40,
+        },
+        children: [node({ id: "c1" }), node({ id: "c2" })],
+      }),
+    ]),
+  },
+  {
+    name: "layout children omit x/y/width/height",
+    expect: "accept",
+    source: doc([
+      group({
+        layout: "column",
+        children: [
+          { type: "node", id: "c1", text: "first" },
+          { type: "node", id: "c2", text: "second" },
+        ],
+      }),
+    ]),
+  },
+  {
+    name: "layout numeric bounds",
+    expect: "accept",
+    source: doc([
+      group({
+        width: 900,
+        height: 700,
+        layout: { type: "grid", columns: 1, gap: 0, padding: 0 },
+        children: [{ type: "node", id: "c1" }],
+      }),
+    ]),
+  },
+  {
+    name: "fixed group children keep explicit boxes",
+    expect: "accept",
+    source: doc([
+      group({
+        children: [node({ id: "c1", x: 10, y: 10, width: 100, height: 40 })],
+      }),
+    ]),
+  },
+  { name: "group nesting depth 1", expect: "accept", source: nest(1) },
+  { name: "group nesting depth 4", expect: "accept", source: nest(4) },
+  {
+    name: "connector nested inside a group",
+    expect: "accept",
+    source: doc([
+      group({
+        children: [
+          node({ id: "a", x: 10, y: 10, width: 80, height: 40 }),
+          node({ id: "b", x: 200, y: 10, width: 80, height: 40 }),
+          connector({ from: "a", to: "b" }),
+        ],
+      }),
+    ]),
+  },
+  {
+    name: "exactly 200 elements",
+    expect: "accept",
+    source: doc(
+      Array.from({ length: 200 }, (_value, index) =>
+        node({ id: `n${index}`, x: index, y: 0 }),
+      ),
+    ),
+  },
+
+  // ---------------------------------------------------------------- 両方が拒否
+  {
+    name: "unknown root key",
+    expect: "reject",
+    parserMessage: /diagram\.onclick: is not supported/,
+    source: JSON.stringify({ elements: [], onclick: "alert(1)" }),
+  },
+  {
+    name: "unknown node key",
+    expect: "reject",
+    source: doc([node({ tooltip: "nope" })]),
+  },
+  {
+    name: "unknown style key",
+    expect: "reject",
+    source: doc([node({ style: { shadow: "big" } })]),
+  },
+  {
+    name: "unknown layout key",
+    expect: "reject",
+    source: doc([group({ layout: { type: "row", align: "center" }, children: [] })]),
+  },
+  {
+    name: "unknown canvas key",
+    expect: "reject",
+    source: doc([], { canvas: { width: 1600, height: 900, dpi: 2 } }),
+  },
+  {
+    name: "unknown point key",
+    expect: "reject",
+    source: withConnector({ routing: "polyline", points: [{ x: 1, y: 2, z: 3 }] }),
+  },
+  {
+    name: "version 2",
+    expect: "reject",
+    parserMessage: /version: must be between 1 and 1/,
+    source: doc([], { version: 2 }),
+  },
+  {
+    name: "version as string",
+    expect: "reject",
+    source: doc([], { version: "1" }),
+  },
+  {
+    name: "elements missing",
+    expect: "reject",
+    source: JSON.stringify({ version: 1 }),
+  },
+  {
+    name: "elements not an array",
+    expect: "reject",
+    source: JSON.stringify({ elements: { type: "node" } }),
+  },
+  {
+    name: "root is not an object",
+    expect: "reject",
+    source: JSON.stringify([{ type: "node" }]),
+  },
+  {
+    name: "element is not an object",
+    expect: "reject",
+    source: JSON.stringify({ elements: ["node"] }),
+  },
+  {
+    name: "element type missing",
+    expect: "reject",
+    source: JSON.stringify({ elements: [{ id: "a", x: 0, y: 0, width: 1, height: 1 }] }),
+  },
+  {
+    name: "unknown element type",
+    expect: "reject",
+    parserMessage: /must be node, group, or connector/,
+    source: JSON.stringify({ elements: [{ type: "widget", id: "a" }] }),
+  },
+  {
+    name: "node without id",
+    expect: "reject",
+    source: JSON.stringify({
+      elements: [{ type: "node", x: 0, y: 0, width: 10, height: 10 }],
+    }),
+  },
+  {
+    name: "node without x in a fixed parent",
+    expect: "reject",
+    source: JSON.stringify({
+      elements: [{ type: "node", id: "a", y: 0, width: 10, height: 10 }],
+    }),
+  },
+  {
+    name: "id starting with a digit",
+    expect: "reject",
+    source: doc([node({ id: "1web" })]),
+  },
+  {
+    name: "id with a space",
+    expect: "reject",
+    source: doc([node({ id: "web api" })]),
+  },
+  {
+    name: "id longer than 64",
+    expect: "reject",
+    source: doc([node({ id: `a${repeat(64, "b")}` })]),
+  },
+  {
+    name: "unknown shape",
+    expect: "reject",
+    source: doc([node({ shape: "hexagon" })]),
+  },
+  {
+    name: "unknown icon",
+    expect: "reject",
+    source: doc([node({ icon: "rocket" })]),
+  },
+  {
+    name: "unknown routing",
+    expect: "reject",
+    source: withConnector({ routing: "curved" }),
+  },
+  {
+    name: "unknown port",
+    expect: "reject",
+    source: withConnector({ fromPort: "north" }),
+  },
+  {
+    name: "unknown layout type",
+    expect: "reject",
+    source: doc([group({ layout: "flex", children: [] })]),
+  },
+  {
+    name: "layout object without type",
+    expect: "reject",
+    source: doc([group({ layout: { gap: 10 }, children: [] })]),
+  },
+  {
+    name: "layout as a number",
+    expect: "reject",
+    source: doc([group({ layout: 3, children: [] })]),
+  },
+  {
+    name: "layout as an array",
+    expect: "reject",
+    source: doc([group({ layout: ["row"], children: [] })]),
+  },
+  {
+    name: "arbitrary CSS colour name",
+    expect: "reject",
+    parserMessage: /theme token/,
+    source: doc([node({ style: { fill: "red" } })]),
+  },
+  {
+    name: "rgb() colour function",
+    expect: "reject",
+    source: doc([node({ style: { fill: "rgb(0, 0, 0)" } })]),
+  },
+  {
+    name: "two digit hex colour",
+    expect: "reject",
+    source: doc([node({ style: { fill: "#12" } })]),
+  },
+  {
+    name: "nine digit hex colour",
+    expect: "reject",
+    source: doc([node({ style: { fill: "#123456789" } })]),
+  },
+  {
+    name: "malformed dash",
+    expect: "reject",
+    source: doc([node({ style: { dash: "4 4," } })]),
+  },
+  {
+    name: "dash longer than 40",
+    expect: "reject",
+    source: doc([node({ style: { dash: dashOfLength(41) } })]),
+  },
+  {
+    name: "strokeWidth below minimum",
+    expect: "reject",
+    source: doc([node({ style: { strokeWidth: 0.4 } })]),
+  },
+  {
+    name: "fontSize above maximum",
+    expect: "reject",
+    source: doc([node({ style: { fontSize: 161 } })]),
+  },
+  {
+    name: "opacity above maximum",
+    expect: "reject",
+    source: doc([node({ style: { opacity: 1.1 } })]),
+  },
+  {
+    name: "cornerRadius above maximum",
+    expect: "reject",
+    source: doc([node({ style: { cornerRadius: 201 } })]),
+  },
+  {
+    name: "x below minimum",
+    expect: "reject",
+    source: doc([node({ x: -4001 })]),
+  },
+  {
+    name: "width of zero",
+    expect: "reject",
+    source: doc([node({ width: 0 })]),
+  },
+  {
+    name: "height above maximum",
+    expect: "reject",
+    source: doc([node({ height: 4001 })]),
+  },
+  {
+    name: "canvas width below minimum",
+    expect: "reject",
+    source: doc([], { canvas: { width: 319, height: 900 } }),
+  },
+  {
+    name: "canvas height above maximum",
+    expect: "reject",
+    source: doc([], { canvas: { width: 1600, height: 4001 } }),
+  },
+  {
+    name: "layout columns out of range",
+    expect: "reject",
+    source: doc([group({ layout: { type: "grid", columns: 13 }, children: [] })]),
+  },
+  {
+    name: "layout gap above maximum",
+    expect: "reject",
+    source: doc([group({ layout: { type: "row", gap: 241 }, children: [] })]),
+  },
+  {
+    name: "layout padding above maximum",
+    expect: "reject",
+    source: doc([group({ layout: { type: "row", padding: 401 }, children: [] })]),
+  },
+  {
+    name: "text longer than 500",
+    expect: "reject",
+    source: doc([node({ text: repeat(501) })]),
+  },
+  {
+    name: "ariaLabel longer than 300",
+    expect: "reject",
+    source: doc([node({ ariaLabel: repeat(301) })]),
+  },
+  {
+    name: "root description longer than 1000",
+    expect: "reject",
+    source: doc([], { description: repeat(1001) }),
+  },
+  {
+    name: "group title longer than 200",
+    expect: "reject",
+    source: doc([group({ title: repeat(201) })]),
+  },
+  {
+    name: "connector label longer than 200",
+    expect: "reject",
+    source: withConnector({ label: repeat(201) }),
+  },
+  {
+    name: "connector without from",
+    expect: "reject",
+    source: JSON.stringify({
+      elements: [...twoNodes(), { type: "connector", to: "b" }],
+    }),
+  },
+  {
+    name: "arrow is not a boolean",
+    expect: "reject",
+    source: withConnector({ arrow: "yes" }),
+  },
+  {
+    name: "lane out of range",
+    expect: "reject",
+    source: withConnector({ lane: 13 }),
+  },
+  {
+    name: "z out of range",
+    expect: "reject",
+    source: doc([node({ z: 101 })]),
+  },
+  {
+    name: "points with straight routing",
+    expect: "reject",
+    source: withConnector({ routing: "straight", points: [{ x: 1, y: 2 }] }),
+  },
+  {
+    name: "points without routing",
+    expect: "reject",
+    source: withConnector({ points: [{ x: 1, y: 2 }] }),
+  },
+  {
+    name: "more than 12 points",
+    expect: "reject",
+    source: withConnector({
+      routing: "polyline",
+      points: Array.from({ length: 13 }, (_value, index) => ({ x: index, y: index })),
+    }),
+  },
+  {
+    name: "point without y",
+    expect: "reject",
+    source: withConnector({ routing: "polyline", points: [{ x: 1 }] }),
+  },
+  {
+    name: "group children not an array",
+    expect: "reject",
+    source: doc([group({ children: { type: "node", id: "c" } })]),
+  },
+  { name: "group nesting depth 5", expect: "reject", source: nest(5) },
+  {
+    name: "201 elements",
+    expect: "reject",
+    parserMessage: /at most 200 items/,
+    source: doc(
+      Array.from({ length: 201 }, (_value, index) =>
+        node({ id: `n${index}`, x: index, y: 0 }),
+      ),
+    ),
+  },
+
+  // ---------------------------------------------------------------- 既知の乖離
+  {
+    name: "non-numeric x on a layout child",
+    expect: "accept",
+    divergence: {
+      schema: "reject",
+      reason:
+        "layout 配下では normalizeBox が placement を優先するため、パーサーは x/y の値を" +
+        "一切検証せずに黙って捨てる。スキーマは型を検査するので拒否する。" +
+        "スキーマが厳しすぎる方向の乖離であり、著者にとって有益な警告になる。",
+    },
+    source: doc([
+      group({
+        layout: "row",
+        children: [{ type: "node", id: "c1", x: "left" }],
+      }),
+    ]),
+  },
+  {
+    name: "non-numeric y on a layout child",
+    expect: "accept",
+    divergence: {
+      schema: "reject",
+      reason: "上記 x と同じ理由。layout 配下の y も検証されず黙って捨てられる。",
+    },
+    source: doc([
+      group({
+        layout: "column",
+        children: [{ type: "node", id: "c1", y: null }],
+      }),
+    ]),
+  },
+];

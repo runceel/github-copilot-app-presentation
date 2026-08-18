@@ -119,7 +119,16 @@ canvas、外部 presenter、PDF のすべてで同じ比率に縮尺されます
   イベント属性、外部 URL は生成しません。
 - `version` は現在 `1`（省略時も v1）。source 64 KiB、全要素 200、connector 100、
   入れ子 4 段、polyline 中間点 12、総テキスト 20,000 文字などの上限を設けています。
-  診断は `elements[0].children[2].icon` のような JSON path を含みます。
+  診断は `elements[0].children[2].icon` のような JSON path と、`;` 以降に修正指針を
+  含みます（例: `elements[0].icon: must be one of: cloud, database, api, user, server;
+  replace 'rocket' with one of them`）。
+- 機械可読な **JSON Schema**（draft 2020-12）を
+  [`schema/architecture-v1.schema.json`](./schema/architecture-v1.schema.json)
+  に用意しています。`.architecture.json` ファイルに相対パスの `$schema` を書くと
+  エディターで補完と検証が効き、そのまま `architecture` フェンスへ貼り付けられます
+  （ルートの `$schema` はパーサーが受理して無視します）。スキーマは**形状**だけを検証し、
+  参照整合性・ID の一意性・平坦化後の上限・layout の収まりは引き続きパーサーが判定します。
+  詳細とバージョニング / 移行ポリシーは [`schema/README.md`](./schema/README.md) を参照。
 - SVG 自体は `<title>` / `<desc>` と `aria-labelledby` を持ち、group/node/connector
   に意味のある role・`aria-label`・SVG `<title>` を付けます。必要なら root の
   `description` と各要素の `ariaLabel` を明示できます。
@@ -214,6 +223,10 @@ size: xlarge
     slides.css             # 4 テーマ（dark/light/microsoft/ms-modern）の配色定義・ナビ UI のスタイル
     renderer.js            # フロントマター解析 / marked / mermaid / architecture / SSE / 操作 UI
     architecture.mjs       # JSON DSL の検証と安全な SVG DOM 生成
+  schema/
+    architecture-v1.schema.json # Architecture DSL v1 の JSON Schema（draft 2020-12）
+    README.md              # スキーマの使い方・バージョニング / 移行ポリシー
+    examples/              # $schema 付きのサンプル（相対パスで参照）
   vendor/
     marked.min.js          # Markdown レンダラー
     purify.min.js          # DOMPurify（HTML サニタイズ）
