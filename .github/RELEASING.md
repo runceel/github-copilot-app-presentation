@@ -60,8 +60,14 @@ Extension の動作には影響しません。
 | `npm run test:unit` | Extension 同梱の `node --test`（Node 標準のみ、npm 依存なし） |
 | `npm run test:editing` | Architecture 図の編集ワークフロー（書き戻し・Undo/Redo・presenter/印刷での非表示） |
 | `npm run test:visual` | Playwright によるビジュアル回帰（4 テーマ） |
+| `npm run test:a11y` | axe-core による違反ゼロ検査と、canvas / presenter / PDF の出力等価性 |
+| `npm run test:perf` | 最大サイズの図の描画バジェットと、要素数に対するスケーリング |
 | `npm run test:pdf` | 印刷モードを PDF 化してページ数・16:9・SVG 構造を検証 |
 | `npm test` | 上記すべて |
+
+この 8 本は `.github/workflows/ci.yml` の 8 ステップと 1 対 1 で対応します。
+片方だけを増やすとリリース前の確認漏れになるので、テストスクリプトを追加するときは
+CI とこの表の両方を更新してください。
 
 ビジュアル回帰のベースライン画像は環境差の影響を受けるため、CI とローカルの双方で
 `mcr.microsoft.com/playwright:<version>-noble` コンテナー内で実行して揃えます。更新は
