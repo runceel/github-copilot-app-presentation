@@ -350,6 +350,14 @@ export function attachArchitectureEditor(container, options = {}) {
   }
 
   function wireSvg(target) {
+    // 通常表示では図全体で 1 タブストップにするため architecture.mjs が
+    // ルート <svg> に tabindex="0" を付ける。編集モードでは要素そのものが
+    // タブストップになるので、ルートを残すと「図」→「最初の要素」と
+    // 空振りのストップが 1 つ増える。ここで取り下げる。
+    target.removeAttribute("tabindex");
+    // NOTE: Tab 順は DOM 順、すなわち描画順（z 順）であって宣言順ではない。
+    // SVG は DOM 順がそのまま重なり順なので、宣言順に並べ替えると見た目が変わる。
+    // 宣言順が要る処理は data-architecture-order を読むこと（README「読み上げ順」参照）。
     target.querySelectorAll(SELECTABLE).forEach((node) => {
       const placement = session.describe(node.dataset.architectureId);
       node.setAttribute("tabindex", "0");

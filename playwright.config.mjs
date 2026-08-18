@@ -89,5 +89,23 @@ export default defineConfig({
       testDir: "test/editing",
       testMatch: /.*\.spec\.mjs/,
     },
+    // アクセシビリティと出力の等価性。axe-core による自動チェックと、
+    // Chromium のアクセシビリティツリー（CDP）を根拠にした読み上げ順・
+    // 重複読み上げ・到達性の検証。こちらもベースライン画像は持たない。
+    {
+      name: "a11y",
+      testDir: "test/a11y",
+      testMatch: /.*\.spec\.mjs/,
+    },
+    // 描画コストのバジェット。DSL が受け付ける最大サイズの図を実測し、
+    // 「絶対時間の上限」と「要素数に対するスケーリング」の両方を固定する。
+    // 時間を測るので、他プロジェクトと並走させず単独ワーカーで実行する。
+    {
+      name: "perf",
+      testDir: "test/perf",
+      testMatch: /.*\.spec\.mjs/,
+      workers: 1,
+      fullyParallel: false,
+    },
   ],
 });

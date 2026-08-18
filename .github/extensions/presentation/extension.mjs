@@ -596,7 +596,41 @@ async function launchPresenter(inst) {
   }
 }
 
+/**
+ * headless ブラウザーを `--print-to-pdf` で 1 回だけ走らせる。
+ *
+ * ⚠️ **`pageUrl` は必ず `?print=1&token=...` を含めること（#12）。**
+ *
+ * `--print-to-pdf` は「ページが静止する」ことを完了条件にする。renderer の `init()` で
+ * 早期 return するのは印刷モードだけで、通常表示と presenter は閉じない SSE
+ * (`new EventSource("./events")`) と 2 秒間隔の `setInterval` を起動し続ける。
+ * つまり `?print=1` を外した URL をここへ渡すと、**ブラウザーは永久に終了しない**。
+ *
+ * 実測（引数はこの関数が組み立てるものと 1 バイトも変えずに Chrome を起動）:
+ *
+ * | URL                        | 結果                                    |
+ * | -------------------------- | --------------------------------------- |
+ * | `/?print=1&token=<有効>`   | exit 0 @ 2.4s（正常な PDF）             |
+ * | `/?print=1&token=`（空）   | exit 0 @ 1.9s（白紙。renderer は失敗報告）|
+ * | `/`（通常表示）            | **HANG**（120 秒でも終わらない）         |
+ * | `/?present=1`              | **HANG**                                |
+ * | `/nope-404`（renderer 無し）| exit 0 @ 3.0s                          |
+ *
+ * ⚠️ **`--virtual-time-budget` は `--headless=new` では事実上効かない。**
+ * 下の引数に `--virtual-time-budget=12000` が入っているが、これで上記のハングは
+ * 止まらない（`--timeout=8000` を足しても同じく効かない。実測で確認済み）。
+ * 引数自体は無害なので残してあるが、**「これで時間的に守られている」と読まないこと。**
+ * 実際に効いている歯止めは Node 側の `PDF_RENDER_TIMEOUT_MS` と
+ * `terminateProcessTree` だけで、最悪 60 秒待たされてからエラーになる。
+ */
 async function runPdfBrowser(browser, pageUrl, outputPath, profileDir) {
+  // 上の契約を実行時にも守らせる。破ったときの症状は「60 秒沈黙してからタイムアウト」で
+  // 原因に辿り着けないので、ここで即座に理由付きで落とす。
+  if (new URL(pageUrl).searchParams.get("print") !== "1") {
+    throw new Error(
+      `Refusing to run --print-to-pdf against a non-print URL (${pageUrl}): only ?print=1 stops the renderer's SSE and polling loops, so any other page hangs the browser forever.`,
+    );
+  }
   const args = [
     "--headless=new",
     "--disable-gpu",
@@ -610,6 +644,8 @@ async function runPdfBrowser(browser, pageUrl, outputPath, profileDir) {
     "--no-pdf-header-footer",
     "--print-to-pdf-no-header",
     "--run-all-compositor-stages-before-draw",
+    // 効いていない（#12）。--headless=new では無視される。上の JSDoc を参照。
+    // 実際の歯止めは PDF_RENDER_TIMEOUT_MS + terminateProcessTree。
     "--virtual-time-budget=12000",
     `--user-data-dir=${profileDir}`,
     `--print-to-pdf=${outputPath}`,

@@ -599,6 +599,23 @@ async function initPrint(params) {
   }
 }
 
+/**
+ * initPrint 自体が失敗したときの最後の受け皿（#12）。
+ *
+ * initPrint は本文の失敗を内部の catch で拾って data-print-error を立てるが、
+ * **トークン欠落だけは try の外側で throw する**。呼び出し側で受けないと未処理の
+ * Promise 拒否になるだけで、失敗のシグナルがどこにも残らない。
+ *
+ * ブラウザーは空トークンでも exit 0 で「白紙 1 ページの PDF」を吐いて正常終了する
+ * （実測済み）ので、data-print-error がこの失敗を外から観測できる唯一の手がかりになる。
+ */
+function reportPrintBootstrapFailure(error) {
+  const message = error?.message || "Print rendering failed.";
+  console.error(message);
+  document.body.classList.remove("mermaid-loading");
+  document.documentElement.setAttribute("data-print-error", "true");
+}
+
 // --- live update -----------------------------------------------------------
 // /state is the single source of truth for *what to show* (latest slide markdown
 // + a monotonic version + the deck position). SSE is just a low-latency "version
@@ -1091,7 +1108,12 @@ function init() {
   if (params.get("print") === "1") {
     // 印刷は編集モードの分岐へ到達しない。ここを return から落とすと
     // PDF に編集 UI が焼き込まれるので、回帰テストで固定してある。
-    initPrint(params);
+    //
+    // またこの早期 return は **#12 のハングを防いでいる本体**でもある。
+    // 印刷モードだけが connectEvents()（閉じない SSE）と 2 秒間隔の setInterval を
+    // 起動しないので、ページが静止し --print-to-pdf が完了できる。
+    // ここを return から落とすと印刷が永久に終わらなくなる。
+    initPrint(params).catch(reportPrintBootstrapFailure);
     return;
   }
   if (params.get("present") === "1") {
