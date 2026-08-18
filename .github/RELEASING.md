@@ -29,6 +29,43 @@ ZIP は `.github/extensions/presentation/` を展開後にユーザー拡張デ�
 構成にします。Mermaid を含む完全版は、Gist の単一ファイルおおむね 1 MB 上限に抵触するため
 Gist へ分割せず、リポジトリのフォルダー URL またはリリース ZIP で配布します。
 
+### ZIP に含めないもの
+
+Extension は **実行時の npm 依存をゼロ**に保ちます。利用者は展開したフォルダーをそのまま
+配置するだけで動作しなければならないため、開発・CI 専用の資産は ZIP へ入れません。
+
+- ルートの `package.json` / `package-lock.json`（Playwright は開発時の devDependency のみ）
+- `node_modules/`
+- `playwright.config.mjs`
+- `test/`（テストハーネス、ビジュアル回帰、PDF 回帰、ベースライン画像）
+- `.github/workflows/`
+- `test-results/`、`playwright-report/` などのテスト出力
+
+言い換えると、ZIP に入れるのは `.github/extensions/presentation/` 配下だけです。同ディレクトリ
+の中に `package.json` や `node_modules/` を作らないでください。なお同ディレクトリ配下の
+`test/` と `scripts/` は Node 標準機能のみで動く開発用資産なので、ZIP から省いても
+Extension の動作には影響しません。
+
+## CI
+
+ルートの `package.json` に開発用のテストスクリプトをまとめてあります。
+
+| コマンド | 内容 |
+| --- | --- |
+| `npm run test:vendor` | 分割された vendor 資産のハッシュ整合性を検証 |
+| `npm run test:unit` | Extension 同梱の `node --test`（Node 標準のみ、npm 依存なし） |
+| `npm run test:visual` | Playwright によるビジュアル回帰（4 テーマ） |
+| `npm run test:pdf` | 印刷モードを PDF 化してページ数・16:9・SVG 構造を検証 |
+| `npm test` | 上記すべて |
+
+ビジュアル回帰のベースライン画像は環境差の影響を受けるため、CI とローカルの双方で
+`mcr.microsoft.com/playwright:<version>-noble` コンテナー内で実行して揃えます。更新は
+次のコマンドで行い、差分を確認してからコミットします。
+
+```bash
+npm run test:visual:update:linux
+```
+
 ## 安全な導入案内
 
 リリース後の案内では、次の URL 形式を使います。

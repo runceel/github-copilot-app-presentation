@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: テスト
+    # ビジュアル回帰のスクリーンショットはフォント構成に強く依存するため、runner を
+    # 固定したうえで Playwright 公式コンテナー（ブラウザーとフォントを同梱）で実行する。
+    # ローカルでのベースライン更新も同じイメージで行う（npm run test:visual:update:linux）。
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+      options: --init --ipc=host
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v5
+
+      - name: 依存関係のインストール
+        run: npm ci
+
+      - name: 拡張機能に実行時 npm 依存がないことを確認
+        # 拡張はフォルダーごと ZIP で配布され、利用者環境でそのまま動く必要がある。
+        run: |
+          set -e
+          found=$(find .github/extensions/presentation \
+            \( -name package.json -o -name package-lock.json -o -name node_modules \) -print)
+          if [ -n "$found" ]; then
+            echo "拡張ディレクトリに npm 依存が混入しています:"
+            echo "$found"
+            exit 1
+          fi
+          echo "OK: 拡張ディレクトリに npm 依存はありません。"
+
+      - name: vendor 資産の整合性検証
+        # 分割された mermaid チャンクが壊れていると、後段のビジュアル回帰が
+        # 原因の分かりにくいタイムアウトで落ちるため先に検出する。
+        run: npm run test:vendor
+
+      - name: 単体テスト
+        run: npm run test:unit
+
+      - name: ビジュアル回帰
+        run: npm run test:visual
+
+      - name: PDF 回帰
+        run: npm run test:pdf
+
+      - name: 失敗時のレポートを保存
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
