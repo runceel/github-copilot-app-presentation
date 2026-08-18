@@ -82,5 +82,12 @@ export default defineConfig({
       testDir: "test/pdf",
       testMatch: /.*\.spec\.mjs/,
     },
+    // 編集ワークフローの振る舞い検証。スクリーンショット比較はしないので
+    // ベースラインを持たず、visual とは分けて実行できるようにしている。
+    {
+      name: "editing",
+      testDir: "test/editing",
+      testMatch: /.*\.spec\.mjs/,
+    },
   ],
 });

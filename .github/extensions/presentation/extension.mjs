@@ -43,6 +43,7 @@ import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 import { reconstructAsset } from "./scripts/vendor-assets.mjs";
+import { replaceArchitectureBlock } from "./scripts/markdown-blocks.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PEN_LISTENER_SCRIPT = join(EXT_DIR, "windows", "pen-button-listener.ps1");
@@ -1146,6 +1147,10 @@ async function applyNavigation(inst, targetIndex) {
   return true;
 }
 
+// Architecture DSL は 1 スライドに複数枚あり得るうえ、図そのものが JSON なので
+// /navigate の 4KB では収まらない。図 1 枚ぶんの上限として別枠を設ける。
+const MAX_EDIT_BODY = 256 * 1024;
+
 // Read and JSON-parse a small request body, defending the loopback server
 // against oversized or malformed payloads.
 function readJsonBody(req, limit = 4096) {
@@ -1223,6 +1228,7 @@ async function startServer(inst) {
           theme: inst.theme,
           mode: inst.mode,
           presenterRunning: isProcessRunning(inst.presenterProcess),
+          architectureEdit: Boolean(inst.architectureEdit),
         }),
       );
       return;
@@ -1414,6 +1420,135 @@ async function startServer(inst) {
       );
       return;
     }
+    // 編集モードの切り替え。サーバー状態が唯一の真実になるようにするための経路で、
+    // renderer が `?architectureEdit=1` で開かれたときにもここを叩く。こうしないと
+    // 「クライアントだけ編集モード、サーバーは無効」という状態が作れてしまい、
+    // /state のポーリングで編集モードが勝手に解除され、/edit も 409 で弾かれる。
+    if (pathname === "/edit-mode") {
+      if (req.method !== "POST") {
+        res.statusCode = 405;
+        res.setHeader("Allow", "POST");
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+        return;
+      }
+      const origin = req.headers.origin;
+      if (origin && origin !== new URL(inst.url).origin) {
+        res.statusCode = 403;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "origin_not_allowed" }));
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (e) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader("Connection", "close");
+        res.end(JSON.stringify({ ok: false, error: e?.message || "bad_request" }));
+        return;
+      }
+      if (typeof body.enabled !== "boolean") {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "enabled (boolean) is required" }));
+        return;
+      }
+      activateInstance(inst);
+      const changed = inst.architectureEdit !== body.enabled;
+      inst.architectureEdit = body.enabled;
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(
+        JSON.stringify({ ok: true, changed, architectureEdit: inst.architectureEdit }),
+      );
+      return;
+    }
+    // Architecture 図の編集結果を元スライドへ書き戻す。差分ではなく DSL 全体を
+    // 受け取り、対象スライドの n 番目の ```architecture フェンスを差し替える。
+    // 編集モードが立っていないときは受け付けない（presenter や印刷から誤って
+    // 到達しても、スライドが書き換わらないことを保証する）。
+    if (pathname === "/edit") {
+      if (req.method !== "POST") {
+        res.statusCode = 405;
+        res.setHeader("Allow", "POST");
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+        return;
+      }
+      const origin = req.headers.origin;
+      if (origin && origin !== new URL(inst.url).origin) {
+        res.statusCode = 403;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "origin_not_allowed" }));
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req, MAX_EDIT_BODY);
+      } catch (e) {
+        const tooLarge = e?.message === "payload_too_large";
+        res.statusCode = tooLarge ? 413 : 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader("Connection", "close");
+        res.end(JSON.stringify({ ok: false, error: e?.message || "bad_request" }));
+        return;
+      }
+      if (!inst.architectureEdit) {
+        res.statusCode = 409;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "edit_mode_disabled" }));
+        return;
+      }
+      if (typeof body.source !== "string" || !body.source.trim()) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "source (string) is required" }));
+        return;
+      }
+      if (!inst.slides.length) {
+        res.statusCode = 409;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "no_deck" }));
+        return;
+      }
+      const index = Number.isInteger(body.index) ? body.index : inst.index;
+      const block = Number.isInteger(body.block) ? body.block : 0;
+      if (index < 0 || index >= inst.slides.length) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "index_out_of_range" }));
+        return;
+      }
+      const next = replaceArchitectureBlock(inst.slides[index], block, body.source);
+      if (next === null) {
+        res.statusCode = 404;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "block_not_found" }));
+        return;
+      }
+      activateInstance(inst);
+      inst.slides[index] = next;
+      // スライド一覧も本文を出すので deckVersion を上げて再取得させる。
+      inst.deckVersion += 1;
+      await applyDeckSlide(inst);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(
+        JSON.stringify({
+          ok: true,
+          version: inst.version,
+          deckVersion: inst.deckVersion,
+          index,
+          block,
+          markdown: inst.markdown,
+        }),
+      );
+      return;
+    }
     if (pathname === "/events") {
       handleSse(req, res, inst);
       return;
@@ -1484,6 +1619,9 @@ async function ensureInstance(ctx) {
       presenterProcess: null,
       presenterProfileDir: "",
       presenterLaunchPromise: null,
+      // Architecture 図の編集モード。意図的に永続化しない: 保存すると
+      // リロード後に編集 UI が付いたまま発表が始まってしまう。
+      architectureEdit: false,
     };
     // Rehydrate the last deck (e.g. after extensions_reload) if present.
     try {
@@ -1779,6 +1917,42 @@ const session = await joinSession({
           },
         },
         {
+          name: "edit_architecture",
+          description:
+            "Architecture 図の編集モードを切り替える（Experimental）。有効にすると canvas 上の図をドラッグ／矢印キーで動かせるようになり、変更は元 Markdown の ```architecture ブロックへそのまま書き戻される。presenter 表示と PDF 出力では編集 UI は出ない。発表前には必ず enabled=false に戻すこと。",
+          inputSchema: {
+            type: "object",
+            properties: {
+              enabled: {
+                type: "boolean",
+                description: "true で編集モードを有効化、false で通常表示へ戻す。",
+              },
+            },
+            required: ["enabled"],
+            additionalProperties: false,
+          },
+          handler: async (ctx) => {
+            const enabled = ctx.input?.enabled;
+            if (typeof enabled !== "boolean") {
+              throw new CanvasError("invalid_input", "enabled (boolean) is required");
+            }
+            const inst = instances.get(keyOf(ctx));
+            if (!inst) {
+              throw new CanvasError(
+                "canvas_not_open",
+                "presentation canvas is not open",
+              );
+            }
+            activateInstance(inst);
+            const changed = inst.architectureEdit !== enabled;
+            inst.architectureEdit = enabled;
+            // 編集モードは /state のポーリングで renderer へ伝わる。version は
+            // 上げない: スライド内容は変わっていないので、他のクライアントに
+            // 不要な再描画をさせない。
+            return { ok: true, changed, architectureEdit: inst.architectureEdit };
+          },
+        },
+        {
           name: "reset",
           description: "スライドをクリアし、待機中のプレースホルダー表示に戻す。",
           handler: async (ctx) => {
@@ -1797,6 +1971,7 @@ const session = await joinSession({
             inst.theme = DEFAULT_THEME;
             inst.sourceName = "";
             inst.mode = "deck";
+            inst.architectureEdit = false;
             inst.deckVersion += 1;
             inst.version += 1;
             broadcast(inst);

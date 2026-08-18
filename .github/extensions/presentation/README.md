@@ -304,19 +304,82 @@ icon name (...) or a path under assets/; ...` のように修正指針まで示�
 閉路があっても停止します（宣言順で後から現れる後戻り辺を無視して階層を決めます）。
 座標を 1 つずつ書かずに、依存関係だけから構成図を作りたいときに使います。
 
-### 位置調整モード（編集性 PoC）
+### 編集モード（位置調整）
 
-renderer URL に `?architectureEdit=1` を付けた通常 canvas だけで、node をクリックまたは
-Tab で選択し、矢印キー（10 logical px、Shift+矢印は 1 px）で一時移動できます。
-`Copy overrides` は `{ "version": 1, "overrides": [{ "id", "x", "y" }] }` を
-clipboard へコピーします。通常表示、`?present=1`、`?print=1` では編集 UI を出しません。
-この縦切りは DSL の書き戻し・Undo/Redo・connector の即時再 routing・永続化を行いません。
+Architecture 図はレンダリング結果の上で直接動かせます。編集した内容は**元の Markdown の
+```architecture フェンスへ書き戻り**、再描画・再読み込み後も残ります。
+
+**入り方**は 2 通りです。
+
+| 方法 | 用途 |
+| --- | --- |
+| canvas action `edit_architecture` (`{ "enabled": true }`) | 通常運用。agent 側から切り替える |
+| renderer URL に `?architectureEdit=1` | 手元でのデバッグ |
+
+編集モードはサーバー側の状態です。`reset` で解除され、デッキと一緒には永続化しません。
+発表の途中で意図せず編集可能なまま残らないようにするためです。
+
+`?architectureEdit=1` もサーバー状態を切り替えます（`POST /edit-mode`）。
+**サーバー状態を唯一の真実にする**ためで、「クライアントだけ編集モード、サーバーは無効」
+という状態を作らせません。これを分けると `/state` のポーリングが編集モードを勝手に
+解除し、`POST /edit` も `409` で弾かれます。
+
+**操作**（マウスとキーボードで同じことができます）。
+
+| 操作 | マウス | キーボード |
+| --- | --- | --- |
+| 選択 | node をクリック | Tab / Shift+Tab |
+| 移動 | ドラッグ | 矢印キー（10 logical px） |
+| 微調整 | — | Shift+矢印（1 px） |
+| layout 解除 | ツールバーの `layout 解除` | `L` |
+| Undo | ツールバーの `元に戻す` | Ctrl+Z |
+| Redo | ツールバーの `やり直す` | Ctrl+Shift+Z / Ctrl+Y |
+| 選択解除 | 図の外をクリック | Escape |
+
+移動のたびに図全体を再描画するので、**connector は毎回引き直されます**。
+結果はツールバーの `role="status"` / `aria-live="polite"` な領域で読み上げます。
+
+#### 保存の成否は必ず表示されます
+
+編集は 1 操作ごとにサーバーへ書き戻します。**その結果は成功・失敗ともツールバーに
+出ます**（`data-architecture-save-state` = `saving` / `saved` / `failed`）。
+
+図は画面上で動いてしまうので、保存できなかったことを表示しないと、利用者は保存
+されたと信じたまま編集を失います。そのため失敗は目立つ表示で、**次に保存が成功する
+まで消えません**。`409`（編集モードが解除された直後）、`404`（保存中にデッキが
+差し替わった）、通信断のいずれも区別して表示します。`console` にだけ出す扱いはしません。
+
+#### layout 管理下のノードは動きません
+
+`layout` を持つ group の子は、座標を書いてもレイアウトエンジンが位置を計算し直すため、
+`x` / `y` は**黙って無視されます**。
+このリポジトリの実データではノードの約 68% がこれに当たります。
+
+そのため編集モードは、layout 管理下のノードを掴んでも**動かさず**、理由と
+どの group が位置を決めているかを読み上げます。動かしたい場合は `L`（layout 解除）を
+使います。これは group から `layout` を取り除き、計算済みの `x` / `y` / `width` / `height` を
+全ての子へ書き出す操作です。**見た目は変わりません**。以後その group の子は自由に動きます。
+
+解除は元に戻せます（Undo）。ただし DSL としては不可逆な変換なので、
+`layout` の再指定は手で書き戻すことになります。
+
+#### 発表・印刷では編集 UI が出ません
+
+`?present=1` と `?print=1` では編集 UI を **DOM ごと生成しません**（CSS で隠すのではなく、
+そもそも組み立てません）。さらにサーバーは編集モードが無効なとき `POST /edit` を
+`409 edit_mode_disabled` で拒否します。この 2 つは `npm run test:editing` で固定しています。
+
+#### 既知のトレードオフ
+
+書き戻しは `JSON.stringify(..., null, 2)` で整形するため、**元のフェンス内の
+インデントや改行位置は正規化されます**（値は変わりません）。フェンスの外側の
+地の文と front matter は、**改行コード（CRLF / LF）も含めてそのまま**です。
+CRLF の Markdown を保存してもファイル全体が LF に変わることはありません。
 
 **使い分け:** Mermaid は自動レイアウト、シーケンス図、クラス図など構造中心の図に向きます。
 Architecture DSL は座標、サイズ、コンテナ、重なりを資料ごとに固定したい構成図に向きます。
-この PoC は外部依存を追加しておらず、アイコンもインライン SVG のパスデータだけで
-（画像ファイルを同梱せずに）持っています。追加 source はおよそ 40 KiB です。
-ドラッグ編集と Undo/Redo は対象外です。connector の交差最小化は
+外部依存は追加しておらず、アイコンもインライン SVG のパスデータだけで
+（画像ファイルを同梱せずに）持っています。connector の交差最小化は
 ヒューリスティック（局所探索）であり、最小解を保証するものではありません。
 ノードの自動配置は `layout: "layered"` の範囲にとどまり、力学モデルなどの
 完全な graph auto-layout は行いません。
@@ -370,19 +433,22 @@ size: xlarge
 | `open_presenter` | なし | 同期された外部プレゼン画面を Edge / Chrome / Chromium の app mode + fullscreen で起動する。既に起動中なら新しいウィンドウは増やさない。Surface Pen の末尾ボタン 2 回押しでも同じトグルができる。戻り値 `{ ok, started, alreadyRunning, browser?, pid? }`。 |
 | `close_presenter` | なし | 外部プレゼン画面を終了し、専用の一時ブラウザープロファイルを削除する。Surface Pen の末尾ボタン 2 回押しでも終了できる。戻り値 `{ ok, stopped }`。 |
 | `export_pdf` | `{ outputPath?: string, theme?: "dark"｜"light"｜"microsoft"｜"ms-modern" }` | 表示中のデッキを1スライド1ページの16:9 PDFへ書き出すAI用action。相対パスはworkspace基準、省略時は `presentation.pdf`。Canvas のプリンターアイコンは `sourceName` から `<元ファイル名>.pdf` を自動保存する。`theme` はPDFだけに適用し、canvasの表示テーマは変えない（PDF側にも背表紙を補う）。workspace外と `.pdf` 以外は拒否する。`show_slide` による現在ページの一時差し替えも反映する。戻り値 `{ ok, path, total, theme, bytes }`。Microsoft Edge / Google Chrome / Chromiumのいずれかが必要。 |
-| `reset` | なし | スライドとデッキをクリアして待機プレースホルダーに戻す。 |
+| `edit_architecture` | `{ enabled: boolean }` | Architecture 図の編集モードを切り替える。有効にすると canvas 上で node をドラッグ／キーボード操作でき、結果は元 Markdown の ```architecture フェンスへ書き戻る。presenter と印刷では編集 UI を出さない。デッキと一緒には永続化せず、`reset` で解除する。戻り値 `{ ok, enabled, version }`。 |
+| `reset` | なし | スライドとデッキをクリアして待機プレースホルダーに戻す。編集モードも解除する。 |
 
 ### canvas が内部で使う HTTP エンドポイント（renderer 専用）
 
 | エンドポイント | 用途 |
 | --- | --- |
-| `GET /state` | 現在のスライド（`markdown`）・`index`・`total`・`theme`・`mode`・`version`/`deckVersion` を返す（ポーリング用に軽量）。 |
+| `GET /state` | 現在のスライド（`markdown`）・`index`・`total`・`theme`・`mode`・`architectureEdit`・`version`/`deckVersion` を返す（ポーリング用に軽量）。 |
 | `GET /deck` | デッキ全体（`slides`）と `deckVersion` を返す。一覧（☰）のタイトル生成用に、`deckVersion` が変わったときだけ取得する。 |
 | `GET /export-data` | ランダムtokenに対応するPDF Export用デッキスナップショットをprint modeへ返す。 |
 | `POST /export-status` | print modeが全ページの描画完了またはエラーを `export_pdf` actionへ通知する。 |
 | `POST /navigate` | canvas の操作で呼ぶページ送り。body は `{ index }`（絶対）または `{ delta }`（相対）。サーバーが現在位置を更新し、SSE で全クライアントへ反映する。 |
 | `POST /present` | canvas の ⛶ ボタンから外部プレゼン画面を起動する。同一 origin の POST のみ受け付ける。 |
 | `POST /export` | canvas のプリンターアイコンから、`sourceName` に基づくPDF保存を開始する。同一 origin の POST のみ受け付ける。 |
+| `POST /edit` | 編集モードの canvas が、書き換えた ```architecture フェンスをデッキへ書き戻す。body は `{ index, block, source }`。編集モードが無効なら `409 edit_mode_disabled` で拒否する。 |
+| `POST /edit-mode` | 編集モードの有効・無効を切り替える。body は `{ enabled }`。`?architectureEdit=1` で開いた renderer もここを叩き、サーバー状態を唯一の真実にする。同一 origin の POST のみ受け付ける。 |
 | `GET /events` | SSE。`version` 変化を低遅延で通知する nudge。 |
 
 ## ファイル構成
@@ -391,6 +457,8 @@ size: xlarge
 .github/extensions/presentation/
   extension.mjs            # canvas 宣言・ループバックサーバー・アクション
   copilot-extension.json   # gist 共有用マニフェスト
+  scripts/
+    markdown-blocks.mjs    # ```architecture フェンスの走査と差し替え（extension とテストで共有）
   windows/
     pen-button-listener.ps1 # Surface Pen の Win+F20 / Win+F19 / Win+F18 を Node へ中継
   renderer/
@@ -398,6 +466,8 @@ size: xlarge
     slides.css             # 4 テーマ（dark/light/microsoft/ms-modern）の配色定義・ナビ UI のスタイル
     renderer.js            # フロントマター解析 / marked / mermaid / architecture / SSE / 操作 UI
     architecture.mjs       # JSON DSL の検証と安全な SVG DOM 生成
+    architecture-edit.mjs  # 編集の中核（DOM 非依存: 移動・layout 解除・Undo/Redo・直列化）
+    architecture-editor.mjs # 編集 UI（ツールバー・ドラッグ・キーボード・読み上げ）
   schema/
     architecture-v1.schema.json # Architecture DSL v1 の JSON Schema（draft 2020-12）
     README.md              # スキーマの使い方・バージョニング / 移行ポリシー

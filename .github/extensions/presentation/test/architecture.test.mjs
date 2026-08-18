@@ -11,7 +11,6 @@ import {
   ROUTE_FALLBACK_REASONS,
   architectureSemanticSnapshot,
   computeConnectorRoute,
-  createOverridePayload,
   parseArchitecture,
   renderArchitectureBlock,
   renderArchitectureDiagram,
@@ -944,7 +943,7 @@ test("diagnostics pair every problem with remediation guidance", () => {
   assert.throws(() => parseArchitecture("{"), /contains invalid JSON[^;]*; check for trailing commas/);
 });
 
-test("semantic snapshot and edit overrides contain deterministic geometry only", () => {
+test("semantic snapshot contains deterministic geometry only", () => {
   const model = parseArchitecture(
     JSON.stringify({
       version: 1,
@@ -987,15 +986,6 @@ test("semantic snapshot and edit overrides contain deterministic geometry only",
       { type: "node", id: "b", x: 600, y: 100, width: 160, height: 80, icon: undefined },
     ],
   });
-  assert.deepEqual(
-    createOverridePayload(
-      new Map([
-        ["a", { x: 20, y: -10 }],
-        ["b", { x: 0, y: 0 }],
-      ]),
-    ),
-    { version: 1, overrides: [{ id: "a", x: 20, y: -10 }] },
-  );
 });
 
 test("automatic lanes reserve explicit lanes and resolve equivalent auto ports", () => {
