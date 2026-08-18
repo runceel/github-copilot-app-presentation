@@ -430,13 +430,17 @@ test("every exported constant is classified as schema-encoded, parser-only, or r
   ]);
   // JSON Schema では表現できない（flatten 後の集計・パース前の文字列長）。
   const parserOnly = new Set(["MAX_CONNECTORS", "MAX_SOURCE_LENGTH", "MAX_TOTAL_TEXT"]);
-  // DSL の入力を一切制約しない。経路探索の打ち切り予算と、打ち切り理由の語彙。
+  // DSL の入力を一切制約しない。経路探索の打ち切り予算と、打ち切り理由の語彙、
+  // それにラベルのピルを線から逃がす判定に使う描画時の寸法。
   // ソースには現れないのでスキーマ側に対応物が存在しない。
   const rendererOnly = new Set([
+    "CONNECTOR_LABEL_CLEARANCE",
     "MAX_ROUTE_REFINEMENT_PASSES",
     "MAX_ROUTING_GRID_COORDINATES",
     "MAX_ROUTING_GRID_POINTS",
     "MAX_ROUTING_GRID_VISITS",
+    "MIN_CONNECTOR_LABEL_WIDTH",
+    "MIN_VISIBLE_ROUTE_LENGTH",
     "ROUTE_FALLBACK_REASONS",
   ]);
 

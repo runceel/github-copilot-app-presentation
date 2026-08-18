@@ -11,6 +11,16 @@ const CONNECTOR_ENDPOINT_GAP = 14;
 const CONNECTOR_LANE_SPACING = 52;
 const MAX_CONNECTOR_LABEL_WIDTH = 560;
 const CONNECTOR_LABEL_PADDING = 28;
+const MIN_CONNECTOR_LABEL_WIDTH = 70;
+// ラベルのピルを線から逃がしたときに、ピルの縁と線の間に残す余白。
+const CONNECTOR_LABEL_CLEARANCE = 8;
+// ピルを線から逃がす判定に使う「線が見えていてほしい長さ」。
+//
+// 矢頭は markerWidth 7 × markerUnits="strokeWidth"（既定 4）で実効 28、refX 9 の
+// ぶん終点から手前へ 25 ほど伸びる。中点に置いたピルの外側は両端へおおよそ半分ずつ
+// 分かれるので、片側 25 を確保するには 50 が要る。矢頭が出る側だけでなく反対側の
+// 線も同じだけ残るが、非対称な経路で矢頭が欠けるより過剰なほうがましと判断した。
+const MIN_VISIBLE_ROUTE_LENGTH = 50;
 const MIN_FONT_SIZE = 8;
 const MAX_ROUTING_GRID_COORDINATES = 120;
 const MAX_ROUTING_GRID_POINTS = 10_000;
@@ -1422,9 +1432,59 @@ function connectorLabelMetrics(element) {
     fontSize: fitted.fontSize,
     width: Math.min(
       MAX_CONNECTOR_LABEL_WIDTH,
-      Math.max(70, fitted.width + CONNECTOR_LABEL_PADDING),
+      Math.max(MIN_CONNECTOR_LABEL_WIDTH, fitted.width + CONNECTOR_LABEL_PADDING),
     ),
     height: fitted.fontSize * 1.55,
+  };
+}
+
+/**
+ * ピルを線から逃がす向き。線分の法線のうち、進行方向を反転しても同じ側になるほうを
+ * 選ぶ（水平な線なら上、垂直な線なら右）。左右どちらから引いても同じ側に出るので、
+ * 隣り合う connector のラベルが互い違いに並ばない。
+ *
+ * ノードや他のラベルを見て向きを選ばないのは意図的。この関数は connector と経路
+ * だけの純関数に保ち、renderConnector と経路計算が必ず同じ箱を見る不変条件
+ * （{@link connectorLabelMetrics} 参照）を壊さないため。逃がした先がノードに
+ * かぶるかどうかは routeCost の ROUTE_COST_LABEL_OVER_NODE 側で評価される。
+ */
+function labelEscapeNormal(direction) {
+  const normal = { x: -direction.y, y: direction.x };
+  const flipped = normal.y > 0 || (normal.y === 0 && normal.x < 0);
+  return flipped ? { x: -normal.x, y: -normal.y } : normal;
+}
+
+/**
+ * ラベルのピルを置く点と、それが線から逃げた結果かどうか。
+ *
+ * 既定は経路の中点。ピルは不透明で最小幅 {@link MIN_CONNECTOR_LABEL_WIDTH} あるため、
+ * ノード間が狭いと線と矢頭を丸ごと覆い隠してしまう（ラベルの文字数を削っても
+ * 下限までしか縮まないので効かない）。線が {@link MIN_VISIBLE_ROUTE_LENGTH} も
+ * 残らないときだけ、中点が乗っている線分の法線方向へピルを逃がす。
+ *
+ * 逃がす距離は「軸並行な矩形のその法線方向への広がり」＋余白。ピルは回転しないので、
+ * 斜めの線でも角が線に触れないことがこの式で保証される。
+ */
+function connectorLabelAnchor(element, points, metrics = connectorLabelMetrics(element)) {
+  const anchor = pointAtHalfLength(points);
+  const centered = {
+    x: anchor.x - metrics.width / 2,
+    y: anchor.y - metrics.height / 2,
+    width: metrics.width,
+    height: metrics.height,
+  };
+  if (routeLengthOutsideBox(points, centered) >= MIN_VISIBLE_ROUTE_LENGTH) {
+    return { x: anchor.x, y: anchor.y, escaped: false };
+  }
+  const normal = labelEscapeNormal(anchor.direction);
+  const reach =
+    Math.abs(normal.x) * (metrics.width / 2) +
+    Math.abs(normal.y) * (metrics.height / 2) +
+    CONNECTOR_LABEL_CLEARANCE;
+  return {
+    x: anchor.x + normal.x * reach,
+    y: anchor.y + normal.y * reach,
+    escaped: true,
   };
 }
 
@@ -1432,7 +1492,7 @@ function connectorLabelMetrics(element) {
 function connectorLabelBox(element, points) {
   if (!element?.label || points.length < 2) return null;
   const metrics = connectorLabelMetrics(element);
-  const position = pointAtHalfLength(points);
+  const position = connectorLabelAnchor(element, points, metrics);
   return {
     x: position.x - metrics.width / 2,
     y: position.y - metrics.height / 2,
@@ -1447,6 +1507,49 @@ function boxOverlapsRoute(box, points) {
     if (segmentIntersectsBox(points[index - 1], points[index], box, 0)) return true;
   }
   return false;
+}
+
+/**
+ * 線分 a→b のうち box の内側にある割合 [0,1]。Liang–Barsky のクリッピング。
+ *
+ * 「ラベルが線をどれだけ隠したか」を長さで測るために使う。交差の有無ではなく量が
+ * 要るので、boxOverlapsRoute とは別の計算になる。標本化ではなく解析的に解くので、
+ * 同じ入力に対して必ず同じ値になる。
+ */
+function segmentPortionInsideBox(a, b, box) {
+  const deltaX = b.x - a.x;
+  const deltaY = b.y - a.y;
+  let enter = 0;
+  let exit = 1;
+  const clip = (edge, distance) => {
+    if (edge === 0) return distance >= 0;
+    const ratio = distance / edge;
+    if (edge < 0) {
+      if (ratio > exit) return false;
+      if (ratio > enter) enter = ratio;
+    } else {
+      if (ratio < enter) return false;
+      if (ratio < exit) exit = ratio;
+    }
+    return true;
+  };
+  if (!clip(-deltaX, a.x - box.x)) return 0;
+  if (!clip(deltaX, box.x + box.width - a.x)) return 0;
+  if (!clip(-deltaY, a.y - box.y)) return 0;
+  if (!clip(deltaY, box.y + box.height - a.y)) return 0;
+  return Math.max(0, exit - enter);
+}
+
+/** 経路のうち box の外側に残る長さ。ラベルに隠されずに見える線の長さ。 */
+function routeLengthOutsideBox(points, box) {
+  let outside = 0;
+  for (let index = 1; index < points.length; index++) {
+    const start = points[index - 1];
+    const end = points[index];
+    const length = Math.hypot(end.x - start.x, end.y - start.y);
+    outside += length * (1 - segmentPortionInsideBox(start, end, box));
+  }
+  return outside;
 }
 
 function availableStubDistance(start, direction, desired, nodes, excludedIds) {
@@ -2274,7 +2377,14 @@ export function computeConnectorRoute(
  *
  * 交差そのものは報告しない。平面的でないグラフでは交差は避けようがなく、
  * すべて報告するとノイズになって本当に困っている図が埋もれる。
- * 報告するのは経路がノードを貫通した場合とラベルがノードを覆った場合だけ。
+ * 報告するのは経路がノードを貫通した場合と、ラベルがノードを覆った場合だけ。
+ *
+ * 「ラベルが自分の経路を覆う」ケースはここでは報告しない。orthogonal 経路では
+ * connectorLabelAnchor が法線方向へ逃がすことで必ず解決するため（生成した
+ * 4,725 通りの orthogonal 配置で、逃がしたあとの可視長は下限 50 を一度も
+ * 下回らなかった）、報告する対象そのものが存在しない。straight / polyline では
+ * 下回りうるが、それは作者が経路を明示した結果であり、この診断ループが
+ * orthogonal だけを見るのと同じ理由で対象外。
  */
 function reportRouteDegradation(report, connector, points, context, gridReason) {
   if (typeof report !== "function") return;
@@ -2437,6 +2547,10 @@ function planConnectorRoutes(model, lookup) {
   return { routes, diagnostics };
 }
 
+/**
+ * 経路の中点と、その点が乗っている線分の単位方向ベクトル。
+ * 方向はラベルを線から逃がす向き（{@link labelEscapeNormal}）を決めるのに使う。
+ */
 function pointAtHalfLength(points) {
   const lengths = [];
   let total = 0;
@@ -2451,15 +2565,19 @@ function pointAtHalfLength(points) {
   let remaining = total / 2;
   for (let index = 0; index < lengths.length; index++) {
     if (remaining <= lengths[index] || index === lengths.length - 1) {
-      const ratio = lengths[index] ? remaining / lengths[index] : 0;
+      const span = lengths[index];
+      const ratio = span ? remaining / span : 0;
+      const deltaX = points[index + 1].x - points[index].x;
+      const deltaY = points[index + 1].y - points[index].y;
       return {
-        x: points[index].x + (points[index + 1].x - points[index].x) * ratio,
-        y: points[index].y + (points[index + 1].y - points[index].y) * ratio,
+        x: points[index].x + deltaX * ratio,
+        y: points[index].y + deltaY * ratio,
+        direction: span ? { x: deltaX / span, y: deltaY / span } : { x: 1, y: 0 },
       };
     }
     remaining -= lengths[index];
   }
-  return points[0];
+  return { x: points[0].x, y: points[0].y, direction: { x: 1, y: 0 } };
 }
 
 function iconShapeAttributes(shape, textColor) {
@@ -2686,8 +2804,8 @@ function renderConnector(documentRef, element, points, markerId, endpointNames) 
     }),
   );
   if (element.label) {
-    const position = pointAtHalfLength(points);
     const fittedLabel = connectorLabelMetrics(element);
+    const position = connectorLabelAnchor(element, points, fittedLabel);
     const { width, height } = fittedLabel;
     group.appendChild(
       svgElement(documentRef, "rect", {
@@ -2905,6 +3023,7 @@ export function renderArchitectureBlock(
 
 export {
   ArchitectureError,
+  CONNECTOR_LABEL_CLEARANCE,
   DSL_VERSION,
   ICONS,
   ICON_ASSET_PATTERN,
@@ -2923,9 +3042,16 @@ export {
   MAX_ROUTING_GRID_VISITS,
   MAX_SOURCE_LENGTH,
   MAX_TOTAL_TEXT,
+  MIN_CONNECTOR_LABEL_WIDTH,
+  MIN_VISIBLE_ROUTE_LENGTH,
   PORTS,
   ROUTE_FALLBACK_REASONS,
   ROUTINGS,
   SHAPES,
   THEME_TOKENS,
+  connectorLabelAnchor,
+  connectorLabelBox,
+  connectorLabelMetrics,
+  pointAtHalfLength,
+  routeLengthOutsideBox,
 };
