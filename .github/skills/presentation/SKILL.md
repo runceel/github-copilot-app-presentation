@@ -104,7 +104,7 @@ total: 6
 | `copyright` | （`layout: backcover` のみ）背表紙左下の著作権表示。`microsoft` / `ms-modern` テーマでは省略時 `© Copyright Microsoft Corporation. All rights reserved.`、他テーマでは明示したときだけ表示。空にすると常に非表示 |
 
 本文では通常の Markdown が使えます（GFM 相当: marked + 表）:
-見出し `#`/`##`/`###`、箇条書き `-`/番号付き `1.`、強調 `**太字**`/`*色付き*`、`` `コード` ``、コードブロック ` ``` `、引用 `>`、表 `|...|`、リンク、画像 `![](...)`、Mermaid 図 ` ```mermaid `、絵文字 `:rocket:` など。**HTML エスケープやタグ生成は不要**で、素の Markdown をそのまま書きます。
+見出し `#`/`##`/`###`、箇条書き `-`/番号付き `1.`、強調 `**太字**`/`*色付き*`、`` `コード` ``、コードブロック ` ``` `、引用 `>`、表 `|...|`、リンク、画像 `![](...)`、Mermaid 図 ` ```mermaid `、固定配置の構成図 ` ```architecture `、絵文字 `:rocket:` など。**HTML エスケープやタグ生成は不要**で、素の Markdown をそのまま書きます。
 
 コードフェンスに `csharp` / `json` / `diff` などの言語名を付けると、同梱の highlight.js がシンタックスハイライトします。
 
@@ -150,6 +150,22 @@ flowchart LR
 
 - Mermaid.js は拡張機能に**同梱**（`.github/extensions/presentation/vendor/`）。オフラインでも描画されます。
 - 記法に誤りがあってもスライドは**空白になりません**。エラー表示と他の本文はそのまま表示されます。
+
+### 図: Architecture JSON DSL（Experimental）
+` ```architecture ` は、ノードの座標・サイズ・コンテナ・重なりを固定して再現したい
+プレゼン資料向けの構成図です。`version: 1`、`canvas`、`elements`、`node`、
+`group`、`connector` の詳細と完全な例は
+`.github/extensions/presentation/README.md` を参照してください。
+DSL と描画結果の互換性は正式版まで保証されないため、重要な資料では PDF 出力を
+事前確認してください。
+group の `layout` は `row` / `column` / `grid`、node の内蔵 `icon` は
+`cloud` / `database` / `api` / `user` / `server`、connector の port は
+`top` / `right` / `bottom` / `left` を使えます。外部 URL や任意 SVG は指定しません。
+同じ port から分岐する connector は自動 lane で分離され、orthogonal routing は
+node と既存 connector の重なりを避ける候補を優先します。複雑な経路だけは
+`routing: "polyline"` と `points` で明示します。
+自動レイアウトが必要なら Mermaid、資料上の配置を厳密に保ちたいなら Architecture DSL
+を使います。不正な JSON や参照は図の場所にエラー表示され、他の本文は残ります。
 
 ### 画像
 - **リモート URL**: `![代替テキスト](https://example.com/foo.png)` をそのまま書けます。

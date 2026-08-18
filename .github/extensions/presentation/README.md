@@ -21,6 +21,7 @@ canvas iframe（renderer/）
   │ marked で本文を HTML 化 → DOMPurify でサニタイズ
   │ highlight.js で言語付きコードフェンスをシンタックスハイライト
   │ ```mermaid を図に変換 → mermaid.run
+  │ ```architecture の検証済み JSON DSL を安全な SVG DOM に変換
   │ ◀ ▶ ボタン・余白の左/右クリック・矢印キー・☰ 一覧でページ送り（canvas 内で完結）
   │ ⛶ ボタンで同期された外部全画面ウィンドウを起動
   ▼
@@ -36,6 +37,105 @@ canvas iframe（renderer/）
 - **外部プレゼン画面**は canvas の ⛶ ボタン、`open_presenter` action、または **Surface Pen の末尾ボタン 2 回押し**で起動します。Edge / Chrome / Chromium を専用の一時プロファイルで app mode + fullscreen 起動し、同じ `/state`・`/navigate`・SSE を使うため、canvas・キーボード・Surface Pen のページ位置が同期します。外部ウィンドウを閉じるには **もう一度ペンを 2 回押し**、`Alt+F4`、または AI から `close_presenter` を使います。canvas を閉じた場合も自動終了します。
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
 - コードフェンスに `csharp` / `json` / `diff` などの言語名を付けると、highlight.js がシンタックスハイライトします。
+
+## Architecture DSL v1（Experimental）
+
+`architecture` コードフェンスは、プレゼン資料で位置・サイズ・重なりを再現しやすい
+JSON DSL を SVG として描画します。`canvas` は論理座標で、表示時は `viewBox` により
+canvas、外部 presenter、PDF のすべてで同じ比率に縮尺されます。
+
+> **Experimental:** DSL と描画結果の互換性は正式版まで保証されません。重要な資料では
+> PDF 出力を事前確認し、複雑な自動配置が必要な図には Mermaid を使用してください。
+
+````markdown
+```architecture
+{
+  "version": 1,
+  "title": "Web application architecture",
+  "description": "A client, application tier, and database.",
+  "canvas": { "width": 1600, "height": 900 },
+  "elements": [
+    {
+      "type": "group", "id": "cloud", "x": 480, "y": 90,
+      "width": 1040, "height": 700, "title": "Cloud",
+      "layout": { "type": "row", "gap": 60, "padding": 70 },
+      "children": [
+        {
+          "type": "node", "id": "api", "shape": "rounded-rect",
+          "text": "API", "icon": "api",
+          "style": { "fill": "surface", "stroke": "accent" }
+        },
+        {
+          "type": "node", "id": "db", "shape": "ellipse",
+          "text": "Database", "icon": "database"
+        }
+      ]
+    },
+    {
+      "type": "node", "id": "client", "shape": "rect",
+      "x": 80, "y": 330, "width": 280, "height": 150, "text": "Client"
+    },
+    {
+      "type": "connector", "from": "client", "to": "api",
+      "fromPort": "right", "toPort": "left",
+      "routing": "orthogonal", "label": "HTTPS", "arrow": true
+    },
+    {
+      "type": "connector", "from": "api", "to": "db",
+      "routing": "polyline", "points": [{ "x": 500, "y": 400 }],
+      "label": "SQL", "arrow": true, "z": -10
+    }
+  ]
+}
+```
+````
+
+- `node` は `rect` / `rounded-rect` / `ellipse`、複数行 `text`、一意な `id` を持てます。
+- `icon` は外部資産を読まず、内製 SVG primitive だけで描く `cloud` / `database` /
+  `api` / `user` / `server` の allowlist です。線色は theme token に追従します。
+- `group` の `children` 座標は group 左上からの相対座標です。境界・タイトルは子要素より
+  前に描かれ、視覚的なコンテナになります。`layout` を省略すると従来どおり明示座標、
+  `row` / `column` / `grid` を指定すると `gap`（または `rowGap` / `columnGap`）/
+  `padding` / `columns` と group の内寸から node/group child の位置と省略サイズを
+  決めます。完全な graph auto-layout ではなく、資料向けの決定論的な配置補助です。
+- `connector` は `from` / `to` の境界へ接続し、`straight` / `orthogonal` /
+  `polyline`、矢印、ラベルをサポートします。`fromPort` / `toPort` は `auto` /
+  `top` / `right` / `bottom` / `left`。同一 endpoint の複数辺には安定した lane を
+  自動割当し、分岐する辺の出口も分離します。orthogonal は短い辺から経路を確定し、
+  他 node に加えて確定済み connector との重なり・交差が少ない corridor を優先します。
+  線端と box の間には既定の 14 logical px gap を設けます。完全な graph-wide 最適化では
+  ないため、複雑な図では `lane` または `polyline` の中間点を明示します。長い label は
+  Unicode 幅を考慮して縮小し、上限内に収まらなければ表示だけを省略します
+  （完全な文字列は `aria-label` に保持）。
+- `z`（`-100`〜`100`）が小さい要素から描き、同じ `z` では `elements` / `children`
+  の宣言順を維持します。省略時は group `-50`、connector `-10`、node `0` となり、
+  コンテナ背景 → 接続線 → ノードの順で安定して重なります。
+- style は `fill` / `stroke` / `textColor` / `strokeWidth` / `fontSize` /
+  `opacity` / `dash` / `cornerRadius`。色は `accent`、`accentStrong`、`accentSoft`、
+  `accentLine`、`surface`、`fg`、`muted`、`body`、`border`、`bg` の theme token
+  を推奨します。4 テーマへ自動追従し、リテラル色は hex、白、黒、透明だけに制限します。
+- 不正 JSON、範囲外の数値、重複 ID、未知の参照、未許可の要素・style・色は図の位置に
+  エラーとして表示され、スライドの他の本文は残ります。DSL 値から HTML、script、
+  イベント属性、外部 URL は生成しません。
+- `version` は現在 `1`（省略時も v1）。source 64 KiB、全要素 200、connector 100、
+  入れ子 4 段、polyline 中間点 12、総テキスト 20,000 文字などの上限を設けています。
+  診断は `elements[0].children[2].icon` のような JSON path を含みます。
+- SVG 自体は `<title>` / `<desc>` と `aria-labelledby` を持ち、group/node/connector
+  に意味のある role・`aria-label`・SVG `<title>` を付けます。必要なら root の
+  `description` と各要素の `ariaLabel` を明示できます。
+
+### 位置調整モード（編集性 PoC）
+
+renderer URL に `?architectureEdit=1` を付けた通常 canvas だけで、node をクリックまたは
+Tab で選択し、矢印キー（10 logical px、Shift+矢印は 1 px）で一時移動できます。
+`Copy overrides` は `{ "version": 1, "overrides": [{ "id", "x", "y" }] }` を
+clipboard へコピーします。通常表示、`?present=1`、`?print=1` では編集 UI を出しません。
+この縦切りは DSL の書き戻し・Undo/Redo・connector の即時再 routing・永続化を行いません。
+
+**使い分け:** Mermaid は自動レイアウト、シーケンス図、クラス図など構造中心の図に向きます。
+Architecture DSL は座標、サイズ、コンテナ、重なりを資料ごとに固定したい構成図に向きます。
+この PoC は外部依存やアイコン資産を追加しておらず、追加 source はおよそ 40 KiB です。
+ドラッグ編集、Undo/Redo、完全な graph auto-layout、交差最小化は対象外です。
 
 ## コンテンツサイズ
 
@@ -112,7 +212,8 @@ size: xlarge
   renderer/
     index.html             # iframe シェル・操作バー・スライド一覧オーバーレイ
     slides.css             # 4 テーマ（dark/light/microsoft/ms-modern）の配色定義・ナビ UI のスタイル
-    renderer.js            # フロントマター解析 / marked / mermaid / SSE 購読 / 操作 UI（◀ ▶・キー・一覧）
+    renderer.js            # フロントマター解析 / marked / mermaid / architecture / SSE / 操作 UI
+    architecture.mjs       # JSON DSL の検証と安全な SVG DOM 生成
   vendor/
     marked.min.js          # Markdown レンダラー
     purify.min.js          # DOMPurify（HTML サニタイズ）
