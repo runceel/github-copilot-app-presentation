@@ -1,2 +1,11 @@
 # User-specific
 *.user
+
+# Node / テスト基盤（配布物には含めません）
+node_modules/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
