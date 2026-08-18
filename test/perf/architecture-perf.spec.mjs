@@ -236,6 +236,14 @@ test.describe("Architecture の描画コスト", () => {
     const nodes = await measureRender(page, nodesOnly(MAX_ELEMENTS));
     const routed = await measureRender(page, nodesAndCrossingConnectors(MAX_ELEMENTS / 2));
 
+    // 実測値をログに残す。バジェットは開発機の実測から決めているので、
+    // 実行環境ごとの値が記録に残っていないと、後でバジェットを調整するときに
+    // 「締めすぎたのか、本当に遅くなったのか」が判別できない。
+    console.log(
+      `[perf] ノード ${MAX_ELEMENTS} = ${nodes.perRun.toFixed(2)}ms / ` +
+        `交差コネクター入り = ${routed.perRun.toFixed(2)}ms（上限 ${RENDER_BUDGET_MS}ms）`,
+    );
+
     // まず「本当に最大サイズの図が描けている」ことを確認する。
     // MAX_ELEMENTS を 1 でも超えるとパーサーがエラー表示に落ち、描画コストが
     // ほぼゼロになる。速さを成功と読み違えないための門。
@@ -266,6 +274,10 @@ test.describe("Architecture の描画コスト", () => {
     expect(small.perRun, "小さい図の計測が速すぎて比率を取れない").toBeGreaterThan(0.05);
 
     const ratio = large.perRun / small.perRun;
+    console.log(
+      `[perf] 25 要素 = ${small.perRun.toFixed(2)}ms / ${MAX_ELEMENTS} 要素 = ${large.perRun.toFixed(2)}ms / ` +
+        `比 ${ratio.toFixed(2)}（上限 ${SCALING_BUDGET}）`,
+    );
     expect(
       ratio,
       `要素数 8 倍でコストが ${ratio.toFixed(1)} 倍（線形なら 8 倍、二乗なら 64 倍、実測 7〜8 倍）`,
