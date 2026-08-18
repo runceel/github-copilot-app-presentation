@@ -402,9 +402,8 @@ function createSlide(markdown, fallbackTheme) {
     const editor = attachArchitectureEditor(host, {
       source,
       documentRef: document,
-      onCommit: (next) => {
-        saveArchitectureBlock(blockIndex, next);
-      },
+      // 保存結果を editor へ返す（返し忘れると失敗が「成功」に見えてしまう）。
+      onCommit: (next) => saveArchitectureBlock(blockIndex, next),
     });
     if (!editor) {
       // DSL が不正なら編集させず、通常のエラー表示へ戻す。
@@ -670,27 +669,58 @@ function setArchitectureEditMode(enabled) {
 }
 
 /**
+ * 編集モードの有効・無効をサーバーへ要求する。サーバー状態が唯一の真実なので、
+ * ここではクライアント状態を直接いじらない（反映は /state のポーリング経由）。
+ */
+async function requestArchitectureEditMode(enabled) {
+  try {
+    await fetch("./edit-mode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: Boolean(enabled) }),
+    });
+  } catch (_) {
+    /* サーバーが落ちていれば編集モードには入れない。次の poll で整合する。 */
+  }
+}
+
+/**
  * 編集した図をサーバーへ書き戻す。サーバーは元スライドの n 番目の
  * ```architecture フェンスを差し替えるので、元の DSL がそのまま更新される。
+ *
+ * 保存の成否は必ず呼び出し元へ返す。ここで握り潰すと、保存されていないのに
+ * 保存できたように見える（Phase 5 が潰したかった「黙って無視される」挙動そのもの）。
  */
 async function saveArchitectureBlock(block, source) {
+  let res;
   try {
-    const res = await fetch("./edit", {
+    res = await fetch("./edit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ index: navIndex, block, source }),
     });
-    if (!res.ok) return;
-    const data = await res.json();
-    // 自分が起こした更新なので、SSE のこだまで再描画しないよう版を進めておく
-    // （再描画すると編集中の選択とフォーカスが飛ぶ）。
-    if (typeof data.version === "number" && data.version > currentVersion) {
-      currentVersion = data.version;
-    }
-    if (typeof data.markdown === "string") lastMarkdown = data.markdown;
-  } catch (_) {
-    /* ignore; the safety poll will resync */
+  } catch (e) {
+    return { ok: false, message: "サーバーへ接続できませんでした" };
   }
+  if (!res.ok) {
+    let error = `HTTP ${res.status}`;
+    try {
+      const failure = await res.json();
+      if (failure?.error === "edit_mode_disabled") error = "編集モードが無効です";
+      else if (typeof failure?.error === "string") error = failure.error;
+    } catch (_) {
+      /* 本文が JSON でなければ HTTP ステータスをそのまま見せる。 */
+    }
+    return { ok: false, message: error };
+  }
+  const data = await res.json();
+  // 自分が起こした更新なので、SSE のこだまで再描画しないよう版を進めておく
+  // （再描画すると編集中の選択とフォーカスが飛ぶ）。
+  if (typeof data.version === "number" && data.version > currentVersion) {
+    currentVersion = data.version;
+  }
+  if (typeof data.markdown === "string") lastMarkdown = data.markdown;
+  return { ok: true };
 }
 
 async function fetchState() {
@@ -1069,7 +1099,11 @@ function init() {
     document.body.classList.add("presenter-mode");
   } else if (params.get("architectureEdit") === "1") {
     // ローカル確認用の導線。presenter とは else-if で排他になっている。
-    setArchitectureEditMode(true);
+    // ここでクライアント状態だけを立てると、直後の /state ポーリングが
+    // サーバーの false で上書きして編集モードが勝手に解除され、/edit も
+    // 409 になる。サーバー状態を唯一の真実にするため、まずサーバーへ伝える。
+    // 実際の有効化は /state 経由で返ってくる。
+    requestArchitectureEditMode(true);
   }
 
   wireControls();

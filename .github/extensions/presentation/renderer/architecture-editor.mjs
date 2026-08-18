@@ -77,7 +77,16 @@ export function attachArchitectureEditor(container, options = {}) {
   status.setAttribute("aria-live", "polite");
   status.setAttribute("data-architecture-edit-status", "idle");
 
-  toolbar.append(undoButton, redoButton, releaseButton, status);
+  // 保存結果の表示。status とは別に持つ理由: status は次の操作ですぐ上書きされる
+  // ので、保存に失敗したという事実が消えてしまう。保存失敗は「編集が実際に
+  // 失われている」状態なので、次に保存が成功するまで出したままにする。
+  const saveState = documentRef.createElement("span");
+  saveState.className = "architecture-editor-save";
+  saveState.setAttribute("role", "status");
+  saveState.setAttribute("aria-live", "polite");
+  saveState.setAttribute("data-architecture-save-state", "idle");
+
+  toolbar.append(undoButton, redoButton, releaseButton, status, saveState);
 
   const surface = documentRef.createElement("div");
   surface.className = "architecture-editor-surface";
@@ -87,6 +96,8 @@ export function attachArchitectureEditor(container, options = {}) {
   let selectedId = null;
   let drag = null;
   let svg = null;
+  // 保存応答の追い越し対策。最後に投げた保存だけが表示を書き換えられる。
+  let saveToken = 0;
 
   function createButton(label, action) {
     const button = documentRef.createElement("button");
@@ -100,6 +111,41 @@ export function attachArchitectureEditor(container, options = {}) {
   function announce(text, reason) {
     status.textContent = text;
     status.setAttribute("data-architecture-edit-status", reason);
+  }
+
+  /** 保存結果を利用者に見える形で出す。失敗は次の成功まで残す。 */
+  function reportSave(state, text) {
+    saveState.textContent = text;
+    saveState.setAttribute("data-architecture-save-state", state);
+  }
+
+  /**
+   * 確定した DSL を永続化し、その結果を必ず画面へ出す。
+   *
+   * ここを投げっぱなしにすると、サーバーが 409 / 404 / 413 で拒否しても利用者には
+   * 保存できたように見え、編集が黙って消える。このフェーズが潰したかった
+   * 「黙って無視される」挙動そのものなので、成否は必ず表示する。
+   */
+  async function commitAndReport(source) {
+    if (!onCommit) return;
+    const token = ++saveToken;
+    reportSave("saving", "保存中…");
+    let result;
+    try {
+      result = await onCommit(source);
+    } catch (e) {
+      result = { ok: false, message: e?.message || "不明なエラー" };
+    }
+    // 追い越された古い応答で新しい状態を上書きしない。
+    if (token !== saveToken) return;
+    // 成功と言い切れるとき **だけ** 成功にする。onCommit が結果を返し忘れた場合も
+    // 「失敗」側へ倒す: 保存できたと嘘をつくより、できていないと言う方が安全。
+    if (result?.ok === true) {
+      reportSave("saved", "保存しました。");
+      return;
+    }
+    const message = result?.message || "保存結果を確認できませんでした";
+    reportSave("failed", `保存できませんでした: ${message}。この編集はまだ保存されていません。`);
   }
 
   function refreshToolbar() {
@@ -200,7 +246,7 @@ export function attachArchitectureEditor(container, options = {}) {
     } else if (result.reason === "redone") {
       announce("編集をやり直しました。", "redone");
     }
-    onCommit?.(session.source);
+    void commitAndReport(session.source);
     return true;
   }
 

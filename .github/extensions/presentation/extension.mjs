@@ -1420,6 +1420,52 @@ async function startServer(inst) {
       );
       return;
     }
+    // 編集モードの切り替え。サーバー状態が唯一の真実になるようにするための経路で、
+    // renderer が `?architectureEdit=1` で開かれたときにもここを叩く。こうしないと
+    // 「クライアントだけ編集モード、サーバーは無効」という状態が作れてしまい、
+    // /state のポーリングで編集モードが勝手に解除され、/edit も 409 で弾かれる。
+    if (pathname === "/edit-mode") {
+      if (req.method !== "POST") {
+        res.statusCode = 405;
+        res.setHeader("Allow", "POST");
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+        return;
+      }
+      const origin = req.headers.origin;
+      if (origin && origin !== new URL(inst.url).origin) {
+        res.statusCode = 403;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "origin_not_allowed" }));
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (e) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader("Connection", "close");
+        res.end(JSON.stringify({ ok: false, error: e?.message || "bad_request" }));
+        return;
+      }
+      if (typeof body.enabled !== "boolean") {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "enabled (boolean) is required" }));
+        return;
+      }
+      activateInstance(inst);
+      const changed = inst.architectureEdit !== body.enabled;
+      inst.architectureEdit = body.enabled;
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(
+        JSON.stringify({ ok: true, changed, architectureEdit: inst.architectureEdit }),
+      );
+      return;
+    }
     // Architecture 図の編集結果を元スライドへ書き戻す。差分ではなく DSL 全体を
     // 受け取り、対象スライドの n 番目の ```architecture フェンスを差し替える。
     // 編集モードが立っていないときは受け付けない（presenter や印刷から誤って

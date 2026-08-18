@@ -313,3 +313,40 @@ test("インデントされたフェンスと ~~~ フェンスも数え方が変
   assert.equal(next.includes('  {"version":1,"elements":[]}'), true);
   assert.equal(next.includes("~~~architecture"), true);
 });
+
+test("CRLF の Markdown を保存してもフェンス外の改行コードが変わらない", () => {
+  // CRLF のファイルを 1 枚保存しただけで全行が LF になると、Windows 利用者の
+  // git diff が全行変更になる。フェンス外の地の文は 1 バイトも変えない。
+  const markdown = [
+    "---",
+    "deck: CRLF",
+    "---",
+    "",
+    "## 見出し",
+    "",
+    "```architecture",
+    '{ "version": 1, "elements": [] }',
+    "```",
+    "",
+    "あとがき",
+  ].join("\r\n");
+
+  const next = replaceArchitectureBlock(markdown, 0, '{"version":1,"elements":[]}');
+  assert.notEqual(next, null);
+  // LF 単独（CRLF の一部でない改行）が現れていない。
+  assert.equal(/(?<!\r)\n/.test(next), false);
+  assert.equal(next.includes("## 見出し\r\n"), true);
+  assert.equal(next.includes("あとがき"), true);
+  assert.equal(next.includes('{"version":1,"elements":[]}'), true);
+  // フェンス外の行は元のまま（差し替え前後で行数も保たれる）。
+  assert.equal(next.split("\r\n").length, markdown.split("\r\n").length);
+});
+
+test("LF の Markdown は LF のまま保たれる", () => {
+  const markdown = ["## 見出し", "", "```architecture", '{ "version": 1, "elements": [] }', "```", ""].join(
+    "\n",
+  );
+  const next = replaceArchitectureBlock(markdown, 0, '{"version":1,"elements":[]}');
+  assert.equal(next.includes("\r"), false);
+  assert.equal(next.includes("## 見出し\n"), true);
+});

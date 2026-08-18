@@ -272,6 +272,13 @@ body.mermaid-loading .mermaid{visibility:hidden;}
 .architecture-editor-button:focus-visible{outline:2px solid var(--accent-strong);outline-offset:2px;}
 .architecture-editor-status{flex:1;color:var(--muted);text-align:right;
      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* 保存結果。失敗は編集が実際に失われている状態なので、目立つ色で残す。 */
+.architecture-editor-save{flex:0 0 auto;font-weight:600;}
+.architecture-editor-save[data-architecture-save-state="idle"]{display:none;}
+.architecture-editor-save[data-architecture-save-state="saving"]{color:var(--muted);}
+.architecture-editor-save[data-architecture-save-state="saved"]{color:var(--muted);}
+.architecture-editor-save[data-architecture-save-state="failed"]{color:#b3261e;
+     border:1px solid currentColor;border-radius:6px;padding:.2em .6em;white-space:normal;}
 .architecture-editor [data-architecture-movable="true"]{cursor:grab;outline:none;}
 .architecture-editor [data-architecture-movable="false"]{cursor:not-allowed;outline:none;}
 .architecture-editor [data-architecture-type]:focus-visible>rect,

@@ -256,3 +256,116 @@ test.describe("編集 UI が発表・印刷へ漏れない", () => {
     }
   });
 });
+
+test.describe("編集モードへの到達（利用者が通る経路）", () => {
+  // ここが通らないと Phase 5 は「実装したが誰も使えない」状態になる。
+  // 単体で setArchitectureEditMode が動くことではなく、URL を開いてから
+  // 図を動かし、元の Markdown が実際に書き換わるまでを 1 本で見る。
+
+  test("?architectureEdit=1 で編集モードに入り、書き戻しまで通る", async ({ page }) => {
+    // サーバーは無効な状態から始める（クライアントだけ true になる余地を潰す）。
+    const harness = await startHarness({ slides: SLIDES, architectureEdit: false });
+    try {
+      expect(harness.architectureEdit).toBe(false);
+
+      await page.goto(`${harness.url}/?architectureEdit=1`, { waitUntil: "load" });
+      await waitForSlideReady(page);
+
+      // URL パラメーターがサーバー状態へ伝わっている（唯一の真実がサーバー側）。
+      await expect.poll(() => harness.architectureEdit).toBe(true);
+      await expect(page.locator(EDITOR)).toHaveCount(1);
+
+      // /state のポーリング（2 秒）を跨いでも編集モードが解除されない。
+      await page.waitForTimeout(2600);
+      await expect(page.locator(EDITOR)).toHaveCount(1);
+
+      // 実際に動かして、元の Markdown が書き換わる。
+      const before = harness.slideAt(0);
+      await page.locator(NODE("client")).focus();
+      await page.keyboard.press("ArrowDown");
+
+      await expect(page.locator("[data-architecture-save-state]")).toHaveAttribute(
+        "data-architecture-save-state",
+        "saved",
+      );
+      expect(harness.slideAt(0)).not.toBe(before);
+      expect(harness.slideAt(0)).toContain("```architecture");
+    } finally {
+      await harness.close();
+    }
+  });
+});
+
+test.describe("保存の失敗が利用者に見える", () => {
+  // クライアント側の拒否は 11 種類も読み上げるのに、実際にデータが失われる
+  // サーバー側の拒否だけ無言、という状態を作らないための回帰。
+  // 図は画面上で動くので、保存されなかったことは表示しないと気づけない。
+
+  const SAVE_STATE = "[data-architecture-save-state]";
+  /** /edit だけを確実に捕まえる（glob より取りこぼしが無い）。 */
+  const isEditRequest = (url) => new URL(url).pathname === "/edit";
+
+  test("サーバーが 409 で拒否したら画面に出る", async ({ page }) => {
+    const harness = await openEditor(page);
+    try {
+      // 編集モードが解除された直後（クライアントが /state で気づく前）を再現する。
+      let intercepted = 0;
+      await page.route(isEditRequest, (route) => {
+        intercepted += 1;
+        return route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({ ok: false, error: "edit_mode_disabled" }),
+        });
+      });
+
+      await page.locator(NODE("client")).focus();
+      await page.keyboard.press("ArrowDown");
+
+      const indicator = page.locator(SAVE_STATE);
+      await expect(indicator).toHaveAttribute("data-architecture-save-state", "failed");
+      await expect(indicator).toBeVisible();
+      await expect(indicator).toContainText("保存できませんでした");
+      // 何が起きたのかが区別できる。
+      await expect(indicator).toContainText("編集モードが無効です");
+      expect(intercepted).toBeGreaterThan(0);
+      // 実際にサーバーへは書き戻っていない（表示だけの嘘ではない）。
+      expect(harness.editReports).toHaveLength(0);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  test("通信そのものが失敗しても画面に出る", async ({ page }) => {
+    const harness = await openEditor(page);
+    try {
+      await page.route(isEditRequest, (route) => route.abort());
+
+      await page.locator(NODE("client")).focus();
+      await page.keyboard.press("ArrowDown");
+
+      const indicator = page.locator(SAVE_STATE);
+      await expect(indicator).toHaveAttribute("data-architecture-save-state", "failed");
+      await expect(indicator).toBeVisible();
+      await expect(indicator).toContainText("保存できませんでした");
+      expect(harness.editReports).toHaveLength(0);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  test("保存に成功したら成功として見える", async ({ page }) => {
+    const harness = await openEditor(page);
+    try {
+      await page.locator(NODE("client")).focus();
+      await page.keyboard.press("ArrowDown");
+
+      const indicator = page.locator(SAVE_STATE);
+      await expect(indicator).toHaveAttribute("data-architecture-save-state", "saved");
+      await expect(indicator).toContainText("保存しました");
+      expect(harness.editReports.length).toBeGreaterThan(0);
+    } finally {
+      await harness.close();
+    }
+  });
+});

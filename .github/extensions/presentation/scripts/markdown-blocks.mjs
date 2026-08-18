@@ -11,10 +11,41 @@
 const FENCE_OPEN = /^([ \t]{0,3})(`{3,}|~{3,})[ \t]*([^\s`~]*)[ \t]*$/;
 
 /**
- * Markdown を行に割る。CRLF / CR は LF に正規化する（差し替え後も LF で返す）。
+ * Markdown を行に割る。CRLF / CR は LF に正規化する（走査用）。
  */
 function toLines(markdown) {
   return String(markdown).replace(/\r\n?/g, "\n").split("\n");
+}
+
+/**
+ * Markdown を「本文 + その行の改行コード」に割る。差し替え時に、フェンス外の
+ * 地の文の改行コードを 1 バイトも変えないために使う。
+ *
+ * toLines と同じ境界で割るので、行番号は findArchitectureBlocks の結果と一致する。
+ */
+function splitLinesWithEol(markdown) {
+  const text = String(markdown);
+  const out = [];
+  const re = /\r\n|\r|\n/g;
+  let last = 0;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    out.push({ text: text.slice(last, m.index), eol: m[0] });
+    last = re.lastIndex;
+  }
+  out.push({ text: text.slice(last), eol: "" });
+  return out;
+}
+
+/** 挿入行に使う改行コード。文書内で多数派のものを採る。 */
+function dominantEol(lines) {
+  let crlf = 0;
+  let lf = 0;
+  for (const line of lines) {
+    if (line.eol === "\r\n") crlf += 1;
+    else if (line.eol === "\n") lf += 1;
+  }
+  return crlf > lf ? "\r\n" : "\n";
 }
 
 /**
@@ -71,18 +102,28 @@ export function findArchitectureBlocks(markdown) {
  *
  * フェンスの行自体（``` と ```）は保存され、中身だけが置き換わる。開始フェンスに
  * インデントがあれば新しい本文にも同じインデントを付ける。
+ *
+ * フェンス外の行は改行コードも含めてそのまま保つ。CRLF の Markdown を保存した
+ * だけでファイル全体が LF になり、git diff が全行変更になるのを避けるため。
  */
 export function replaceArchitectureBlock(markdown, blockIndex, source) {
   const blocks = findArchitectureBlocks(markdown);
   const target = blocks.find((b) => b.index === blockIndex);
   if (!target) return null;
-  const lines = toLines(markdown);
+  const lines = splitLinesWithEol(markdown);
+  // 挿入行の改行コードは開始フェンス行に合わせる（未閉じフェンスなど、フェンス行
+  // が文末で改行を持たない場合は文書内の多数派へ倒す）。
+  const eol = lines[target.open]?.eol || dominantEol(lines);
   // 末尾の空行を落としてから差し込む（JSON の末尾改行で空行が増えるのを防ぐ）。
   const body = String(source).replace(/\r\n?/g, "\n").replace(/\s+$/, "");
   const inserted = body.length
-    ? body.split("\n").map((line) => (target.indent && line ? target.indent + line : line))
+    ? body
+        .split("\n")
+        .map((line) => ({ text: target.indent && line ? target.indent + line : line, eol }))
     : [];
   const head = lines.slice(0, target.open + 1);
   const tail = lines.slice(target.end);
-  return [...head, ...inserted, ...tail].join("\n");
+  // 未閉じフェンス（tail が空）のときは、元の文末が改行を持たなかったことを保つ。
+  if (!tail.length && inserted.length) inserted[inserted.length - 1].eol = "";
+  return [...head, ...inserted, ...tail].map((line) => line.text + line.eol).join("");
 }

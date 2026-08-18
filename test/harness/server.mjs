@@ -291,6 +291,31 @@ export async function startHarness({
       return;
     }
 
+    // 編集モードの切り替え。本番同様、サーバー状態を唯一の真実にするための経路。
+    // `?architectureEdit=1` で開かれた renderer もここを叩く。
+    if (pathname === "/edit-mode") {
+      if (req.method !== "POST") {
+        res.setHeader("Allow", "POST");
+        sendJson(res, 405, { ok: false, error: "method_not_allowed" });
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, 400, { ok: false, error: "bad_request" });
+        return;
+      }
+      if (typeof body.enabled !== "boolean") {
+        sendJson(res, 400, { ok: false, error: "enabled (boolean) is required" });
+        return;
+      }
+      const changed = state.architectureEdit !== body.enabled;
+      state.architectureEdit = body.enabled;
+      sendJson(res, 200, { ok: true, changed, architectureEdit: state.architectureEdit });
+      return;
+    }
+
     // Architecture 図の書き戻し。本番と同じ共有ユーティリティで n 番目の
     // ```architecture フェンスを差し替える（フェンス走査を写経しないため）。
     if (pathname === "/edit") {
@@ -410,6 +435,14 @@ export async function startHarness({
     /** 表示中スライドの番号（0 始まり）。 */
     get index() {
       return state.index;
+    },
+    /** サーバー側の編集モード。URL パラメーター経由の有効化を検証するために公開する。 */
+    get architectureEdit() {
+      return state.architectureEdit;
+    },
+    /** 現在のスライド本文（書き戻しの検証用）。 */
+    slideAt(i) {
+      return state.slides[i];
     },
     async close() {
       for (const client of [...sseClients]) {
