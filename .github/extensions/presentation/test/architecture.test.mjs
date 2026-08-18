@@ -831,6 +831,53 @@ test("fits connector labels inside a bounded Unicode-aware background", () => {
   }
 });
 
+test("connector accessible names use the visible labels of both endpoints", () => {
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      elements: [
+        {
+          type: "group",
+          id: "zone-a1",
+          title: "Trusted zone",
+          x: 50,
+          y: 100,
+          width: 260,
+          height: 180,
+          children: [
+            { type: "node", id: "svc-a1", text: "Checkout service", x: 80, y: 140, width: 180, height: 100 },
+          ],
+        },
+        { type: "node", id: "db-primary", text: "Order database", x: 900, y: 100, width: 180, height: 100 },
+        // text も title も無い端点。ID にフォールバックする。
+        { type: "node", id: "cache-x9", x: 900, y: 400, width: 180, height: 100 },
+        { type: "connector", from: "svc-a1", to: "db-primary", label: "writes" },
+        { type: "connector", from: "zone-a1", to: "cache-x9" },
+        { type: "connector", from: "svc-a1", to: "cache-x9", ariaLabel: "custom wording wins" },
+      ],
+    }),
+  );
+  const wrapper = renderArchitectureDiagram(model, new FakeDocument());
+  const labelOf = (key) =>
+    descendants(wrapper)
+      .find((node) => node.attributes.get("data-architecture-connector") === key)
+      .attributes.get("aria-label");
+
+  // ID（svc-a1 / db-primary）ではなく、画面に見えている文字列で読み上げる。
+  assert.equal(labelOf("svc-a1-db-primary"), "Checkout service to Order database: writes");
+  // group は title を使う。可視ラベルが無い端点だけ ID のまま残る。
+  assert.equal(labelOf("zone-a1-cache-x9"), "Trusted zone to cache-x9");
+  // 明示的な ariaLabel は従来どおり全体を上書きする。
+  assert.equal(labelOf("svc-a1-cache-x9"), "custom wording wins");
+
+  // data-architecture-connector 自体は ID のままでなければならない
+  // （編集モードと既存の回帰テストがこの属性で要素を引く）。
+  const keys = descendants(wrapper)
+    .map((node) => node.attributes.get("data-architecture-connector"))
+    .filter(Boolean);
+  assert.deepEqual(keys.sort(), ["svc-a1-cache-x9", "svc-a1-db-primary", "zone-a1-cache-x9"]);
+});
+
 test("enforces DSL version, icon allowlist, nested JSON paths, and resource limits", () => {
   assert.throws(
     () => parseArchitecture(JSON.stringify({ version: 2, elements: [] })),

@@ -4,19 +4,23 @@
   "type": "module",
   "description": "presentation canvas extension のテスト・CI 基盤（配布物には含めません）",
   "scripts": {
-    "test": "npm run test:vendor && npm run test:schema && npm run test:unit && npm run test:editing && npm run test:visual && npm run test:pdf",
+    "test": "npm run test:vendor && npm run test:schema && npm run test:unit && npm run test:editing && npm run test:visual && npm run test:a11y && npm run test:perf && npm run test:pdf",
     "test:vendor": "cd .github/extensions/presentation && node scripts/vendor-assets.mjs verify vendor vendor/vendor-assets.lock.json",
     "test:schema": "node --test test/schema/architecture-schema.test.mjs test/schema/architecture-edit-schema.test.mjs",
     "test:unit": "cd .github/extensions/presentation && node --test",
     "test:visual": "playwright test --project=visual",
     "test:editing": "playwright test --project=editing",
     "test:pdf": "playwright test --project=pdf",
+    "test:a11y": "playwright test --project=a11y",
+    "test:perf": "playwright test --project=perf",
     "test:visual:update": "playwright test --project=visual --update-snapshots",
     "test:docker": "node test/scripts/playwright-docker.mjs",
     "test:visual:update:linux": "node test/scripts/playwright-docker.mjs --project=visual --update-snapshots"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
     "@playwright/test": "1.62.1",
-    "ajv": "8.20.0"
+    "ajv": "8.20.0",
+    "axe-core": "4.13.0"
   }
 }

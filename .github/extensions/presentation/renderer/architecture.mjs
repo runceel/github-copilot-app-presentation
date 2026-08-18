@@ -2622,10 +2622,48 @@ function renderNode(documentRef, element) {
   return group;
 }
 
-function renderConnector(documentRef, element, points, markerId) {
-  const label =
-    element.ariaLabel ||
-    `${element.from} to ${element.to}${element.label ? `: ${element.label}` : ""}`;
+/**
+ * コネクターの端点を「読み上げるときの呼び名」に解決するための表を作る。
+ *
+ * 端点の指定は ID だが、ID は `svc-a1` や `db-primary` のような機械向けの文字列に
+ * なりがちで、そのまま読み上げると図を見ている人が見ている文字列（node の `text` /
+ * group の `title`）と一致しない。見えているものと読み上げられるものが食い違うと、
+ * 「どの線の話をしているのか」を照合できなくなる。
+ *
+ * そこで **可視ラベルがあればそれを使い、無ければ ID にフォールバック**する。
+ * `data-architecture-connector` 属性は編集モードと既存テストが使うため ID のままにする
+ * （変えるのはアクセシブル名と `<title>` だけ）。
+ *
+ * @param {Array<object>} elements 平坦化済みの要素列。
+ * @returns {Map<string, string>} ID から可視ラベルへの表。可視ラベルが無い ID は載せない。
+ */
+function endpointDisplayNames(elements) {
+  const names = new Map();
+  for (const element of elements) {
+    if (!element || element.type === "connector" || typeof element.id !== "string") continue;
+    const visible = element.type === "group" ? element.title : element.text;
+    if (typeof visible !== "string") continue;
+    const trimmed = visible.trim();
+    if (trimmed) names.set(element.id, trimmed);
+  }
+  return names;
+}
+
+/**
+ * コネクターの既定のアクセシブル名。`ariaLabel` が無いときだけ使う。
+ *
+ * @param {object} element コネクター要素。
+ * @param {Map<string, string>} [endpointNames] {@link endpointDisplayNames} の結果。
+ * @returns {string} 「<from> to <to>[: <label>]」形式の文言。
+ */
+function describeConnector(element, endpointNames) {
+  const from = endpointNames?.get(element.from) || element.from;
+  const to = endpointNames?.get(element.to) || element.to;
+  return `${from} to ${to}${element.label ? `: ${element.label}` : ""}`;
+}
+
+function renderConnector(documentRef, element, points, markerId, endpointNames) {
+  const label = element.ariaLabel || describeConnector(element, endpointNames);
   const group = svgElement(documentRef, "g", {
     opacity: element.style.opacity,
     "data-architecture-connector": `${element.from}-${element.to}`,
@@ -2782,6 +2820,9 @@ export function renderArchitectureDiagram(
   });
   svg.appendChild(defs);
 
+  // コネクターの読み上げで端点を可視ラベルで呼ぶための表。要素列を 1 回だけ走る。
+  const endpointNames = endpointDisplayNames(model.elements);
+
   model.elements.forEach((element, index) => {
     if (element.type === "group") {
       svg.appendChild(renderGroup(documentRef, element));
@@ -2794,6 +2835,7 @@ export function renderArchitectureDiagram(
           element,
           connectorRoutes.get(element),
           `architecture-arrow-${renderId}-${index}`,
+          endpointNames,
         ),
       );
     }

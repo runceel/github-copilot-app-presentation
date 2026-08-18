@@ -65,6 +65,17 @@ jobs:
       - name: ビジュアル回帰
         run: npm run test:visual
 
+      - name: アクセシビリティと出力の等価性
+        # axe-core の自動チェックと、Chromium のアクセシビリティツリー（CDP）を
+        # 根拠にした読み上げ内容・順序・到達性の検証。あわせて canvas / presenter /
+        # 印刷が同じ意味構造と同じ描画寸法を出すこと（WYSIWYG）も固定する。
+        run: npm run test:a11y
+
+      - name: 描画コストのバジェット
+        # レイアウトと配線が要素数に対して二乗・指数に転んでいないことを見る。
+        # 見た目は壊れないためビジュアル回帰では捕まらない種類の劣化を検出する。
+        run: npm run test:perf
+
       - name: PDF 回帰
         run: npm run test:pdf
 
