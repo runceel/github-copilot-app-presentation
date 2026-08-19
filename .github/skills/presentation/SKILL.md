@@ -103,7 +103,8 @@ total: 6
 | `title` | ブラウザータブのタイトル（省略時は `deck`） |
 | `layout` | `title` を指定すると中央寄せの表紙レイアウト、`backcover` を指定すると背表紙レイアウト（テーマ色のベタ塗り／グラデーション＋白文字。Microsoft 系テーマではロゴ＋著作権表示も付く）になる。通常スライドは省略 |
 | `size` | コンテンツサイズ。`auto`（既定）/`normal`/`large`/`xlarge`。`auto` は余白の多い通常スライドだけを canvas が安全な範囲で拡大する |
-| `theme` | （任意・上書き用）このスライドだけ配色テーマを変える。`dark`/`light`/`microsoft`/`ms-modern`。通常はデッキ単位で `load_deck` の `theme` を使い、ここでは指定しない |
+| `theme` | （任意・上書き用）このスライドだけ配色テーマを変える。`dark`/`light`/`microsoft`/`ms-modern`/`custom`。明示的な canvas の `theme` がある場合はそちらが優先 |
+| `theme-file` | `custom` 用。CSS カスタムプロパティだけを定義したファイルを、元 Markdown と同じフォルダーを基準にした相対パスで指定する（例: `./brand.css`） |
 | `logo` | （`layout: backcover` のみ）背表紙左上のワードマーク文字列。`microsoft` / `ms-modern` テーマでは省略時 `Microsoft`、他テーマでは明示したときだけ表示 |
 | `copyright` | （`layout: backcover` のみ）背表紙左下の著作権表示。`microsoft` / `ms-modern` テーマでは省略時 `© Copyright Microsoft Corporation. All rights reserved.`、他テーマでは明示したときだけ表示。空にすると常に非表示 |
 
@@ -116,14 +117,27 @@ total: 6
 
 ## テーマ（配色テーマ）
 
-スライドの配色は **4 つのテーマ**から選べます。テーマはデッキ全体に 1 つだけ適用し、**`load_deck` の `theme` パラメーターで指定**します（個々のスライドの front matter には書かないのが基本）。
+スライドの配色は **dark / light / microsoft / ms-modern / custom** から選べます。テーマはデッキ全体に適用し、**明示的な canvas の `theme` > Markdown front matter > `dark`** の順で決まります。
 
 | テーマ | 見た目 |
 | --- | --- |
 | `dark` | **既定**。落ち着いた紺色の背景＋明るいアクセントのダークテーマ |
 | `light` | 白基調の明るく中立なテーマ（特定ブランドに寄らない汎用ライト） |
-| `microsoft` | Microsoft / Fluent 配色。上部に 4 色バー、kicker に 4 色の四角 |
-| `ms-modern` | 社内 PowerPoint テンプレート（`2024-07-29-theme.thmx`）風。白基調＋見出しは Microsoft ブルー、表紙は右上から食い込む Fluent のファセット（多面体）背景 |
+| `microsoft` | Microsoft / Fluent 配色の組み込みブランドプリセット |
+| `ms-modern` | 社内 PowerPoint テンプレート（`2024-07-29-theme.thmx`）風の組み込みブランドプリセット |
+| `custom` | `themeFile` または front matter の `theme-file` で読み込む CSS カスタムプロパティ専用テーマ |
+
+カスタムテーマはスライド Markdown と同じフォルダーに置けます:
+
+```markdown
+---
+theme: custom
+theme-file: ./slides.theme.css
+---
+## ブランドテーマ
+```
+
+テーマファイルには `--bg: #101820;` のような CSS カスタムプロパティだけを書きます。セレクターや `url()` は使用できません。
 
 > **どのテーマでも、デッキの末尾に背表紙（Closing logo slide）が自動で 1 枚追加されます。** 最終スライドが `layout: backcover` でなければ拡張機能が既定の背表紙を補います（すでにある場合は追加しません）。agent 側で背表紙を書く必要はありません。背表紙の背景はテーマごとの濃色（`dark` は紺〜紫、`light` はインディゴ〜バイオレット、`microsoft` / `ms-modern` は Microsoft ブルー）で、**ロゴと著作権表示は `microsoft` / `ms-modern` のときだけ**既定で表示されます。文言やロゴを変えたい・他テーマでも出したいときだけ、末尾に `layout: backcover` のスライドを自分で用意して `logo` / `copyright` を指定します。
 

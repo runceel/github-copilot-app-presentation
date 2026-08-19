@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/runceel/github-copilot-app-presentation/schema/theme-v1.json",
+  "title": "Presentation custom theme v1",
+  "description": "Machine-readable catalog for CSS custom properties supported by the presentation canvas custom theme.",
+  "type": "object",
+  "required": [
+    "version",
+    "variables"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "variables": {
+      "type": "object",
+      "description": "CSS custom property declarations. The runtime accepts any name matching the pattern.",
+      "properties": {
+        "--bg": { "type": "string", "description": "通常スライドの背景" },
+        "--fg": { "type": "string", "description": "見出しや主要テキスト" },
+        "--muted": { "type": "string", "description": "補助テキスト" },
+        "--body": { "type": "string", "description": "本文テキスト" },
+        "--accent": { "type": "string", "description": "主アクセント" },
+        "--accent-strong": { "type": "string", "description": "強調アクセント" },
+        "--accent-soft": { "type": "string", "description": "薄いアクセント背景" },
+        "--accent-line": { "type": "string", "description": "アクセント線" },
+        "--surface": { "type": "string", "description": "カードや表面" },
+        "--code": { "type": "string", "description": "コードブロック背景" },
+        "--code-fg": { "type": "string", "description": "コードブロック文字" },
+        "--border": { "type": "string", "description": "境界線" },
+        "--syntax-comment": { "type": "string", "description": "コードコメント" },
+        "--syntax-keyword": { "type": "string", "description": "コードキーワード" },
+        "--syntax-string": { "type": "string", "description": "コード文字列" },
+        "--syntax-number": { "type": "string", "description": "コード数値" },
+        "--syntax-title": { "type": "string", "description": "コードタイトル" },
+        "--syntax-type": { "type": "string", "description": "コード型" },
+        "--syntax-meta": { "type": "string", "description": "コードメタデータ" },
+        "--syntax-variable": { "type": "string", "description": "コード変数" },
+        "--syntax-addition": { "type": "string", "description": "追加行の文字色" },
+        "--syntax-addition-bg": { "type": "string", "description": "追加行の背景" },
+        "--syntax-deletion": { "type": "string", "description": "削除行の文字色" },
+        "--syntax-deletion-bg": { "type": "string", "description": "削除行の背景" },
+        "--glow-1": { "type": "string", "description": "背景の光彩1" },
+        "--glow-2": { "type": "string", "description": "背景の光彩2" },
+        "--topbar": { "type": "string", "description": "上部バーの背景" },
+        "--kicker-mark": { "type": "string", "description": "kicker のマーク" },
+        "--cover-bg": { "type": "string", "description": "表紙背景" },
+        "--backcover-bg": { "type": "string", "description": "背表紙背景" },
+        "--print-slide-bg": { "type": "string", "description": "PDF の通常ページ背景" },
+        "--print-cover-bg": { "type": "string", "description": "PDF の表紙背景" },
+        "--ms-font": { "type": "string", "description": "Microsoft 系テーマのフォント" },
+        "--ms-red": { "type": "string", "description": "Microsoft 赤" },
+        "--ms-green": { "type": "string", "description": "Microsoft 緑" },
+        "--ms-blue": { "type": "string", "description": "Microsoft 青" },
+        "--ms-yellow": { "type": "string", "description": "Microsoft 黄" },
+        "--deck-pad-y": { "type": "string", "description": "スライド上下余白" },
+        "--deck-pad-x": { "type": "string", "description": "スライド左右余白" },
+        "--slide-h1-size": { "type": "string", "description": "H1 サイズ" },
+        "--slide-h2-size": { "type": "string", "description": "H2 サイズ" },
+        "--slide-h3-size": { "type": "string", "description": "H3 サイズ" },
+        "--slide-body-size": { "type": "string", "description": "本文サイズ" },
+        "--slide-code-size": { "type": "string", "description": "コードサイズ" }
+      },
+      "patternProperties": {
+        "^--[A-Za-z0-9_-]+$": { "type": "string" }
+      },
+      "additionalProperties": false,
+      "minProperties": 1
+    }
+  },
+  "additionalProperties": false,
+  "x-theme-file-format": "CSS custom property declarations, optionally wrapped in one :root block.",
+  "x-value-syntax": "Any non-empty CSS value except selectors, @import, url(), javascript:, expression(), and style tags."
+}

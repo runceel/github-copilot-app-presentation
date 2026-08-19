@@ -6,6 +6,8 @@ import { parseArchitecture } from "./renderer/architecture.mjs";
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const README_PATH = join(EXT_DIR, "README.md");
 const SCHEMA_PATH = join(EXT_DIR, "schema", "architecture-v1.schema.json");
+const THEME_GUIDE_PATH = join(EXT_DIR, "docs", "custom-theme-authoring.md");
+const THEME_SCHEMA_PATH = join(EXT_DIR, "schema", "theme-v1.json");
 const GUIDE_POINTER =
   "presentation canvas を使う前に presentation_guide ツールで書式とスキーマを確認すること。";
 const PRESENTATION_PROMPT = /プレゼン|スライド|slides?\.md|deck/i;
@@ -61,6 +63,31 @@ function architectureSchemaSummary(schema) {
   ].join("\n");
 }
 
+function themeSchemaSummary(schema) {
+  return [
+    "# Custom presentation theme v1 schema",
+    "",
+    "同梱の `schema/theme-v1.json` から抽出した、テーマ作成で使用できるカスタムプロパティです。",
+    "",
+    "```json",
+    JSON.stringify(
+      {
+        format: schema["x-theme-file-format"],
+        allowedValueSyntax: schema["x-value-syntax"],
+        properties: Object.fromEntries(
+          Object.entries(schema.properties.variables.properties).map(([name, definition]) => [
+            name,
+            definition.description,
+          ]),
+        ),
+      },
+      null,
+      2,
+    ),
+    "```",
+  ].join("\n");
+}
+
 export async function readGuide(topic = "overview") {
   const readme = await readFile(README_PATH, "utf8");
   switch (topic) {
@@ -68,12 +95,19 @@ export async function readGuide(topic = "overview") {
       return [
         section(readme, "## 仕組み"),
         "",
-        "詳細は `slide-format` / `themes` / `architecture-dsl` / `architecture-schema` を指定して取得する。",
+        "詳細は `slide-format` / `themes` / `custom-themes` / `theme-schema` / `architecture-dsl` / `architecture-schema` を指定して取得する。",
       ].join("\n");
     case "slide-format":
       return section(readme, "### スライド断片の書式");
     case "themes":
       return section(readme, "### テーマの選び方");
+    case "custom-themes":
+    case "custom-ehemes":
+      return readFile(THEME_GUIDE_PATH, "utf8");
+    case "theme-schema": {
+      const schema = JSON.parse(await readFile(THEME_SCHEMA_PATH, "utf8"));
+      return themeSchemaSummary(schema);
+    }
     case "architecture-dsl":
       return section(readme, "## Architecture DSL v1");
     case "architecture-schema": {

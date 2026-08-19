@@ -11,6 +11,8 @@ test("readGuide returns every document-backed topic", async () => {
     overview: "open_canvas",
     "slide-format": "front matter",
     themes: "ms-modern",
+    "custom-themes": "カスタムテーマ作成ガイド",
+    "theme-schema": "--bg",
     "architecture-dsl": "```architecture",
     "architecture-schema": '"builtIn"',
   };
@@ -23,6 +25,11 @@ test("readGuide returns every document-backed topic", async () => {
   assert.match(schemaGuide, /"shield"/);
   assert.match(schemaGuide, /"textColor"/);
   assert.match(schemaGuide, /assets\//);
+
+  const themeSchemaGuide = await readGuide("theme-schema");
+  assert.match(themeSchemaGuide, /"--accent"/);
+  assert.match(themeSchemaGuide, /CSS custom property/);
+  assert.match(await readGuide("custom-ehemes"), /カスタムテーマ作成ガイド/);
 });
 
 test("presentation hook primes each session at most once", () => {
