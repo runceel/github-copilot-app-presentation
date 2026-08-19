@@ -656,7 +656,7 @@ test("built-in icons inherit the theme text colour instead of hard-coding one", 
 });
 
 test("every theme keeps built-in icon strokes legible against the slide surface", async () => {
-  // 組み込みアイコンは --fg で描かれるので、4 テーマそれぞれで
+  // 組み込みアイコンは --fg で描かれるので、3 組み込みテーマそれぞれで
   // --fg と背景（--surface / --bg）のコントラストが確保されている必要がある。
   const css = await readFile(new URL("../renderer/slides.css", import.meta.url), "utf8");
   const channel = (value) => {
@@ -672,7 +672,7 @@ test("every theme keeps built-in icon strokes legible against the slide surface"
     return (high + 0.05) / (low + 0.05);
   };
 
-  const themes = ["dark", "light", "microsoft", "ms-modern"];
+  const themes = ["dark", "light", "microsoft"];
   for (const theme of themes) {
     const block = css.match(
       new RegExp(`\\.deck\\[data-theme="${theme}"\\]\\{([^}]*)\\}`),

@@ -110,7 +110,7 @@ async function readJsonBody(req, limit = 1_000_000) {
  *
  * @param {object} options
  * @param {string[]} options.slides   スライド 1 枚分の Markdown 断片の配列
- * @param {string}  [options.theme]   dark | light | microsoft | ms-modern
+ * @param {string}  [options.theme]   dark | light | microsoft | custom
  * @param {number}  [options.index]   初期表示スライド（0 始まり）
  * @param {string}  [options.printToken] 印刷モードで使うトークン
  */

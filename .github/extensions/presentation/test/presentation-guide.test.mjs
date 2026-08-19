@@ -10,7 +10,7 @@ test("readGuide returns every document-backed topic", async () => {
   const expectations = {
     overview: "open_canvas",
     "slide-format": "front matter",
-    themes: "ms-modern",
+    themes: "custom",
     "custom-themes": "カスタムテーマ作成ガイド",
     "theme-schema": "--bg",
     "architecture-dsl": "```architecture",

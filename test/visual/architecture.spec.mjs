@@ -1,4 +1,4 @@
-// ビジュアル回帰: 4 テーマ x 代表的な architecture 図のスクリーンショット比較。
+// ビジュアル回帰: 3 テーマ x 代表的な architecture 図のスクリーンショット比較。
 //
 // 決定論性のために次を守る。
 //   - 固定 sleep は使わず renderer の ready シグナル（mermaid-loading の除去）で待つ
@@ -18,7 +18,7 @@ import { REPO_ROOT, startHarness } from "../harness/server.mjs";
 import { splitFixtureDeck } from "../harness/deck.mjs";
 import { DETERMINISTIC_CSS, waitForSlideReady } from "../utils/ready.mjs";
 
-const THEMES = ["dark", "light", "microsoft", "ms-modern"];
+const THEMES = ["dark", "light", "microsoft"];
 
 const FIXTURE = join(REPO_ROOT, "test", "fixtures", "architecture-visual.md");
 const SLIDES = splitFixtureDeck(readFileSync(FIXTURE, "utf8"));

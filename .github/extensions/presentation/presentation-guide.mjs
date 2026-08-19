@@ -74,6 +74,7 @@ function themeSchemaSummary(schema) {
       {
         format: schema["x-theme-file-format"],
         allowedValueSyntax: schema["x-value-syntax"],
+        metadata: schema["x-theme-metadata"],
         properties: Object.fromEntries(
           Object.entries(schema.properties.variables.properties).map(([name, definition]) => [
             name,

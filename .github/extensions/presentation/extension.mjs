@@ -51,10 +51,14 @@ import {
 } from "./presentation-guide.mjs";
 import {
   DEFAULT_THEME,
+  mapThemeMetadataAssets,
   normalizeTheme,
+  parseThemeMetadata,
   parseThemeVariables,
   resolveFrontMatterTheme,
   serializeThemeVariables,
+  THEME_ASSET_MAX_BYTES,
+  themeMetadataAssetPaths,
 } from "./renderer/theme.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
@@ -67,6 +71,8 @@ const DEFAULT_PDF_NAME = "presentation.pdf";
 const PDF_RENDER_TIMEOUT_MS = 60_000;
 const VENDOR_DIR = join(EXT_DIR, "vendor");
 const VENDOR_MANIFEST = join(VENDOR_DIR, "vendor-assets.lock.json");
+const THEME_METADATA_NAME = "theme.json";
+const THEME_METADATA_MAX_BYTES = 64 * 1024;
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -744,6 +750,7 @@ async function exportPdf(inst, requestedPath, requestedTheme) {
       theme: exportTheme,
       themeLocked: inst.themeLocked,
       customThemeCss: inst.customThemeCss,
+      customThemeMeta: inst.customThemeMeta,
     };
     if (!snapshot.slides.length) {
       throw new CanvasError("no_deck", "No slides are loaded. Load a deck before exporting PDF.");
@@ -768,6 +775,7 @@ async function exportPdf(inst, requestedPath, requestedTheme) {
       theme: snapshot.theme,
       themeLocked: snapshot.themeLocked,
       customThemeCss: snapshot.customThemeCss,
+      customThemeMeta: snapshot.customThemeMeta,
       status: "pending",
       error: "",
     });
@@ -1121,6 +1129,9 @@ async function persistNow(inst) {
         themeLocked: inst.themeLocked,
         customThemeFile: inst.customThemeFile,
         customThemeCss: inst.customThemeCss,
+        customThemeDir: inst.customThemeDir,
+        customThemeMeta: inst.customThemeMeta,
+        customThemeAssets: [...inst.customThemeAssets],
         sourceName: inst.sourceName,
         mode: inst.mode,
         presenterProfileDir: inst.presenterProfileDir,
@@ -1191,9 +1202,22 @@ async function loadCustomTheme(inst, sourceName, themeFile) {
     throw new CanvasError("invalid_theme_file", "custom theme requires themeFile or front matter theme-file.");
   }
   const path = resolveThemeFile(inst, sourceName, themeFile);
+  let realThemeFile;
+  let realWorkspaceRoot;
+  try {
+    [realThemeFile, realWorkspaceRoot] = await Promise.all([
+      realpath(path),
+      realpath(inst.workspaceRoot),
+    ]);
+  } catch (_) {
+    throw new CanvasError("theme_file_not_found", `Could not read custom theme file: ${themeFile}`);
+  }
+  if (!isPathInside(realWorkspaceRoot, realThemeFile)) {
+    throw new CanvasError("invalid_theme_file", "Custom theme files must stay inside the workspace.");
+  }
   let css;
   try {
-    css = await readFile(path, "utf8");
+    css = await readFile(realThemeFile, "utf8");
   } catch (error) {
     throw new CanvasError("theme_file_not_found", `Could not read custom theme file: ${themeFile}`);
   }
@@ -1201,7 +1225,52 @@ async function loadCustomTheme(inst, sourceName, themeFile) {
     throw new CanvasError("invalid_theme_file", "Custom theme CSS must be 64 KiB or smaller.");
   }
   try {
-    return { file: relative(inst.workspaceRoot, path), css: serializeThemeVariables(parseThemeVariables(css)) };
+    const themeDir = dirname(path);
+    const realThemeDir = await realpath(themeDir);
+    if (!isPathInside(realWorkspaceRoot, realThemeDir)) {
+      throw new Error("Custom theme metadata must stay inside the workspace.");
+    }
+    const metadataPath = join(themeDir, THEME_METADATA_NAME);
+    let metadata = null;
+    if (existsSync(metadataPath)) {
+      const realMetadataPath = await realpath(metadataPath);
+      if (!isPathInside(realThemeDir, realMetadataPath)) {
+        throw new Error("Custom theme metadata must stay inside the theme folder.");
+      }
+      const metadataText = await readFile(realMetadataPath, "utf8");
+      if (Buffer.byteLength(metadataText, "utf8") > THEME_METADATA_MAX_BYTES) {
+        throw new Error("Custom theme metadata must be 64 KiB or smaller.");
+      }
+      metadata = parseThemeMetadata(metadataText);
+      for (const assetPath of themeMetadataAssetPaths(metadata)) {
+        const candidate = safeJoin(themeDir, assetPath);
+        if (!candidate) throw new Error(`Invalid custom theme asset path: ${assetPath}`);
+        let realAsset;
+        try {
+          realAsset = await realpath(candidate);
+        } catch (_) {
+          throw new Error(`Custom theme asset was not found: ${assetPath}`);
+        }
+        if (!isPathInside(realThemeDir, realAsset)) {
+          throw new Error(`Custom theme asset must stay inside the theme folder: ${assetPath}`);
+        }
+        const info = await stat(realAsset);
+        if (!info.isFile()) throw new Error(`Custom theme asset is not a file: ${assetPath}`);
+        if (info.size > THEME_ASSET_MAX_BYTES) {
+          throw new Error(`Custom theme asset must be 2 MiB or smaller: ${assetPath}`);
+        }
+      }
+    }
+    const assets = metadata ? themeMetadataAssetPaths(metadata) : [];
+    return {
+      file: relative(inst.workspaceRoot, path),
+      css: serializeThemeVariables(parseThemeVariables(css)),
+      dir: relative(inst.workspaceRoot, themeDir),
+      metadata: metadata
+        ? mapThemeMetadataAssets(metadata, (assetPath) => `/theme-assets/${assetPath}`)
+        : null,
+      assets,
+    };
   } catch (error) {
     throw new CanvasError("invalid_theme_file", error.message);
   }
@@ -1235,11 +1304,14 @@ async function applyDeck(inst, { slides, index, theme, themeFile, sourceName }) 
   });
   const custom = selection.theme === "custom"
     ? await loadCustomTheme(inst, inst.sourceName, selection.themeFile)
-    : { file: "", css: "" };
+    : { file: "", css: "", dir: "", metadata: null, assets: [] };
   inst.theme = selection.theme;
   inst.themeLocked = selection.themeLocked;
   inst.customThemeFile = custom.file;
   inst.customThemeCss = custom.css;
+  inst.customThemeDir = custom.dir;
+  inst.customThemeMeta = custom.metadata;
+  inst.customThemeAssets = new Set(custom.assets);
   inst.slides = ensureBackCover(slides.slice());
   inst.index = clampIndex(index ?? 0, inst.slides.length);
   inst.deckVersion += 1;
@@ -1340,6 +1412,7 @@ async function startServer(inst) {
           themeLocked: inst.themeLocked,
           customThemeFile: inst.customThemeFile,
           customThemeCss: inst.customThemeCss,
+          customThemeMeta: inst.customThemeMeta,
           mode: inst.mode,
           presenterRunning: isProcessRunning(inst.presenterProcess),
           architectureEdit: Boolean(inst.architectureEdit),
@@ -1447,6 +1520,7 @@ async function startServer(inst) {
           theme: snapshot.theme,
           themeLocked: snapshot.themeLocked,
           customThemeCss: snapshot.customThemeCss,
+          customThemeMeta: snapshot.customThemeMeta,
         }),
       );
       return;
@@ -1688,6 +1762,44 @@ async function startServer(inst) {
       await sendFile(res, abs, { cache: pathname.startsWith("/vendor/") });
       return;
     }
+    if (pathname.startsWith("/theme-assets/")) {
+      const assetPath = pathname.slice("/theme-assets/".length);
+      if (
+        !inst.customThemeDir ||
+        !inst.customThemeAssets.has(assetPath)
+      ) {
+        res.statusCode = 404;
+        res.end("Theme asset not found");
+        return;
+      }
+      const themeRoot = resolve(inst.workspaceRoot, inst.customThemeDir);
+      const candidate = safeJoin(themeRoot, assetPath);
+      if (!candidate) {
+        res.statusCode = 403;
+        res.end("Forbidden");
+        return;
+      }
+      try {
+        const [realThemeRoot, realAsset] = await Promise.all([
+          realpath(themeRoot),
+          realpath(candidate),
+        ]);
+        const realWorkspaceRoot = await realpath(inst.workspaceRoot);
+        if (
+          !isPathInside(realWorkspaceRoot, realThemeRoot) ||
+          !isPathInside(realThemeRoot, realAsset)
+        ) {
+          res.statusCode = 403;
+          res.end("Forbidden");
+          return;
+        }
+        await sendFile(res, realAsset, { cache: true });
+      } catch (_) {
+        res.statusCode = 404;
+        res.end("Theme asset not found");
+      }
+      return;
+    }
     if (pathname.startsWith("/assets/")) {
       if (!inst.assetsRoot) {
         res.statusCode = 404;
@@ -1738,6 +1850,9 @@ async function ensureInstance(ctx) {
       themeLocked: false,
       customThemeFile: "",
       customThemeCss: "",
+      customThemeDir: "",
+      customThemeMeta: null,
+      customThemeAssets: new Set(),
       exportJobs: new Map(),
       exporting: false,
       presenterProcess: null,
@@ -1761,6 +1876,15 @@ async function ensureInstance(ctx) {
       if (typeof saved.themeLocked === "boolean") inst.themeLocked = saved.themeLocked;
       if (typeof saved.customThemeFile === "string") inst.customThemeFile = saved.customThemeFile;
       if (typeof saved.customThemeCss === "string") inst.customThemeCss = saved.customThemeCss;
+      if (typeof saved.customThemeDir === "string") inst.customThemeDir = saved.customThemeDir;
+      if (saved.customThemeMeta && typeof saved.customThemeMeta === "object") {
+        inst.customThemeMeta = saved.customThemeMeta;
+      }
+      if (Array.isArray(saved.customThemeAssets)) {
+        inst.customThemeAssets = new Set(
+          saved.customThemeAssets.filter((asset) => typeof asset === "string"),
+        );
+      }
       if (typeof saved.sourceName === "string") inst.sourceName = saved.sourceName;
       if (saved.mode === "adhoc" || saved.mode === "deck") inst.mode = saved.mode;
       if (isPresenterProfilePath(saved.presenterProfileDir)) {
@@ -1846,14 +1970,14 @@ const session = await joinSession({
           },
           theme: {
             type: "string",
-            enum: ["dark", "light", "microsoft", "ms-modern", "custom"],
+            enum: ["dark", "light", "microsoft", "custom"],
             description:
-              "デッキ全体の配色テーマ。dark / light / microsoft / ms-modern / custom。省略時は front matter、未指定なら dark。明示指定が front matter より優先される。",
+              "デッキ全体の配色テーマ。dark / light / microsoft / custom。省略時は front matter、未指定なら dark。明示指定が front matter より優先される。",
           },
           themeFile: {
             type: "string",
             description:
-              "CSS カスタムプロパティだけを定義したテーマファイル。元 Markdown と同じフォルダーを基準にした相対パス。",
+              "CSS カスタムプロパティだけを定義したテーマファイル。元 Markdown と同じフォルダーを基準にした相対パス。同じフォルダーの theme.json は自動的に読み込む。",
           },
           sourceName: {
             type: "string",
@@ -1867,7 +1991,7 @@ const session = await joinSession({
         {
           name: "load_deck",
           description:
-            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片を渡すとデッキを保持して表示する。theme/themeFile は明示指定 > front matter > dark の順で解決し、custom は CSS カスタムプロパティ専用ファイルを読み込む。",
+            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片を渡すとデッキを保持して表示する。theme/themeFile は明示指定 > front matter > dark の順で解決し、custom は CSS と同じフォルダーの任意の theme.json も読み込む。",
           inputSchema: {
             type: "object",
             properties: {
@@ -1884,14 +2008,14 @@ const session = await joinSession({
               },
               theme: {
                 type: "string",
-                enum: ["dark", "light", "microsoft", "ms-modern", "custom"],
+                enum: ["dark", "light", "microsoft", "custom"],
                 description:
-                  "デッキ全体の配色テーマ。dark / light / microsoft / ms-modern / custom。省略時は front matter、未指定なら dark。明示指定が front matter より優先される。",
+                  "デッキ全体の配色テーマ。dark / light / microsoft / custom。省略時は front matter、未指定なら dark。明示指定が front matter より優先される。",
               },
               themeFile: {
                 type: "string",
                 description:
-                  "CSS カスタムプロパティだけを定義したテーマファイル。元 Markdown と同じフォルダーを基準にした相対パス。",
+                  "CSS カスタムプロパティだけを定義したテーマファイル。元 Markdown と同じフォルダーを基準にした相対パス。同じフォルダーの theme.json は自動的に読み込む。",
               },
               sourceName: {
                 type: "string",
@@ -2066,7 +2190,7 @@ const session = await joinSession({
               },
               theme: {
                 type: "string",
-                enum: ["dark", "light", "microsoft", "ms-modern", "custom"],
+                enum: ["dark", "light", "microsoft", "custom"],
                 description:
                   "PDFに適用するテーマ。省略時は表示中のデッキテーマ。指定してもcanvasの表示テーマは変更しない。",
               },
@@ -2141,6 +2265,9 @@ const session = await joinSession({
             inst.themeLocked = false;
             inst.customThemeFile = "";
             inst.customThemeCss = "";
+            inst.customThemeDir = "";
+            inst.customThemeMeta = null;
+            inst.customThemeAssets = new Set();
             inst.sourceName = "";
             inst.mode = "deck";
             inst.architectureEdit = false;

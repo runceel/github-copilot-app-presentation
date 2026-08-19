@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/runceel/github-copilot-app-presentation/schema/theme-v1.json",
   "title": "Presentation custom theme v1",
-  "description": "Machine-readable catalog for CSS custom properties supported by the presentation canvas custom theme.",
+  "description": "Machine-readable catalog for CSS custom properties supported by the presentation canvas custom theme. Optional cover/backcover assets live in a sibling theme.json manifest.",
   "type": "object",
   "required": [
     "version",
@@ -45,7 +45,14 @@
         "--topbar": { "type": "string", "description": "上部バーの背景" },
         "--kicker-mark": { "type": "string", "description": "kicker のマーク" },
         "--cover-bg": { "type": "string", "description": "表紙背景" },
+        "--cover-topbar": { "type": "string", "description": "表紙だけに使う上部バー背景" },
+        "--cover-text-align": { "type": "string", "description": "表紙本文の文字揃え" },
+        "--cover-content-align": { "type": "string", "description": "表紙本文内の横方向配置" },
+        "--cover-content-self": { "type": "string", "description": "表紙本文領域の配置" },
+        "--cover-content-width": { "type": "string", "description": "表紙本文領域の幅" },
+        "--cover-logo-width": { "type": "string", "description": "表紙ロゴの幅" },
         "--backcover-bg": { "type": "string", "description": "背表紙背景" },
+        "--backcover-logo-width": { "type": "string", "description": "背表紙ロゴの幅" },
         "--print-slide-bg": { "type": "string", "description": "PDF の通常ページ背景" },
         "--print-cover-bg": { "type": "string", "description": "PDF の表紙背景" },
         "--ms-font": { "type": "string", "description": "Microsoft 系テーマのフォント" },
@@ -70,5 +77,6 @@
   },
   "additionalProperties": false,
   "x-theme-file-format": "CSS custom property declarations, optionally wrapped in one :root block.",
-  "x-value-syntax": "Any non-empty CSS value except selectors, @import, url(), javascript:, expression(), and style tags."
+  "x-value-syntax": "Any non-empty CSS value except selectors, @import, url(), javascript:, expression(), and style tags.",
+  "x-theme-metadata": "When present, theme.json beside the CSS file must conform to theme-metadata-v1.schema.json."
 }
