@@ -106,3 +106,18 @@ test("deck validation accepts valid front matter and architecture", () => {
 
   assert.equal(deckValidationFeedback([slide]), undefined);
 });
+
+test("deck validation finds an unclosed architecture fence after a valid block", () => {
+  const slide = [
+    "---",
+    "layout: title",
+    "---",
+    "```architecture",
+    '{"elements":[]}',
+    "```",
+    "```architecture",
+    '{"elements":[]}',
+  ].join("\n");
+
+  assert.match(deckValidationFeedback([slide]), /コードフェンスが閉じられていません/);
+});

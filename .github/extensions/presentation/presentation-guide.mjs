@@ -111,6 +111,31 @@ function hasFrontMatter(markdown) {
   return normalized.split("\n").slice(1).some((line) => line.trim() === "---");
 }
 
+function architectureSources(markdown) {
+  const sources = [];
+  let fence = "";
+  let lines = [];
+  for (const line of markdown.split(/\r?\n/)) {
+    if (!fence) {
+      const opening = line.match(/^\s*(`{3,}|~{3,})architecture\s*$/i);
+      if (opening) {
+        fence = opening[1];
+        lines = [];
+      }
+      continue;
+    }
+    const closing = new RegExp(`^${fence[0]}{${fence.length},}\\s*$`);
+    if (closing.test(line.trim())) {
+      sources.push(lines.join("\n"));
+      fence = "";
+      lines = [];
+    } else {
+      lines.push(line);
+    }
+  }
+  return { sources, unclosed: Boolean(fence) };
+}
+
 export function deckValidationFeedback(slides) {
   const warnings = [];
   slides.forEach((slide, slideIndex) => {
@@ -119,19 +144,17 @@ export function deckValidationFeedback(slides) {
         `slide ${slideIndex + 1}: front matter がありません。必要な deck/layout/page/total/size を先頭の --- ブロックへ追加してください。`,
       );
     }
-    const architectureBlocks = slide.matchAll(/```architecture[^\n]*\n([\s\S]*?)```/g);
-    for (const [blockIndex, match] of [...architectureBlocks].entries()) {
+    const architecture = architectureSources(slide);
+    for (const [blockIndex, source] of architecture.sources.entries()) {
       try {
-        parseArchitecture(match[1]);
+        parseArchitecture(source);
       } catch (error) {
         warnings.push(
           `slide ${slideIndex + 1}, architecture ${blockIndex + 1}: ${error?.message || error}。presentation_guide の architecture-dsl / architecture-schema を確認してください。`,
         );
       }
     }
-    const openings = (slide.match(/```architecture(?:[^\n]*)\n/g) || []).length;
-    const closings = [...slide.matchAll(/```architecture[^\n]*\n[\s\S]*?```/g)].length;
-    if (openings > closings) {
+    if (architecture.unclosed) {
       warnings.push(
         `slide ${slideIndex + 1}: architecture コードフェンスが閉じられていません。末尾に \`\`\` を追加してください。`,
       );
