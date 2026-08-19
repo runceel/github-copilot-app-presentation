@@ -8,12 +8,23 @@ const MAX_TOTAL_TEXT = 20_000;
 const MAX_DEPTH = 4;
 const MAX_POINTS = 12;
 const CONNECTOR_ENDPOINT_GAP = 14;
+const MIN_ORTHOGONAL_ENDPOINT_SPAN = 8;
 const CONNECTOR_LANE_SPACING = 52;
 const MAX_CONNECTOR_LABEL_WIDTH = 560;
 const CONNECTOR_LABEL_PADDING = 28;
 const MIN_CONNECTOR_LABEL_WIDTH = 70;
+const CONNECTOR_LABEL_STROKE_WIDTH = 2;
 // ラベルのピルを線から逃がしたときに、ピルの縁と線の間に残す余白。
 const CONNECTOR_LABEL_CLEARANCE = 8;
+const CONNECTOR_MARKER_VIEWBOX_SIZE = 10;
+const CONNECTOR_MARKER_SIZE = 7;
+const CONNECTOR_MARKER_REF_X = 9;
+const CONNECTOR_MARKER_REF_Y = 5;
+const CONNECTOR_MARKER_POINTS = Object.freeze([
+  Object.freeze({ x: 0, y: 0 }),
+  Object.freeze({ x: 10, y: 5 }),
+  Object.freeze({ x: 0, y: 10 }),
+]);
 // ピルを線から逃がす判定に使う「線が見えていてほしい長さ」。
 //
 // 矢頭は markerWidth 7 × markerUnits="strokeWidth"（既定 4）で実効 28、refX 9 の
@@ -44,6 +55,9 @@ const ROUTE_COST_LABEL_OVER_ROUTE = 2_000;
 const ROUTE_COST_BEND = 30;
 // 浮動小数の誤差で「改善した」と誤判定しないための下限。
 const ROUTE_IMPROVEMENT_EPSILON = 0.5;
+// 交差を避けるために図の外周近くまで大回りし、別の線に見える経路を防ぐ。
+// この範囲内では従来どおり交差の少なさを優先する。
+const MAX_ROUTE_DETOUR_RATIO = 3;
 // 再配線（rip-up and reroute）の上限。決定的に打ち切るための予算。
 const MAX_ROUTE_REFINEMENT_PASSES = 3;
 const MAX_ROUTE_REFINEMENT_REROUTES = 600;
@@ -54,6 +68,8 @@ const ROUTE_FALLBACK_REASONS = Object.freeze({
   gridVisitBudget: "grid-visit-budget",
   gridUnreachable: "grid-unreachable",
   endpointBlocked: "endpoint-blocked",
+  invalidEndpointGeometry: "invalid-endpoint-geometry",
+  labelPlacementImpossible: "label-placement-impossible",
   noCleanCandidate: "no-clean-candidate",
 });
 const ROUTE_FALLBACK_REMEDIES = Object.freeze({
@@ -63,6 +79,10 @@ const ROUTE_FALLBACK_REMEDIES = Object.freeze({
     "the detour search exceeded its work budget before reaching the target",
   "grid-unreachable": "no obstacle-free orthogonal corridor exists between the ports",
   "endpoint-blocked": "the connector ports are enclosed by other elements",
+  "invalid-endpoint-geometry":
+    "the endpoint ports cannot leave touching or overlapping nodes; increase the gap, choose different ports, or use an explicit polyline",
+  "label-placement-impossible":
+    "the connector label cannot expose enough of its route and terminal marker inside the canvas",
   "no-clean-candidate": "every candidate route is blocked by another element",
 });
 
@@ -1379,6 +1399,116 @@ function routeIsOrthogonal(points) {
     );
 }
 
+function routeHasImmediateBacktrack(points) {
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const next = points[index + 1];
+    const incoming = {
+      x: current.x - previous.x,
+      y: current.y - previous.y,
+    };
+    const outgoing = {
+      x: next.x - current.x,
+      y: next.y - current.y,
+    };
+    const cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+    const dot = incoming.x * outgoing.x + incoming.y * outgoing.y;
+    if (Math.abs(cross) < 0.001 && dot < -0.001) return true;
+  }
+  return false;
+}
+
+function routeRespectsEndpointDirections(points, startDirection, endDirection) {
+  if (points.length < 2) return false;
+  const first = {
+    x: points[1].x - points[0].x,
+    y: points[1].y - points[0].y,
+  };
+  const last = {
+    x: points.at(-1).x - points.at(-2).x,
+    y: points.at(-1).y - points.at(-2).y,
+  };
+  return (
+    first.x * startDirection.x + first.y * startDirection.y > 0.001 &&
+    last.x * endDirection.x + last.y * endDirection.y > 0.001
+  );
+}
+
+/**
+ * 最後の退避経路。通常候補と格子解が端点を再貫通する場合だけ、canvas 外周を
+ * 時計回り／反時計回りにたどり、ポート方向を守る候補を必ず用意する。
+ */
+function perimeterRouteCandidates(
+  start,
+  end,
+  fromDirection,
+  toDirection,
+  canvas,
+) {
+  const bounds = {
+    left: Math.min(0, start.x, end.x),
+    right: Math.max(canvas.width, start.x, end.x),
+    top: Math.min(0, start.y, end.y),
+    bottom: Math.max(canvas.height, start.y, end.y),
+  };
+  const sides = ["top", "right", "bottom", "left"];
+  const sideOf = (direction) => {
+    if (direction.y < 0) return "top";
+    if (direction.x > 0) return "right";
+    if (direction.y > 0) return "bottom";
+    return "left";
+  };
+  const pointOnSide = (point, side) => {
+    if (side === "top") return { x: point.x, y: bounds.top };
+    if (side === "right") return { x: bounds.right, y: point.y };
+    if (side === "bottom") return { x: point.x, y: bounds.bottom };
+    return { x: bounds.left, y: point.y };
+  };
+  const cornerAfter = (side, step) => {
+    if (step > 0) {
+      if (side === "top") return { x: bounds.right, y: bounds.top };
+      if (side === "right") return { x: bounds.right, y: bounds.bottom };
+      if (side === "bottom") return { x: bounds.left, y: bounds.bottom };
+      return { x: bounds.left, y: bounds.top };
+    }
+    if (side === "top") return { x: bounds.left, y: bounds.top };
+    if (side === "left") return { x: bounds.left, y: bounds.bottom };
+    if (side === "bottom") return { x: bounds.right, y: bounds.bottom };
+    return { x: bounds.right, y: bounds.top };
+  };
+  const fromSide = sideOf(fromDirection);
+  const toSide = sideOf(toDirection);
+  const fromEdge = pointOnSide(start, fromSide);
+  const toEdge = pointOnSide(end, toSide);
+  const around = (step) => {
+    const points = [start, fromEdge];
+    let sideIndex = sides.indexOf(fromSide);
+    const targetIndex = sides.indexOf(toSide);
+    const transitions =
+      fromSide === toSide
+        ? sides.length
+        : (targetIndex - sideIndex + sides.length) % sides.length;
+    const count = step > 0 ? transitions : (sides.length - transitions) % sides.length;
+    const transitionCount = fromSide === toSide ? sides.length : count;
+    for (let index = 0; index < transitionCount; index += 1) {
+      const side = sides[sideIndex];
+      points.push(cornerAfter(side, step));
+      sideIndex = (sideIndex + step + sides.length) % sides.length;
+    }
+    return compressPoints([...points, toEdge, end]);
+  };
+  const candidates =
+    fromSide === toSide
+      ? [
+          compressPoints([start, fromEdge, toEdge, end]),
+          around(1),
+          around(-1),
+        ]
+      : [around(1), around(-1)];
+  return candidates.filter(routeIsOrthogonal);
+}
+
 function segmentIntersectsBox(start, end, box, margin = 18) {
   const left = box.x - margin;
   const right = box.x + box.width + margin;
@@ -1408,6 +1538,17 @@ function routeHitsNodes(points, nodes, excludedIds) {
   return countNodeHits(points, nodes, excludedIds) > 0;
 }
 
+function routeHitsEndpointNode(points, endpoints) {
+  return points.slice(1).some((end, index) => {
+    const start = points[index];
+    const length = Math.hypot(end.x - start.x, end.y - start.y);
+    return endpoints.some(
+      (endpoint) =>
+        segmentPortionInsideBox(start, end, endpoint) * length > 0.001,
+    );
+  });
+}
+
 function boxesOverlap(first, second) {
   return (
     first.x < second.x + second.width &&
@@ -1421,27 +1562,47 @@ function boxesOverlap(first, second) {
  * ラベルのピル（角丸矩形）の寸法。renderConnector と経路計算が同じ関数を使うことで
  * 「見えているラベル」と「経路計算が避けようとしたラベル」がずれないようにする。
  */
-function connectorLabelMetrics(element) {
+function connectorLabelMetrics(element, canvas = DEFAULT_CANVAS) {
+  const maximumWidth = Math.max(
+    1,
+    Math.min(
+      MAX_CONNECTOR_LABEL_WIDTH,
+      canvas.width - CONNECTOR_LABEL_CLEARANCE * 2,
+    ),
+  );
   const fitted = fitTextToWidth(
     element.label,
     element.style.fontSize,
-    MAX_CONNECTOR_LABEL_WIDTH - CONNECTOR_LABEL_PADDING,
+    Math.max(1, maximumWidth - CONNECTOR_LABEL_PADDING),
   );
   return {
     text: fitted.text,
     fontSize: fitted.fontSize,
     width: Math.min(
-      MAX_CONNECTOR_LABEL_WIDTH,
+      maximumWidth,
       Math.max(MIN_CONNECTOR_LABEL_WIDTH, fitted.width + CONNECTOR_LABEL_PADDING),
     ),
-    height: fitted.fontSize * 1.55,
+    height: Math.min(
+      Math.max(1, canvas.height - CONNECTOR_LABEL_CLEARANCE * 2),
+      fitted.fontSize * 1.55,
+    ),
+  };
+}
+
+function connectorLabelPaintBox(position, metrics) {
+  const strokeRadius = CONNECTOR_LABEL_STROKE_WIDTH / 2;
+  return {
+    x: position.x - metrics.width / 2 - strokeRadius,
+    y: position.y - metrics.height / 2 - strokeRadius,
+    width: metrics.width + CONNECTOR_LABEL_STROKE_WIDTH,
+    height: metrics.height + CONNECTOR_LABEL_STROKE_WIDTH,
   };
 }
 
 /**
- * ピルを線から逃がす向き。線分の法線のうち、進行方向を反転しても同じ側になるほうを
- * 選ぶ（水平な線なら上、垂直な線なら右）。左右どちらから引いても同じ側に出るので、
- * 隣り合う connector のラベルが互い違いに並ばない。
+ * ピルを線から逃がす既定の向き。線分の法線のうち、進行方向を反転しても同じ側になる
+ * ほうを選ぶ（水平な線なら上、垂直な線なら右）。左右どちらから引いても同じ側に
+ * 出るので、隣り合う connector のラベルが互い違いに並ばない。
  *
  * ノードや他のラベルを見て向きを選ばないのは意図的。この関数は connector と経路
  * だけの純関数に保ち、renderConnector と経路計算が必ず同じ箱を見る不変条件
@@ -1454,51 +1615,314 @@ function labelEscapeNormal(direction) {
   return flipped ? { x: -normal.x, y: -normal.y } : normal;
 }
 
+function terminalMarkerPolygon(element, points) {
+  if (!element.arrow || points.length < 2) return null;
+  const end = points.at(-1);
+  const previous = points.at(-2);
+  const length = Math.hypot(end.x - previous.x, end.y - previous.y);
+  if (length < 0.001) return null;
+  const direction = {
+    x: (end.x - previous.x) / length,
+    y: (end.y - previous.y) / length,
+  };
+  const normal = { x: -direction.y, y: direction.x };
+  const scale =
+    (CONNECTOR_MARKER_SIZE * element.style.strokeWidth) /
+    CONNECTOR_MARKER_VIEWBOX_SIZE;
+  return CONNECTOR_MARKER_POINTS.map((point) => {
+    const localX = (point.x - CONNECTOR_MARKER_REF_X) * scale;
+    const localY = (point.y - CONNECTOR_MARKER_REF_Y) * scale;
+    return {
+      x: end.x + direction.x * localX + normal.x * localY,
+      y: end.y + direction.y * localX + normal.y * localY,
+    };
+  });
+}
+
+function polygonOverlapsBox(polygon, box) {
+  const axes = [{ x: 1, y: 0 }, { x: 0, y: 1 }];
+  for (let index = 0; index < polygon.length; index++) {
+    const start = polygon[index];
+    const end = polygon[(index + 1) % polygon.length];
+    const delta = { x: end.x - start.x, y: end.y - start.y };
+    const length = Math.hypot(delta.x, delta.y);
+    if (length > 0.001) {
+      axes.push({ x: -delta.y / length, y: delta.x / length });
+    }
+  }
+  const center = {
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  };
+  return axes.every((axis) => {
+    const projections = polygon.map((point) => point.x * axis.x + point.y * axis.y);
+    const polygonMinimum = Math.min(...projections);
+    const polygonMaximum = Math.max(...projections);
+    const boxCenter = center.x * axis.x + center.y * axis.y;
+    const boxRadius =
+      Math.abs(axis.x) * box.width / 2 + Math.abs(axis.y) * box.height / 2;
+    return (
+      Math.min(polygonMaximum, boxCenter + boxRadius) -
+        Math.max(polygonMinimum, boxCenter - boxRadius) >
+      0.001
+    );
+  });
+}
+
+function terminalMarkerIsClear(element, points, box) {
+  if (!element.arrow) return true;
+  const polygon = terminalMarkerPolygon(element, points);
+  return polygon ? !polygonOverlapsBox(polygon, box) : false;
+}
+
+function terminalMarkerEscapeReach(
+  element,
+  points,
+  anchor,
+  normal,
+  metrics,
+  sign,
+  baseReach,
+) {
+  const position = {
+    x: anchor.x + normal.x * baseReach * sign,
+    y: anchor.y + normal.y * baseReach * sign,
+  };
+  const box = connectorLabelPaintBox(position, metrics);
+  if (terminalMarkerIsClear(element, points, box)) return baseReach;
+  const polygon = terminalMarkerPolygon(element, points);
+  if (!polygon) return baseReach;
+  const markerProjections = polygon.map(
+    (point) => point.x * normal.x + point.y * normal.y,
+  );
+  const markerMinimum = Math.min(...markerProjections);
+  const markerMaximum = Math.max(...markerProjections);
+  const anchorProjection = anchor.x * normal.x + anchor.y * normal.y;
+  const labelRadius =
+    Math.abs(normal.x) * box.width / 2 +
+    Math.abs(normal.y) * box.height / 2;
+  const required =
+    sign > 0
+      ? markerMaximum - anchorProjection + labelRadius + 0.001
+      : anchorProjection + labelRadius - markerMinimum + 0.001;
+  return Math.max(baseReach, required);
+}
+
+function fullRouteEscapeReach(
+  points,
+  anchor,
+  direction,
+  metrics,
+  sign,
+  baseReach,
+) {
+  const projections = points.map(
+    (point) => point.x * direction.x + point.y * direction.y,
+  );
+  const routeMinimum = Math.min(...projections);
+  const routeMaximum = Math.max(...projections);
+  const anchorProjection =
+    anchor.x * direction.x + anchor.y * direction.y;
+  const labelRadius =
+    Math.abs(direction.x) *
+      (metrics.width + CONNECTOR_LABEL_STROKE_WIDTH) /
+      2 +
+    Math.abs(direction.y) *
+      (metrics.height + CONNECTOR_LABEL_STROKE_WIDTH) /
+      2;
+  const required =
+    sign > 0
+      ? routeMaximum -
+        anchorProjection +
+        labelRadius +
+        CONNECTOR_LABEL_CLEARANCE
+      : anchorProjection -
+        routeMinimum +
+        labelRadius +
+        CONNECTOR_LABEL_CLEARANCE;
+  return Math.max(baseReach, required);
+}
+
 /**
  * ラベルのピルを置く点と、それが線から逃げた結果かどうか。
  *
  * 既定は経路の中点。ピルは不透明で最小幅 {@link MIN_CONNECTOR_LABEL_WIDTH} あるため、
  * ノード間が狭いと線と矢頭を丸ごと覆い隠してしまう（ラベルの文字数を削っても
  * 下限までしか縮まないので効かない）。線が {@link MIN_VISIBLE_ROUTE_LENGTH} も
- * 残らないときだけ、中点が乗っている線分の法線方向へピルを逃がす。
+ * 残らないときだけ、中点が乗っている線分の法線方向へピルを逃がす。canvas 内に
+ * 収まる側を優先し、両側とも同条件なら可視長が長いほうを選ぶ。
  *
  * 逃がす距離は「軸並行な矩形のその法線方向への広がり」＋余白。ピルは回転しないので、
  * 斜めの線でも角が線に触れないことがこの式で保証される。
  */
-function connectorLabelAnchor(element, points, metrics = connectorLabelMetrics(element)) {
-  const anchor = pointAtHalfLength(points);
-  const centered = {
-    x: anchor.x - metrics.width / 2,
-    y: anchor.y - metrics.height / 2,
-    width: metrics.width,
-    height: metrics.height,
+function connectorLabelAnchor(
+  element,
+  points,
+  metrics = null,
+  canvas = DEFAULT_CANVAS,
+) {
+  metrics ??= connectorLabelMetrics(element, canvas);
+  const measure = (position) => {
+    const box = connectorLabelPaintBox(position, metrics);
+    return {
+      position,
+      box,
+      contained:
+        box.x >= 0 &&
+        box.y >= 0 &&
+        box.x + box.width <= canvas.width &&
+        box.y + box.height <= canvas.height,
+      terminalClear: terminalMarkerIsClear(element, points, box),
+      visible: routeLengthOutsideBox(points, box),
+    };
   };
-  if (routeLengthOutsideBox(points, centered) >= MIN_VISIBLE_ROUTE_LENGTH) {
+  const paintedWidth = metrics.width + CONNECTOR_LABEL_STROKE_WIDTH;
+  const paintedHeight = metrics.height + CONNECTOR_LABEL_STROKE_WIDTH;
+  const clampToCanvas = (position) => ({
+    ...position,
+    x:
+      paintedWidth <= canvas.width
+        ? Math.min(
+            canvas.width - paintedWidth / 2,
+            Math.max(paintedWidth / 2, position.x),
+          )
+        : canvas.width / 2,
+    y:
+      paintedHeight <= canvas.height
+        ? Math.min(
+            canvas.height - paintedHeight / 2,
+            Math.max(paintedHeight / 2, position.y),
+          )
+        : canvas.height / 2,
+  });
+  const anchor = pointAtHalfLength(points);
+  const centered = measure({ x: anchor.x, y: anchor.y, escaped: false });
+  const minimumVisible = Math.min(MIN_VISIBLE_ROUTE_LENGTH, routeLength(points));
+  if (
+    centered.contained &&
+    centered.terminalClear &&
+    centered.visible >= minimumVisible
+  ) {
     return { x: anchor.x, y: anchor.y, escaped: false };
   }
-  const normal = labelEscapeNormal(anchor.direction);
-  const reach =
-    Math.abs(normal.x) * (metrics.width / 2) +
-    Math.abs(normal.y) * (metrics.height / 2) +
-    CONNECTOR_LABEL_CLEARANCE;
-  return {
-    x: anchor.x + normal.x * reach,
-    y: anchor.y + normal.y * reach,
-    escaped: true,
-  };
+  const normals = [labelEscapeNormal(anchor.direction)];
+  const segments = points
+    .slice(1)
+    .map((end, index) => {
+      const start = points[index];
+      const length = Math.hypot(end.x - start.x, end.y - start.y);
+      return {
+        length,
+        direction: length
+          ? { x: (end.x - start.x) / length, y: (end.y - start.y) / length }
+          : null,
+      };
+    })
+    .sort((first, second) => second.length - first.length);
+  for (const segment of segments) {
+    if (!segment.direction) continue;
+    const normal = labelEscapeNormal(segment.direction);
+    if (
+      normals.some(
+        (known) => Math.abs(known.x * normal.x + known.y * normal.y) > 0.999,
+      )
+    ) {
+      continue;
+    }
+    normals.push(normal);
+  }
+  const axes = normals.map((direction) => ({
+    direction,
+    clearFullRoute: false,
+  }));
+  for (const segment of segments) {
+    if (
+      !segment.direction ||
+      axes.some(
+        (axis) =>
+          Math.abs(
+            axis.direction.x * segment.direction.x +
+              axis.direction.y * segment.direction.y,
+          ) > 0.999,
+      )
+    ) {
+      continue;
+    }
+    axes.push({
+      direction: segment.direction,
+      clearFullRoute: true,
+    });
+  }
+  const escapedByAxis = axes.map(({ direction, clearFullRoute }) => {
+    const reach =
+      Math.abs(direction.x) * (paintedWidth / 2) +
+      Math.abs(direction.y) * (paintedHeight / 2) +
+      CONNECTOR_LABEL_CLEARANCE;
+    return [1, -1].map((sign) => {
+      const routeAdjustedReach = clearFullRoute
+        ? fullRouteEscapeReach(
+            points,
+            anchor,
+            direction,
+            metrics,
+            sign,
+            reach,
+          )
+        : reach;
+      const adjustedReach = terminalMarkerEscapeReach(
+        element,
+        points,
+        anchor,
+        direction,
+        metrics,
+        sign,
+        routeAdjustedReach,
+      );
+      return measure({
+        x: anchor.x + direction.x * adjustedReach * sign,
+        y: anchor.y + direction.y * adjustedReach * sign,
+        escaped: true,
+      });
+    });
+  });
+  const best = (candidates) =>
+    candidates.reduce((selected, candidate) =>
+      candidate.visible > selected.visible + 0.001 ? candidate : selected,
+    );
+  for (const candidates of escapedByAxis) {
+    const viable = candidates.filter(
+      (candidate) =>
+        candidate.contained &&
+        candidate.terminalClear &&
+        candidate.visible >= minimumVisible - 0.001,
+    );
+    if (viable.length) return best(viable).position;
+  }
+  let candidates = escapedByAxis.flat().map((candidate) =>
+    candidate.contained
+      ? candidate
+      : measure(clampToCanvas(candidate.position)),
+  );
+  const viable = candidates.filter(
+    (candidate) =>
+      candidate.contained &&
+      candidate.terminalClear &&
+      candidate.visible >= minimumVisible - 0.001,
+  );
+  if (viable.length) return best(viable).position;
+  const terminalClear = candidates.filter(
+    (candidate) => candidate.terminalClear,
+  );
+  if (terminalClear.length) candidates = terminalClear;
+  return best(candidates).position;
 }
 
 /** ラベルが実際に占める矩形。ラベルが無い connector は null。 */
-function connectorLabelBox(element, points) {
+function connectorLabelBox(element, points, canvas = DEFAULT_CANVAS) {
   if (!element?.label || points.length < 2) return null;
-  const metrics = connectorLabelMetrics(element);
-  const position = connectorLabelAnchor(element, points, metrics);
-  return {
-    x: position.x - metrics.width / 2,
-    y: position.y - metrics.height / 2,
-    width: metrics.width,
-    height: metrics.height,
-  };
+  const metrics = connectorLabelMetrics(element, canvas);
+  const position = connectorLabelAnchor(element, points, metrics, canvas);
+  return connectorLabelPaintBox(position, metrics);
 }
 
 /** ラベルの矩形を経路が横切るか。矩形との交差判定は margin 0 で行う。 */
@@ -1562,6 +1986,37 @@ function availableStubDistance(start, direction, desired, nodes, excludedIds) {
     if (!blocked) return distance;
   }
   return 0;
+}
+
+function fitFacingDistances(
+  start,
+  end,
+  fromDirection,
+  toDirection,
+  fromDistance,
+  toDistance,
+  minimumRemainingSpan = 0,
+) {
+  const directionsOppose =
+    fromDirection.x === -toDirection.x &&
+    fromDirection.y === -toDirection.y;
+  const delta = { x: end.x - start.x, y: end.y - start.y };
+  const forwardSpan = fromDirection.x * delta.x + fromDirection.y * delta.y;
+  const total = fromDistance + toDistance;
+  const reservedSpan = Math.min(minimumRemainingSpan, forwardSpan);
+  const availableSpan = forwardSpan - reservedSpan;
+  if (
+    !directionsOppose ||
+    forwardSpan <= 0 ||
+    total <= availableSpan
+  ) {
+    return { fromDistance, toDistance };
+  }
+  const scale = availableSpan / total;
+  return {
+    fromDistance: fromDistance * scale,
+    toDistance: toDistance * scale,
+  };
 }
 
 function segmentInteractionScore(firstStart, firstEnd, secondStart, secondEnd) {
@@ -1652,10 +2107,15 @@ function countRouteCrossings(points, occupiedRoutes) {
  * ノードは接続先なので数えない。交差は読みにくいだけだが、これは情報が
  * 消えるので、refinement のガードで交差より重く扱うための指標。
  */
-function countHiddenContent(connector, points, nodes) {
+function countHiddenContent(
+  connector,
+  points,
+  nodes,
+  canvas = DEFAULT_CANVAS,
+) {
   const excludedIds = new Set([connector.from, connector.to]);
   let hidden = countNodeHits(points, nodes, excludedIds);
-  const labelBox = connectorLabelBox(connector, points);
+  const labelBox = connectorLabelBox(connector, points, canvas);
   if (!labelBox) return hidden;
   for (const node of nodes) {
     if (excludedIds.has(node.id)) continue;
@@ -1708,10 +2168,11 @@ function routeCost(points, context) {
     occupiedRoutes = [],
     occupiedLabels = [],
     connector = null,
+    canvas = DEFAULT_CANVAS,
   } = context;
   let cost = countNodeHits(points, nodes, excludedIds) * ROUTE_COST_NODE_HIT;
   cost += routeInteractionScore(points, occupiedRoutes) * ROUTE_COST_INTERACTION;
-  const labelBox = connectorLabelBox(connector, points);
+  const labelBox = connectorLabelBox(connector, points, canvas);
   if (labelBox) {
     for (const node of nodes) {
       if (excludedIds.has(node.id)) continue;
@@ -1742,6 +2203,7 @@ function chooseRoute(candidates, nodes, excludedIds, occupiedRoutes, options = {
     occupiedRoutes,
     occupiedLabels: options.occupiedLabels || [],
     connector: options.connector || null,
+    canvas: options.canvas || DEFAULT_CANVAS,
   };
   let best = candidates[0];
   let bestCost = routeCost(best, context);
@@ -1755,15 +2217,65 @@ function chooseRoute(candidates, nodes, excludedIds, occupiedRoutes, options = {
   return best;
 }
 
-function gridRoute(start, end, nodes, excludedIds, canvas, occupiedRoutes) {
-  const obstacles = nodes.filter((node) => !excludedIds.has(node.id));
+function filterPreferredRouteCandidates(
+  candidates,
+  connector,
+  nodes,
+  maximumRouteLength,
+  canvas,
+) {
+  if (!candidates.length) return [];
+  const measured = candidates.map((points) => ({
+    points,
+    hidden: countHiddenContent(connector, points, nodes, canvas),
+    length: routeLength(points),
+  }));
+  const bounded = measured.filter(
+    (candidate) =>
+      candidate.length <= maximumRouteLength + ROUTE_IMPROVEMENT_EPSILON,
+  );
+  const boundedHidden = bounded.length
+    ? Math.min(...bounded.map((candidate) => candidate.hidden))
+    : Infinity;
+  const minimumHidden = Math.min(
+    ...measured.map((candidate) => candidate.hidden),
+  );
+  const eligible = minimumHidden < boundedHidden ? measured : bounded;
+  const eligibleHidden = Math.min(
+    ...eligible.map((candidate) => candidate.hidden),
+  );
+  return eligible
+    .filter((candidate) => candidate.hidden === eligibleHidden)
+    .map((candidate) => candidate.points);
+}
+
+function gridRoute(
+  start,
+  end,
+  nodes,
+  excludedIds,
+  canvas,
+  occupiedRoutes,
+  options = {},
+) {
+  const startDirection = options.startDirection || null;
+  const endDirection = options.endDirection || null;
+  const strictStartDirection = options.strictStartDirection === true;
+  const strictEndDirection = options.strictEndDirection === true;
+  // 接続先ノードも実体は障害物として残す。ただし端点は 14px の gap しかないため、
+  // 通常の 18px clearance ではなく実寸（margin 0）で判定して出入りを許す。
+  const obstacles = nodes.map((node) => ({
+    node,
+    margin: excludedIds.has(node.id) ? 0 : 18,
+  }));
   const xs = new Set([0, canvas.width, start.x, end.x]);
   const ys = new Set([0, canvas.height, start.y, end.y]);
-  for (const node of obstacles) {
-    xs.add(Math.max(0, node.x - 19));
-    xs.add(Math.min(canvas.width, node.x + node.width + 19));
-    ys.add(Math.max(0, node.y - 19));
-    ys.add(Math.min(canvas.height, node.y + node.height + 19));
+  for (const { node, margin } of obstacles) {
+    const corridor = margin + 1;
+    xs.add(Math.max(0, node.x - corridor));
+    xs.add(Math.min(canvas.width, node.x + node.width + corridor));
+    ys.add(Math.max(0, node.y - corridor));
+    ys.add(Math.min(canvas.height, node.y + node.height + corridor));
   }
   for (const route of occupiedRoutes) {
     for (const point of route) {
@@ -1789,11 +2301,15 @@ function gridRoute(start, end, nodes, excludedIds, canvas, occupiedRoutes) {
   const keyOf = (point) => `${point.x},${point.y}`;
   const insideObstacle = (point) =>
     obstacles.some(
-      (node) =>
-        point.x > node.x - 18 &&
-        point.x < node.x + node.width + 18 &&
-        point.y > node.y - 18 &&
-        point.y < node.y + node.height + 18,
+      ({ node, margin }) =>
+        point.x > node.x - margin &&
+        point.x < node.x + node.width + margin &&
+        point.y > node.y - margin &&
+        point.y < node.y + node.height + margin,
+    );
+  const segmentBlocked = (startPoint, endPoint) =>
+    obstacles.some(({ node, margin }) =>
+      segmentIntersectsBox(startPoint, endPoint, node, margin),
     );
   const points = new Map();
   const rows = new Map();
@@ -1815,7 +2331,7 @@ function gridRoute(start, end, nodes, excludedIds, canvas, occupiedRoutes) {
     for (let index = 1; index < line.length; index++) {
       const from = line[index - 1];
       const to = line[index];
-      if (routeHitsNodes([from, to], nodes, excludedIds)) continue;
+      if (segmentBlocked(from, to)) continue;
       adjacency.get(keyOf(from)).push(to);
       adjacency.get(keyOf(to)).push(from);
     }
@@ -1884,6 +2400,35 @@ function gridRoute(start, end, nodes, excludedIds, canvas, occupiedRoutes) {
     }
     const currentPoint = points.get(currentPointKey);
     for (const neighbor of adjacency.get(currentPointKey)) {
+      const movement = {
+        x: neighbor.x - currentPoint.x,
+        y: neighbor.y - currentPoint.y,
+      };
+      const startProjection = startDirection
+        ? movement.x * startDirection.x + movement.y * startDirection.y
+        : Infinity;
+      if (
+        currentPointKey === startKey &&
+        startDirection &&
+        (strictStartDirection
+          ? startProjection <= 0.001
+          : startProjection < -0.001)
+      ) {
+        continue;
+      }
+      const nextPointKey = keyOf(neighbor);
+      const endProjection = endDirection
+        ? movement.x * endDirection.x + movement.y * endDirection.y
+        : Infinity;
+      if (
+        nextPointKey === endKey &&
+        endDirection &&
+        (strictEndDirection
+          ? endProjection <= 0.001
+          : endProjection < -0.001)
+      ) {
+        continue;
+      }
       const nextDirection = neighbor.x === currentPoint.x ? "V" : "H";
       const bendCost =
         currentDirection === "N" || currentDirection === nextDirection ? 0 : 24;
@@ -1894,7 +2439,6 @@ function gridRoute(start, end, nodes, excludedIds, canvas, occupiedRoutes) {
         Math.hypot(neighbor.x - currentPoint.x, neighbor.y - currentPoint.y) +
         bendCost +
         interactionCost;
-      const nextPointKey = keyOf(neighbor);
       const nextState = stateKey(nextPointKey, nextDirection);
       if (nextDistance >= (distances.get(nextState) ?? Infinity)) continue;
       distances.set(nextState, nextDistance);
@@ -1939,6 +2483,7 @@ export function computeConnectorRoute(
   options = {},
 ) {
   const occupiedLabels = options.occupiedLabels || [];
+  const detourBaseline = options.detourBaseline ?? null;
   const report = options.report || null;
   const onReason = options.onReason || null;
   const from = lookup.get(connector.from);
@@ -1957,30 +2502,83 @@ export function computeConnectorRoute(
     elementCenter(from),
     connector.toOffset ?? laneOffset,
   );
+  const endpointDistances =
+    connector.routing === "orthogonal"
+      ? fitFacingDistances(
+          fromPort.point,
+          toPort.point,
+          fromPort.direction,
+          toPort.direction,
+          CONNECTOR_ENDPOINT_GAP,
+          CONNECTOR_ENDPOINT_GAP,
+          MIN_ORTHOGONAL_ENDPOINT_SPAN,
+        )
+      : {
+          fromDistance: CONNECTOR_ENDPOINT_GAP,
+          toDistance: CONNECTOR_ENDPOINT_GAP,
+        };
   const start = offsetPoint(
     fromPort.point,
     fromPort.direction,
-    CONNECTOR_ENDPOINT_GAP,
+    endpointDistances.fromDistance,
   );
   const end = offsetPoint(
     toPort.point,
     toPort.direction,
-    CONNECTOR_ENDPOINT_GAP,
+    endpointDistances.toDistance,
   );
   if (connector.routing === "straight") return [start, end];
 
   const nodes = [...lookup.values()].filter((element) => element.type === "node");
   const excluded = new Set([connector.from, connector.to]);
+  const endpointNodes = [from, to].filter((element) => element.type === "node");
   const clearance = 42 + Math.abs(laneOffset) * 0.3;
+  const fromStubExcluded =
+    connector.routing === "orthogonal"
+      ? new Set([connector.from])
+      : excluded;
+  const toStubExcluded =
+    connector.routing === "orthogonal"
+      ? new Set([connector.to])
+      : excluded;
+  const availableFromStub = availableStubDistance(
+    start,
+    fromPort.direction,
+    clearance,
+    nodes,
+    fromStubExcluded,
+  );
+  const availableToStub = availableStubDistance(
+    end,
+    toPort.direction,
+    clearance,
+    nodes,
+    toStubExcluded,
+  );
+  const stubDistances =
+    connector.routing === "orthogonal"
+      ? fitFacingDistances(
+          start,
+          end,
+          fromPort.direction,
+          toPort.direction,
+          availableFromStub,
+          availableToStub,
+          MIN_ORTHOGONAL_ENDPOINT_SPAN,
+        )
+      : {
+          fromDistance: availableFromStub,
+          toDistance: availableToStub,
+        };
   const fromStub = offsetPoint(
     start,
     fromPort.direction,
-    availableStubDistance(start, fromPort.direction, clearance, nodes, excluded),
+    stubDistances.fromDistance,
   );
   const toStub = offsetPoint(
     end,
     toPort.direction,
-    availableStubDistance(end, toPort.direction, clearance, nodes, excluded),
+    stubDistances.toDistance,
   );
   if (connector.routing === "polyline") {
     return compressPoints([
@@ -2300,15 +2898,17 @@ export function computeConnectorRoute(
       );
     }
   }
-  candidates = candidates.map((points) =>
-    compressPoints([
-      start,
-      fromStub,
-      ...points.slice(1, -1),
-      toStub,
-      end,
-    ]),
-  ).filter(routeIsOrthogonal);
+  candidates = candidates
+    .map((points) =>
+      compressPoints([
+        start,
+        fromStub,
+        ...points.slice(1, -1),
+        toStub,
+        end,
+      ]),
+    )
+    .filter(routeIsOrthogonal);
   if (!candidates.length) {
     candidates = [
       compressPoints([
@@ -2333,19 +2933,58 @@ export function computeConnectorRoute(
     occupiedRoutes,
     occupiedLabels,
     connector,
+    canvas,
   };
+  const endDirection = {
+    x: -toPort.direction.x,
+    y: -toPort.direction.y,
+  };
+  const hasForwardAutomaticGeometry = (points) =>
+    !routeHasImmediateBacktrack(points) &&
+    routeRespectsEndpointDirections(
+      points,
+      fromPort.direction,
+      endDirection,
+    );
+  const hasValidAutomaticGeometry = (points) =>
+    hasForwardAutomaticGeometry(points) &&
+    !routeHitsEndpointNode(points, endpointNodes);
+  let routePool = candidates;
+  let maximumRouteLength = Infinity;
+  if (occupiedRoutes.length || occupiedLabels.length) {
+    const standalone =
+      detourBaseline ??
+      computeConnectorRoute(connector, lookup, canvas, [], {
+        occupiedLabels: [],
+      });
+    maximumRouteLength = routeLength(standalone) * MAX_ROUTE_DETOUR_RATIO;
+    routePool = [...candidates, standalone];
+    candidates = filterPreferredRouteCandidates(
+      routePool,
+      connector,
+      nodes,
+      maximumRouteLength,
+      canvas,
+    );
+  }
   const selected = chooseRoute(candidates, nodes, excluded, occupiedRoutes, {
     occupiedLabels,
     connector,
+    canvas,
   });
   const selectedCost = routeCost(selected, routingContext);
   const selectedHitsNodes = routeHitsNodes(selected, nodes, excluded);
   const selectedInteraction = routeInteractionScore(selected, occupiedRoutes);
+  const selectedHasInvalidGeometry = !hasValidAutomaticGeometry(selected);
   let chosen = selected;
   let gridReason = null;
   // フォールバック段階 2: 候補が汚れているときだけ格子探索へエスカレートする。
   // 格子探索は高価なので、無条件には走らせない。
-  if (selectedHitsNodes || (occupiedRoutes.length && selectedInteraction > 0)) {
+  if (
+    selectedHasInvalidGeometry ||
+    selectedHitsNodes ||
+    (occupiedRoutes.length && selectedInteraction > 0)
+  ) {
     const grid = gridRoute(
       fromStub,
       toStub,
@@ -2353,20 +2992,85 @@ export function computeConnectorRoute(
       excluded,
       canvas,
       occupiedRoutes,
+      {
+        startDirection: fromPort.direction,
+        endDirection,
+        strictStartDirection: stubDistances.fromDistance <= 0.001,
+        strictEndDirection: stubDistances.toDistance <= 0.001,
+      },
     );
     gridReason = grid.reason;
     const alternate = grid.points
       ? compressPoints([start, fromStub, ...grid.points, toStub, end])
       : null;
-    // フォールバック段階 3: 格子解も同じ物差しで測り、改善したときだけ採る。
-    if (alternate && routeCost(alternate, routingContext) < selectedCost) {
+    const selectedHidden = countHiddenContent(connector, selected, nodes, canvas);
+    const alternateHidden = alternate
+      ? countHiddenContent(connector, alternate, nodes, canvas)
+      : Infinity;
+    const alternateIsUsable =
+      alternate &&
+      hasValidAutomaticGeometry(alternate) &&
+      alternateHidden <= selectedHidden &&
+      (alternateHidden < selectedHidden ||
+        routeLength(alternate) <=
+          maximumRouteLength + ROUTE_IMPROVEMENT_EPSILON);
+    if (selectedHasInvalidGeometry) {
+      const validCandidates = routePool.filter(hasValidAutomaticGeometry);
+      if (alternate && hasValidAutomaticGeometry(alternate)) {
+        validCandidates.push(alternate);
+      }
+      let preferredCandidates = filterPreferredRouteCandidates(
+        validCandidates,
+        connector,
+        nodes,
+        maximumRouteLength,
+        canvas,
+      );
+      if (!preferredCandidates.length) {
+        // 端点再貫通が避けられなくても、方向を守り折り返さない経路を返して診断する。
+        const perimeterCandidates = [
+          ...routePool,
+          ...(alternate ? [alternate] : []),
+          ...perimeterRouteCandidates(
+            start,
+            end,
+            fromPort.direction,
+            toPort.direction,
+            canvas,
+          ),
+        ].filter(hasForwardAutomaticGeometry);
+        preferredCandidates = filterPreferredRouteCandidates(
+          perimeterCandidates,
+          connector,
+          nodes,
+          maximumRouteLength,
+          canvas,
+        );
+      }
+      if (preferredCandidates.length) {
+        chosen = chooseRoute(
+          preferredCandidates,
+          nodes,
+          excluded,
+          occupiedRoutes,
+          { occupiedLabels, connector, canvas },
+        );
+      }
+    } else if (
+      alternateIsUsable &&
+      routeCost(alternate, routingContext) < selectedCost
+    ) {
+      // フォールバック段階 3: 格子解も同じ物差しで測り、改善したときだけ採る。
       chosen = alternate;
     }
   }
-  // フォールバック段階 4: それでも内容を隠しているなら、黙って出さずに報告する。
+  // フォールバック段階 4: それでも形が無効なら、黙って出さずに報告する。
   // onReason は「なぜ格子探索に頼れなかったか」を呼び出し元へ渡すためのフック。
   // planConnectorRoutes は経路確定後にまとめて診断を採るので、途中で分かった
   // 打ち切り理由をここで拾っておかないと no-clean-candidate に丸められてしまう。
+  if (!hasValidAutomaticGeometry(chosen)) {
+    gridReason = ROUTE_FALLBACK_REASONS.invalidEndpointGeometry;
+  }
   if (typeof onReason === "function") onReason(gridReason);
   reportRouteDegradation(report, connector, chosen, routingContext, gridReason);
   return chosen;
@@ -2377,34 +3081,68 @@ export function computeConnectorRoute(
  *
  * 交差そのものは報告しない。平面的でないグラフでは交差は避けようがなく、
  * すべて報告するとノイズになって本当に困っている図が埋もれる。
- * 報告するのは経路がノードを貫通した場合と、ラベルがノードを覆った場合だけ。
+ * 報告するのは経路がノードを貫通した場合、ラベルがノードを覆った場合、
+ * ラベルが自分の経路・矢頭を必要量だけ露出できない場合、または接触・重なり配置で
+ * 端点方向を守る経路が作れなかった場合だけ。
  *
- * 「ラベルが自分の経路を覆う」ケースはここでは報告しない。orthogonal 経路では
- * connectorLabelAnchor が法線方向へ逃がすことで必ず解決するため（生成した
- * 4,725 通りの orthogonal 配置で、逃がしたあとの可視長は下限 50 を一度も
- * 下回らなかった）、報告する対象そのものが存在しない。straight / polyline では
- * 下回りうるが、それは作者が経路を明示した結果であり、この診断ループが
- * orthogonal だけを見るのと同じ理由で対象外。
+ * connectorLabelAnchor は法線、別区間の法線、単一区間では経路外側の接線方向まで
+ * 試す。それでもキャンバスが小さすぎる場合は重なりを黙認せず、この診断へ落とす。
+ * straight / polyline は作者が経路を明示した結果なので、planConnectorRoutes が
+ * orthogonal だけを診断する既存方針に従って対象外。
  */
 function reportRouteDegradation(report, connector, points, context, gridReason) {
   if (typeof report !== "function") return;
-  const { nodes, excludedIds } = context;
+  const { nodes, excludedIds, canvas = DEFAULT_CANVAS } = context;
   const pathHits = countNodeHits(points, nodes, excludedIds);
-  const labelBox = connectorLabelBox(connector, points);
+  const labelBox = connectorLabelBox(connector, points, canvas);
   const labelHits = labelBox
     ? nodes.filter(
         (node) => !excludedIds.has(node.id) && boxesOverlap(labelBox, node),
       ).length
     : 0;
-  if (!pathHits && !labelHits) return;
+  const requiredVisible = labelBox
+    ? Math.min(MIN_VISIBLE_ROUTE_LENGTH, routeLength(points))
+    : 0;
+  const routeVisible = labelBox
+    ? routeLengthOutsideBox(points, labelBox)
+    : requiredVisible;
+  const markerClear = labelBox
+    ? terminalMarkerIsClear(connector, points, labelBox)
+    : true;
+  const labelPlacementInvalid =
+    Boolean(labelBox) &&
+    (routeVisible < requiredVisible - 0.001 || !markerClear);
+  const invalidEndpointGeometry =
+    gridReason === ROUTE_FALLBACK_REASONS.invalidEndpointGeometry;
+  if (
+    !pathHits &&
+    !labelHits &&
+    !invalidEndpointGeometry &&
+    !labelPlacementInvalid
+  ) {
+    return;
+  }
   report({
     from: connector.from,
     to: connector.to,
     sourcePath: connector.sourcePath,
-    kind: pathHits ? "path-overlaps-node" : "label-overlaps-node",
-    reason: gridReason || ROUTE_FALLBACK_REASONS.noCleanCandidate,
+    kind: pathHits
+      ? "path-overlaps-node"
+      : labelHits
+        ? "label-overlaps-node"
+        : invalidEndpointGeometry
+          ? "invalid-endpoint-geometry"
+          : "label-overlaps-route",
+    reason:
+      gridReason ||
+      (labelPlacementInvalid
+        ? ROUTE_FALLBACK_REASONS.labelPlacementImpossible
+        : ROUTE_FALLBACK_REASONS.noCleanCandidate),
     pathOverlaps: pathHits,
     labelOverlaps: labelHits,
+    routeVisible,
+    requiredRouteVisible: requiredVisible,
+    markerClear,
   });
 }
 
@@ -2435,6 +3173,14 @@ function planConnectorRoutes(model, lookup) {
       return leftDistance - rightDistance || left.order - right.order;
     });
   const nodes = [...lookup.values()].filter((element) => element.type === "node");
+  const standaloneRoutes = new Map(
+    connectors
+      .filter((connector) => connector.routing === "orthogonal")
+      .map((connector) => [
+        connector,
+        computeConnectorRoute(connector, lookup, model.canvas),
+      ]),
+  );
   const routes = new Map();
   const occupied = [];
   const labels = new Map();
@@ -2447,11 +3193,12 @@ function planConnectorRoutes(model, lookup) {
   for (const connector of connectors) {
     const route = computeConnectorRoute(connector, lookup, model.canvas, occupied, {
       occupiedLabels: [...labels.values()],
+      detourBaseline: standaloneRoutes.get(connector),
       onReason: noteReason(connector),
     });
     routes.set(connector, route);
     occupied.push(route);
-    const box = connectorLabelBox(connector, route);
+    const box = connectorLabelBox(connector, route, model.canvas);
     if (box) labels.set(connector, box);
   }
 
@@ -2466,6 +3213,7 @@ function planConnectorRoutes(model, lookup) {
       occupiedRoutes: others,
       occupiedLabels: otherLabels,
       connector,
+      canvas: model.canvas,
     });
 
   let reroutes = 0;
@@ -2481,7 +3229,12 @@ function planConnectorRoutes(model, lookup) {
       const current = routes.get(connector);
       const currentCost = costOf(connector, current, others, otherLabels);
       const currentCrossings = countRouteCrossings(current, others);
-      const currentHidden = countHiddenContent(connector, current, nodes);
+      const currentHidden = countHiddenContent(
+        connector,
+        current,
+        nodes,
+        model.canvas,
+      );
       let candidateReason = null;
       const candidate = computeConnectorRoute(
         connector,
@@ -2490,11 +3243,13 @@ function planConnectorRoutes(model, lookup) {
         others,
         {
           occupiedLabels: otherLabels,
+          detourBaseline: standaloneRoutes.get(connector),
           onReason: (reason) => {
             candidateReason = reason;
           },
         },
       );
+      if (routeHasImmediateBacktrack(candidate)) continue;
       if (costOf(connector, candidate, others, otherLabels) >= currentCost - ROUTE_IMPROVEMENT_EPSILON) {
         continue;
       }
@@ -2505,13 +3260,18 @@ function planConnectorRoutes(model, lookup) {
       // 例外は「ノードが隠れている状態を解消する」場合だけ。読めない図より
       // 交差が 1 本増えた図のほうがましなので、そこだけ通す。
       if (countRouteCrossings(candidate, others) > currentCrossings) {
-        if (countHiddenContent(connector, candidate, nodes) >= currentHidden) continue;
+        if (
+          countHiddenContent(connector, candidate, nodes, model.canvas) >=
+          currentHidden
+        ) {
+          continue;
+        }
       }
       routes.set(connector, candidate);
       // 経路を差し替えたときだけ理由も差し替える。棄却した候補の理由は残さない。
       if (candidateReason) reasons.set(connector, candidateReason);
       else reasons.delete(connector);
-      const box = connectorLabelBox(connector, candidate);
+      const box = connectorLabelBox(connector, candidate, model.canvas);
       if (box) labels.set(connector, box);
       else labels.delete(connector);
       improved = true;
@@ -2534,6 +3294,7 @@ function planConnectorRoutes(model, lookup) {
         occupiedRoutes: othersOf(connector),
         occupiedLabels: otherLabelsOf(connector),
         connector,
+        canvas: model.canvas,
       },
       reasons.get(connector) || null,
     );
@@ -2780,7 +3541,14 @@ function describeConnector(element, endpointNames) {
   return `${from} to ${to}${element.label ? `: ${element.label}` : ""}`;
 }
 
-function renderConnector(documentRef, element, points, markerId, endpointNames) {
+function renderConnector(
+  documentRef,
+  element,
+  points,
+  markerId,
+  endpointNames,
+  canvas,
+) {
   const label = element.ariaLabel || describeConnector(element, endpointNames);
   const group = svgElement(documentRef, "g", {
     opacity: element.style.opacity,
@@ -2804,8 +3572,8 @@ function renderConnector(documentRef, element, points, markerId, endpointNames) 
     }),
   );
   if (element.label) {
-    const fittedLabel = connectorLabelMetrics(element);
-    const position = connectorLabelAnchor(element, points, fittedLabel);
+    const fittedLabel = connectorLabelMetrics(element, canvas);
+    const position = connectorLabelAnchor(element, points, fittedLabel, canvas);
     const { width, height } = fittedLabel;
     group.appendChild(
       svgElement(documentRef, "rect", {
@@ -2816,7 +3584,7 @@ function renderConnector(documentRef, element, points, markerId, endpointNames) 
         rx: height / 2,
         fill: "var(--surface)",
         stroke: "var(--border)",
-        "stroke-width": 2,
+        "stroke-width": CONNECTOR_LABEL_STROKE_WIDTH,
       }),
     );
     const text = svgElement(documentRef, "text", {
@@ -2920,11 +3688,11 @@ export function renderArchitectureDiagram(
     const markerId = `architecture-arrow-${renderId}-${index}`;
     const marker = svgElement(documentRef, "marker", {
       id: markerId,
-      viewBox: "0 0 10 10",
-      refX: 9,
-      refY: 5,
-      markerWidth: 7,
-      markerHeight: 7,
+      viewBox: `0 0 ${CONNECTOR_MARKER_VIEWBOX_SIZE} ${CONNECTOR_MARKER_VIEWBOX_SIZE}`,
+      refX: CONNECTOR_MARKER_REF_X,
+      refY: CONNECTOR_MARKER_REF_Y,
+      markerWidth: CONNECTOR_MARKER_SIZE,
+      markerHeight: CONNECTOR_MARKER_SIZE,
       orient: "auto-start-reverse",
       markerUnits: "strokeWidth",
     });
@@ -2954,6 +3722,7 @@ export function renderArchitectureDiagram(
           connectorRoutes.get(element),
           `architecture-arrow-${renderId}-${index}`,
           endpointNames,
+          model.canvas,
         ),
       );
     }
@@ -2986,7 +3755,7 @@ function appendRoutingWarning(documentRef, wrapper, diagnostics) {
     )
     .join("; ");
   globalThis.console?.warn?.(
-    `architecture: ${diagnostics.length} connector route(s) could not avoid other elements; ${summary}`,
+    `architecture: ${diagnostics.length} connector route(s) could not be rendered cleanly; ${summary}`,
   );
   const banner = documentRef.createElement("div");
   banner.className = "architecture-routing-warning";
