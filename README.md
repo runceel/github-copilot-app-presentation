@@ -14,19 +14,19 @@ GitHub Copilot App に次のように依頼してください。
 >
 > `https://github.com/runceel/github-copilot-app-presentation/tree/main/.github/extensions/presentation`
 
-`main` の URL は最新版を指します。再現可能な導入には、固定タグ `v1.0.0` の URL を
+`main` の URL は最新版を指します。再現可能な導入には、固定タグ `v1.1.0` の URL を
 使ってください。
 
 ```text
-https://github.com/runceel/github-copilot-app-presentation/tree/v1.0.0/.github/extensions/presentation
+https://github.com/runceel/github-copilot-app-presentation/tree/v1.1.0/.github/extensions/presentation
 ```
 
 ## 最新リリース
 
-現在の presentation canvas の最新版は **v1.0.0** です。
+現在の presentation canvas の最新版は **v1.1.0** です。
 
-- [v1.0.0 リリース](https://github.com/runceel/github-copilot-app-presentation/releases/tag/v1.0.0)
-- [固定タグから Extension を導入](https://github.com/runceel/github-copilot-app-presentation/tree/v1.0.0/.github/extensions/presentation)
+- [v1.1.0 リリース](https://github.com/runceel/github-copilot-app-presentation/releases/tag/v1.1.0)
+- [固定タグから Extension を導入](https://github.com/runceel/github-copilot-app-presentation/tree/v1.1.0/.github/extensions/presentation)
 
 リリースには、手動導入用 ZIP と SHA-256 チェックサムを添付しています。更新時は既存のタグを
 移動せず、新しいバージョンタグを使用します。
