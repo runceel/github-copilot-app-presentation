@@ -44,6 +44,11 @@ import { createInterface } from "node:readline";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 import { reconstructAsset } from "./scripts/vendor-assets.mjs";
 import { replaceArchitectureBlock } from "./scripts/markdown-blocks.mjs";
+import {
+  createPresentationHooks,
+  deckValidationFeedback,
+  readGuide,
+} from "./presentation-guide.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PEN_LISTENER_SCRIPT = join(EXT_DIR, "windows", "pen-button-listener.ps1");
@@ -1703,6 +1708,32 @@ async function ensureInstance(ctx) {
 }
 
 const session = await joinSession({
+  tools: [
+    {
+      name: "presentation_guide",
+      description:
+        "presentation canvas でスライドを作る前に呼ぶ。スライド断片の書式・フロントマター・テーマ・Architecture DSL のスキーマを返す。",
+      parameters: {
+        type: "object",
+        properties: {
+          topic: {
+            type: "string",
+            enum: [
+              "overview",
+              "slide-format",
+              "themes",
+              "architecture-dsl",
+              "architecture-schema",
+            ],
+            description: "取得したい項目。省略時は overview。",
+          },
+        },
+        additionalProperties: false,
+      },
+      handler: async ({ topic } = {}) => readGuide(topic ?? "overview"),
+    },
+  ],
+  hooks: createPresentationHooks(),
   canvases: [
     createCanvas({
       id: "presentation",
@@ -1798,12 +1829,14 @@ const session = await joinSession({
               theme: ctx.input?.theme,
               sourceName: ctx.input?.sourceName,
             });
+            const validationFeedback = deckValidationFeedback(slides);
             return {
               ok: true,
               version: inst.version,
               index: inst.index,
               total: inst.slides.length,
               theme: inst.theme,
+              ...(validationFeedback ? { validationFeedback } : {}),
             };
           },
         },
@@ -2053,7 +2086,17 @@ const session = await joinSession({
             });
           }
         }
-        return { title: "Presentation", url: inst.url };
+        const validationFeedback = Array.isArray(input?.slides)
+          ? deckValidationFeedback(input.slides)
+          : undefined;
+        if (validationFeedback) {
+          log(`presentation: ${validationFeedback}`, "warning");
+        }
+        return {
+          title: "Presentation",
+          url: inst.url,
+          ...(validationFeedback ? { validationFeedback } : {}),
+        };
       },
       onClose: async (ctx) => {
         const key = keyOf(ctx);
