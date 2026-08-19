@@ -1,5 +1,10 @@
 import { renderArchitectureBlock } from "./architecture.mjs";
 import { attachArchitectureEditor } from "./architecture-editor.mjs";
+import {
+  DEFAULT_THEME,
+  normalizeTheme,
+  parseFrontMatter,
+} from "./theme.mjs";
 
 // Client-side slide renderer for the presentation canvas.
 //
@@ -38,14 +43,7 @@ function splitFrontMatter(md) {
     }
   }
   if (end < 0) return { meta, body: md };
-  for (let i = 1; i < end; i++) {
-    const line = lines[i];
-    const idx = line.indexOf(":");
-    if (idx <= 0) continue;
-    const key = line.slice(0, idx).trim();
-    let value = line.slice(idx + 1).trim().replace(/^["']+|["']+$/g, "");
-    if (key.length) meta[key] = value;
-  }
+  Object.assign(meta, parseFrontMatter(lines.slice(0, end + 1).join("\n")));
   return { meta, body: lines.slice(end + 1).join("\n") };
 }
 
@@ -55,10 +53,8 @@ function nonEmpty(value) {
 
 // --- themes ----------------------------------------------------------------
 // The deck theme is chosen by the agent (load_deck `theme`) and delivered via
-// /state; an individual slide may override it with a `theme:` front-matter key.
+// /state; slide front matter may override it unless the deck theme was explicit.
 // Anything unrecognized falls back to the default so a slide is never unstyled.
-const THEMES = new Set(["dark", "light", "microsoft", "ms-modern"]);
-const DEFAULT_THEME = "dark";
 const MERMAID_THEME = {
   dark: "dark",
   light: "default",
@@ -74,6 +70,8 @@ const DEFAULT_LOGO = "Microsoft";
 const DEFAULT_COPYRIGHT = "\u00A9 Copyright Microsoft Corporation. All rights reserved.";
 const BRANDED_THEMES = new Set(["microsoft", "ms-modern"]);
 let deckTheme = DEFAULT_THEME;
+let deckThemeLocked = false;
+let customThemeCss = "";
 // Bumped on every render so a late mermaid finish from a previous slide can't
 // reveal a newer, still-rendering one.
 let renderToken = 0;
@@ -96,9 +94,19 @@ let layoutFrame = 0;
 // draw a scrollbar.
 const SCROLL_EPSILON = 2;
 
-function normalizeTheme(value) {
-  const t = typeof value === "string" ? value.trim().toLowerCase() : "";
-  return THEMES.has(t) ? t : DEFAULT_THEME;
+function applyCustomThemeCss(css) {
+  customThemeCss = typeof css === "string" ? css : "";
+  let style = document.getElementById("custom-theme-style");
+  if (!customThemeCss) {
+    style?.remove();
+    return;
+  }
+  if (!style) {
+    style = document.createElement("style");
+    style.id = "custom-theme-style";
+    document.head.appendChild(style);
+  }
+  style.textContent = `:root[data-theme="custom"], .deck[data-theme="custom"]{${customThemeCss}}`;
 }
 
 function normalizeSizeMode(value) {
@@ -312,7 +320,7 @@ function runMermaid(scope, theme, token, revealWhenDone = true) {
 }
 
 // --- slide rendering -------------------------------------------------------
-function createSlide(markdown, fallbackTheme) {
+function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
   const md = nonEmpty(markdown) ? markdown : PLACEHOLDER;
   const { meta, body: rawBody } = splitFrontMatter(md);
   const directive = extractSlideSizeDirective(rawBody);
@@ -327,7 +335,7 @@ function createSlide(markdown, fallbackTheme) {
 
   // A slide-level `theme:` overrides the deck theme. Keep it on the deck element
   // as well as <html> so print mode can render differently themed pages together.
-  const theme = normalizeTheme(meta.theme || fallbackTheme);
+  const theme = normalizeTheme(themeLocked ? fallbackTheme : meta.theme || fallbackTheme);
 
   const deck = document.createElement("div");
   deck.className = "deck";
@@ -463,6 +471,7 @@ function renderSlide(markdown) {
   // 前のスライドに取り付けた編集 UI は document 側のリスナーを持つので必ず外す。
   architectureEditors.forEach((editor) => editor.destroy());
   architectureEditors = [];
+  applyCustomThemeCss(customThemeCss);
   const slide = createSlide(markdown, deckTheme);
   document.title = slide.title;
   document.documentElement.setAttribute("data-theme", slide.theme);
@@ -545,8 +554,10 @@ async function reportPrintStatus(token, status, error = "") {
   if (!response.ok) throw new Error(`Could not report print status (${response.status}).`);
 }
 
-async function renderPrintDeck(slides, theme) {
+async function renderPrintDeck(slides, theme, customCss = "", themeLocked = false) {
   deckTheme = normalizeTheme(theme);
+  deckThemeLocked = Boolean(themeLocked);
+  applyCustomThemeCss(customCss);
   document.documentElement.setAttribute("data-theme", deckTheme);
   document.body.classList.add("print-mode", "mermaid-loading");
   const rendered = slides.map((markdown) => createSlide(markdown, deckTheme));
@@ -588,7 +599,7 @@ async function initPrint(params) {
     ) {
       throw new Error("PDF export data does not contain a valid deck.");
     }
-    await renderPrintDeck(data.slides, data.theme);
+    await renderPrintDeck(data.slides, data.theme, data.customThemeCss, data.themeLocked);
     await reportPrintStatus(token, "ready");
   } catch (error) {
     const message = error?.message || "Print rendering failed.";
@@ -761,6 +772,8 @@ async function fetchState() {
   if (!res.ok) return;
   const data = await res.json();
   if (typeof data.theme === "string") deckTheme = normalizeTheme(data.theme);
+  if (typeof data.themeLocked === "boolean") deckThemeLocked = data.themeLocked;
+  if (typeof data.customThemeCss === "string") applyCustomThemeCss(data.customThemeCss);
   if (typeof data.presenterRunning === "boolean") {
     updatePresenterButton(data.presenterRunning);
   }
