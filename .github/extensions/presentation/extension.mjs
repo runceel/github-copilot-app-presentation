@@ -49,6 +49,17 @@ import {
   deckValidationFeedback,
   readGuide,
 } from "./presentation-guide.mjs";
+import {
+  DEFAULT_THEME,
+  mapThemeMetadataAssets,
+  normalizeTheme,
+  parseThemeMetadata,
+  parseThemeVariables,
+  resolveFrontMatterTheme,
+  serializeThemeVariables,
+  THEME_ASSET_MAX_BYTES,
+  themeMetadataAssetPaths,
+} from "./renderer/theme.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PEN_LISTENER_SCRIPT = join(EXT_DIR, "windows", "pen-button-listener.ps1");
@@ -60,6 +71,8 @@ const DEFAULT_PDF_NAME = "presentation.pdf";
 const PDF_RENDER_TIMEOUT_MS = 60_000;
 const VENDOR_DIR = join(EXT_DIR, "vendor");
 const VENDOR_MANIFEST = join(VENDOR_DIR, "vendor-assets.lock.json");
+const THEME_METADATA_NAME = "theme.json";
+const THEME_METADATA_MAX_BYTES = 64 * 1024;
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -122,14 +135,6 @@ function clampIndex(value, total) {
   if (i < 0) return 0;
   if (i >= total) return total - 1;
   return i;
-}
-
-// Allowed deck-wide themes; anything else (or unset) falls back to the default.
-const THEMES = new Set(["dark", "light", "microsoft", "ms-modern"]);
-const DEFAULT_THEME = "dark";
-function normalizeTheme(value) {
-  const t = typeof value === "string" ? value.trim().toLowerCase() : "";
-  return THEMES.has(t) ? t : DEFAULT_THEME;
 }
 
 // どのテーマでもデッキの最後は背表紙 (Closing logo slide) で締める。AI が付け忘れても
@@ -743,6 +748,9 @@ async function exportPdf(inst, requestedPath, requestedTheme) {
       // PDF もデッキと同じく背表紙で終わるようにする。
       slides: ensureBackCover(getExportSlides(inst)),
       theme: exportTheme,
+      themeLocked: inst.themeLocked,
+      customThemeCss: inst.customThemeCss,
+      customThemeMeta: inst.customThemeMeta,
     };
     if (!snapshot.slides.length) {
       throw new CanvasError("no_deck", "No slides are loaded. Load a deck before exporting PDF.");
@@ -765,6 +773,9 @@ async function exportPdf(inst, requestedPath, requestedTheme) {
     inst.exportJobs.set(token, {
       slides: snapshot.slides,
       theme: snapshot.theme,
+      themeLocked: snapshot.themeLocked,
+      customThemeCss: snapshot.customThemeCss,
+      customThemeMeta: snapshot.customThemeMeta,
       status: "pending",
       error: "",
     });
@@ -1115,6 +1126,12 @@ async function persistNow(inst) {
         slides: inst.slides,
         index: inst.index,
         theme: inst.theme,
+        themeLocked: inst.themeLocked,
+        customThemeFile: inst.customThemeFile,
+        customThemeCss: inst.customThemeCss,
+        customThemeDir: inst.customThemeDir,
+        customThemeMeta: inst.customThemeMeta,
+        customThemeAssets: [...inst.customThemeAssets],
         sourceName: inst.sourceName,
         mode: inst.mode,
         presenterProfileDir: inst.presenterProfileDir,
@@ -1165,11 +1182,136 @@ async function applyDeckSlide(inst) {
 // slide. Shared by the `load_deck` action and the `open` handler so both paths
 // populate instance state identically. Callers must validate `slides` (a
 // non-empty array of strings) before calling.
-async function applyDeck(inst, { slides, index, theme, sourceName }) {
-  if (typeof sourceName === "string" && sourceName.trim()) {
-    inst.sourceName = basename(sourceName.trim());
+function resolveThemeFile(inst, sourceName, themeFile) {
+  if (!themeFile) return "";
+  if (isAbsolute(themeFile)) {
+    throw new CanvasError("invalid_theme_file", "theme-file must be relative to the slide Markdown file.");
   }
-  inst.theme = normalizeTheme(theme);
+  const sourcePath = sourceName
+    ? resolve(inst.workspaceRoot, sourceName)
+    : resolve(inst.workspaceRoot, "slides.md");
+  const candidate = safeJoin(dirname(sourcePath), themeFile);
+  if (!candidate || !isPathInside(resolve(inst.workspaceRoot), candidate)) {
+    throw new CanvasError("invalid_theme_file", "theme-file must stay inside the workspace.");
+  }
+  return candidate;
+}
+
+async function loadCustomTheme(inst, sourceName, themeFile) {
+  if (!themeFile) {
+    throw new CanvasError("invalid_theme_file", "custom theme requires themeFile or front matter theme-file.");
+  }
+  const path = resolveThemeFile(inst, sourceName, themeFile);
+  let realThemeFile;
+  let realWorkspaceRoot;
+  try {
+    [realThemeFile, realWorkspaceRoot] = await Promise.all([
+      realpath(path),
+      realpath(inst.workspaceRoot),
+    ]);
+  } catch (_) {
+    throw new CanvasError("theme_file_not_found", `Could not read custom theme file: ${themeFile}`);
+  }
+  if (!isPathInside(realWorkspaceRoot, realThemeFile)) {
+    throw new CanvasError("invalid_theme_file", "Custom theme files must stay inside the workspace.");
+  }
+  let css;
+  try {
+    css = await readFile(realThemeFile, "utf8");
+  } catch (error) {
+    throw new CanvasError("theme_file_not_found", `Could not read custom theme file: ${themeFile}`);
+  }
+  if (Buffer.byteLength(css, "utf8") > 64 * 1024) {
+    throw new CanvasError("invalid_theme_file", "Custom theme CSS must be 64 KiB or smaller.");
+  }
+  try {
+    const themeDir = dirname(path);
+    const realThemeDir = await realpath(themeDir);
+    if (!isPathInside(realWorkspaceRoot, realThemeDir)) {
+      throw new Error("Custom theme metadata must stay inside the workspace.");
+    }
+    const metadataPath = join(themeDir, THEME_METADATA_NAME);
+    let metadata = null;
+    if (existsSync(metadataPath)) {
+      const realMetadataPath = await realpath(metadataPath);
+      if (!isPathInside(realThemeDir, realMetadataPath)) {
+        throw new Error("Custom theme metadata must stay inside the theme folder.");
+      }
+      const metadataText = await readFile(realMetadataPath, "utf8");
+      if (Buffer.byteLength(metadataText, "utf8") > THEME_METADATA_MAX_BYTES) {
+        throw new Error("Custom theme metadata must be 64 KiB or smaller.");
+      }
+      metadata = parseThemeMetadata(metadataText);
+      for (const assetPath of themeMetadataAssetPaths(metadata)) {
+        const candidate = safeJoin(themeDir, assetPath);
+        if (!candidate) throw new Error(`Invalid custom theme asset path: ${assetPath}`);
+        let realAsset;
+        try {
+          realAsset = await realpath(candidate);
+        } catch (_) {
+          throw new Error(`Custom theme asset was not found: ${assetPath}`);
+        }
+        if (!isPathInside(realThemeDir, realAsset)) {
+          throw new Error(`Custom theme asset must stay inside the theme folder: ${assetPath}`);
+        }
+        const info = await stat(realAsset);
+        if (!info.isFile()) throw new Error(`Custom theme asset is not a file: ${assetPath}`);
+        if (info.size > THEME_ASSET_MAX_BYTES) {
+          throw new Error(`Custom theme asset must be 2 MiB or smaller: ${assetPath}`);
+        }
+      }
+    }
+    const assets = metadata ? themeMetadataAssetPaths(metadata) : [];
+    return {
+      file: relative(inst.workspaceRoot, path),
+      css: serializeThemeVariables(parseThemeVariables(css)),
+      dir: relative(inst.workspaceRoot, themeDir),
+      metadata: metadata
+        ? mapThemeMetadataAssets(metadata, (assetPath) => `/theme-assets/${assetPath}`)
+        : null,
+      assets,
+    };
+  } catch (error) {
+    throw new CanvasError("invalid_theme_file", error.message);
+  }
+}
+
+function resolveDeckTheme({ slides, explicitTheme, explicitThemeFile }) {
+  const frontMatter = resolveFrontMatterTheme(slides);
+  const hasExplicitTheme = typeof explicitTheme === "string" && explicitTheme.trim().length > 0;
+  const theme = hasExplicitTheme ? normalizeTheme(explicitTheme) : frontMatter.theme;
+  const themeFile = explicitThemeFile?.trim() || frontMatter.themeFile;
+  return {
+    theme: themeFile && (!hasExplicitTheme || theme === "custom") ? "custom" : theme,
+    themeFile,
+    themeLocked: hasExplicitTheme,
+  };
+}
+
+async function applyDeck(inst, { slides, index, theme, themeFile, sourceName }) {
+  if (typeof sourceName === "string" && sourceName.trim()) {
+    const requested = sourceName.trim();
+    const candidate = resolve(inst.workspaceRoot, requested);
+    if (!isPathInside(resolve(inst.workspaceRoot), candidate)) {
+      throw new CanvasError("invalid_source_name", "sourceName must stay inside the workspace.");
+    }
+    inst.sourceName = relative(inst.workspaceRoot, candidate);
+  }
+  const selection = resolveDeckTheme({
+    slides,
+    explicitTheme: theme,
+    explicitThemeFile: themeFile,
+  });
+  const custom = selection.theme === "custom"
+    ? await loadCustomTheme(inst, inst.sourceName, selection.themeFile)
+    : { file: "", css: "", dir: "", metadata: null, assets: [] };
+  inst.theme = selection.theme;
+  inst.themeLocked = selection.themeLocked;
+  inst.customThemeFile = custom.file;
+  inst.customThemeCss = custom.css;
+  inst.customThemeDir = custom.dir;
+  inst.customThemeMeta = custom.metadata;
+  inst.customThemeAssets = new Set(custom.assets);
   inst.slides = ensureBackCover(slides.slice());
   inst.index = clampIndex(index ?? 0, inst.slides.length);
   inst.deckVersion += 1;
@@ -1267,6 +1409,10 @@ async function startServer(inst) {
           index: inst.index,
           total: inst.slides.length,
           theme: inst.theme,
+          themeLocked: inst.themeLocked,
+          customThemeFile: inst.customThemeFile,
+          customThemeCss: inst.customThemeCss,
+          customThemeMeta: inst.customThemeMeta,
           mode: inst.mode,
           presenterRunning: isProcessRunning(inst.presenterProcess),
           architectureEdit: Boolean(inst.architectureEdit),
@@ -1368,7 +1514,15 @@ async function startServer(inst) {
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
-      res.end(JSON.stringify({ slides: snapshot.slides, theme: snapshot.theme }));
+      res.end(
+        JSON.stringify({
+          slides: snapshot.slides,
+          theme: snapshot.theme,
+          themeLocked: snapshot.themeLocked,
+          customThemeCss: snapshot.customThemeCss,
+          customThemeMeta: snapshot.customThemeMeta,
+        }),
+      );
       return;
     }
     if (pathname === "/export-status") {
@@ -1608,6 +1762,44 @@ async function startServer(inst) {
       await sendFile(res, abs, { cache: pathname.startsWith("/vendor/") });
       return;
     }
+    if (pathname.startsWith("/theme-assets/")) {
+      const assetPath = pathname.slice("/theme-assets/".length);
+      if (
+        !inst.customThemeDir ||
+        !inst.customThemeAssets.has(assetPath)
+      ) {
+        res.statusCode = 404;
+        res.end("Theme asset not found");
+        return;
+      }
+      const themeRoot = resolve(inst.workspaceRoot, inst.customThemeDir);
+      const candidate = safeJoin(themeRoot, assetPath);
+      if (!candidate) {
+        res.statusCode = 403;
+        res.end("Forbidden");
+        return;
+      }
+      try {
+        const [realThemeRoot, realAsset] = await Promise.all([
+          realpath(themeRoot),
+          realpath(candidate),
+        ]);
+        const realWorkspaceRoot = await realpath(inst.workspaceRoot);
+        if (
+          !isPathInside(realWorkspaceRoot, realThemeRoot) ||
+          !isPathInside(realThemeRoot, realAsset)
+        ) {
+          res.statusCode = 403;
+          res.end("Forbidden");
+          return;
+        }
+        await sendFile(res, realAsset, { cache: true });
+      } catch (_) {
+        res.statusCode = 404;
+        res.end("Theme asset not found");
+      }
+      return;
+    }
     if (pathname.startsWith("/assets/")) {
       if (!inst.assetsRoot) {
         res.statusCode = 404;
@@ -1655,6 +1847,12 @@ async function ensureInstance(ctx) {
       workspaceRoot: repoRoot,
       dataFile: dataFileFor(key),
       theme: DEFAULT_THEME,
+      themeLocked: false,
+      customThemeFile: "",
+      customThemeCss: "",
+      customThemeDir: "",
+      customThemeMeta: null,
+      customThemeAssets: new Set(),
       exportJobs: new Map(),
       exporting: false,
       presenterProcess: null,
@@ -1675,6 +1873,18 @@ async function ensureInstance(ctx) {
       }
       if (typeof saved.index === "number") inst.index = clampIndex(saved.index, inst.slides.length);
       if (typeof saved.theme === "string") inst.theme = normalizeTheme(saved.theme);
+      if (typeof saved.themeLocked === "boolean") inst.themeLocked = saved.themeLocked;
+      if (typeof saved.customThemeFile === "string") inst.customThemeFile = saved.customThemeFile;
+      if (typeof saved.customThemeCss === "string") inst.customThemeCss = saved.customThemeCss;
+      if (typeof saved.customThemeDir === "string") inst.customThemeDir = saved.customThemeDir;
+      if (saved.customThemeMeta && typeof saved.customThemeMeta === "object") {
+        inst.customThemeMeta = saved.customThemeMeta;
+      }
+      if (Array.isArray(saved.customThemeAssets)) {
+        inst.customThemeAssets = new Set(
+          saved.customThemeAssets.filter((asset) => typeof asset === "string"),
+        );
+      }
       if (typeof saved.sourceName === "string") inst.sourceName = saved.sourceName;
       if (saved.mode === "adhoc" || saved.mode === "deck") inst.mode = saved.mode;
       if (isPresenterProfilePath(saved.presenterProfileDir)) {
@@ -1712,7 +1922,7 @@ const session = await joinSession({
     {
       name: "presentation_guide",
       description:
-        "presentation canvas でスライドを作る前に呼ぶ。スライド断片の書式・フロントマター・テーマ・Architecture DSL のスキーマを返す。",
+        "presentation canvas でスライドを作る前に呼ぶ。スライド断片の書式・フロントマター・テーマ・カスタムテーマ・Architecture DSL のスキーマを返す。",
       parameters: {
         type: "object",
         properties: {
@@ -1722,6 +1932,9 @@ const session = await joinSession({
               "overview",
               "slide-format",
               "themes",
+              "custom-themes",
+              "custom-ehemes",
+              "theme-schema",
               "architecture-dsl",
               "architecture-schema",
             ],
@@ -1757,9 +1970,14 @@ const session = await joinSession({
           },
           theme: {
             type: "string",
-            enum: ["dark", "light", "microsoft", "ms-modern"],
+            enum: ["dark", "light", "microsoft", "custom"],
             description:
-              "デッキ全体の配色テーマ。dark（既定・ダーク）/ light（明るい中立）/ microsoft（Fluent 配色）/ ms-modern（社内 PowerPoint テンプレート風）。省略時は dark。どのテーマでも末尾に背表紙が自動で付く。",
+              "デッキ全体の配色テーマ。dark / light / microsoft / custom。省略時は front matter、未指定なら dark。明示指定が front matter より優先される。",
+          },
+          themeFile: {
+            type: "string",
+            description:
+              "CSS カスタムプロパティだけを定義したテーマファイル。元 Markdown と同じフォルダーを基準にした相対パス。同じフォルダーの theme.json は自動的に読み込む。",
           },
           sourceName: {
             type: "string",
@@ -1773,7 +1991,7 @@ const session = await joinSession({
         {
           name: "load_deck",
           description:
-            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片（任意のフロントマター + 本文）の配列を渡すと、デッキを保持して index（既定 0）のスライドを表示する。任意の theme（dark/light/microsoft/ms-modern、既定 dark）でデッキ全体の配色を指定できる。テーマに関わらず末尾に背表紙（layout: backcover）が自動で 1 枚追加される。登録後のページ送りは canvas 内の操作（◀ ▶・矢印キー・一覧）と対応環境の Surface Pen で完結するので、通常は goto_slide を繰り返し呼ぶ必要はない。",
+            "プレゼン全体を一括登録する。slides に各スライド1枚分の Markdown 断片を渡すとデッキを保持して表示する。theme/themeFile は明示指定 > front matter > dark の順で解決し、custom は CSS と同じフォルダーの任意の theme.json も読み込む。",
           inputSchema: {
             type: "object",
             properties: {
@@ -1782,7 +2000,7 @@ const session = await joinSession({
                 items: { type: "string" },
                 minItems: 1,
                 description:
-                  "スライド1枚分の Markdown 断片の配列。各要素の先頭に deck/kicker/page/total/title/layout/theme のフロントマターを任意で付けられる。表示順に並べる。",
+                  "スライド1枚分の Markdown 断片の配列。各要素の先頭に deck/kicker/page/total/title/layout/theme/theme-file のフロントマターを任意で付けられる。表示順に並べる。",
               },
               index: {
                 type: "number",
@@ -1790,9 +2008,14 @@ const session = await joinSession({
               },
               theme: {
                 type: "string",
-                enum: ["dark", "light", "microsoft", "ms-modern"],
+                enum: ["dark", "light", "microsoft", "custom"],
                 description:
-                  "デッキ全体の配色テーマ。dark（既定・ダーク）/ light（明るい中立）/ microsoft（Fluent 配色）/ ms-modern（社内 PowerPoint テンプレート風）。省略時は dark。どのテーマでも末尾に背表紙が自動で付く。ユーザーがテーマに関わるテイストを伝えたら適切な値を選ぶ。",
+                  "デッキ全体の配色テーマ。dark / light / microsoft / custom。省略時は front matter、未指定なら dark。明示指定が front matter より優先される。",
+              },
+              themeFile: {
+                type: "string",
+                description:
+                  "CSS カスタムプロパティだけを定義したテーマファイル。元 Markdown と同じフォルダーを基準にした相対パス。同じフォルダーの theme.json は自動的に読み込む。",
               },
               sourceName: {
                 type: "string",
@@ -1827,6 +2050,7 @@ const session = await joinSession({
               slides,
               index: ctx.input?.index,
               theme: ctx.input?.theme,
+              themeFile: ctx.input?.themeFile,
               sourceName: ctx.input?.sourceName,
             });
             const validationFeedback = deckValidationFeedback(slides);
@@ -1966,7 +2190,7 @@ const session = await joinSession({
               },
               theme: {
                 type: "string",
-                enum: ["dark", "light", "microsoft", "ms-modern"],
+                enum: ["dark", "light", "microsoft", "custom"],
                 description:
                   "PDFに適用するテーマ。省略時は表示中のデッキテーマ。指定してもcanvasの表示テーマは変更しない。",
               },
@@ -2038,6 +2262,12 @@ const session = await joinSession({
             inst.slides = [];
             inst.index = 0;
             inst.theme = DEFAULT_THEME;
+            inst.themeLocked = false;
+            inst.customThemeFile = "";
+            inst.customThemeCss = "";
+            inst.customThemeDir = "";
+            inst.customThemeMeta = null;
+            inst.customThemeAssets = new Set();
             inst.sourceName = "";
             inst.mode = "deck";
             inst.architectureEdit = false;
@@ -2073,15 +2303,17 @@ const session = await joinSession({
           const sameDeck =
             inst.slides.length === slides.length &&
             inst.slides.every((s, i) => s === slides[i]);
-          if (typeof input.sourceName === "string" && input.sourceName.trim()) {
-            inst.sourceName = basename(input.sourceName.trim());
-            schedulePersist(inst);
-          }
-          if (inst.slides.length === 0 || !sameDeck) {
+          const hasThemeInput =
+            Object.prototype.hasOwnProperty.call(input, "theme") ||
+            Object.prototype.hasOwnProperty.call(input, "themeFile");
+          const hasSourceInput =
+            typeof input.sourceName === "string" && input.sourceName.trim().length > 0;
+          if (inst.slides.length === 0 || !sameDeck || hasThemeInput || hasSourceInput) {
             await applyDeck(inst, {
               slides,
               index: input.index,
               theme: input.theme,
+              themeFile: input.themeFile,
               sourceName: input.sourceName,
             });
           }

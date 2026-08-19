@@ -6,7 +6,7 @@
   "scripts": {
     "test": "npm run test:vendor && npm run test:schema && npm run test:unit && npm run test:editing && npm run test:visual && npm run test:a11y && npm run test:perf && npm run test:pdf",
     "test:vendor": "cd .github/extensions/presentation && node scripts/vendor-assets.mjs verify vendor vendor/vendor-assets.lock.json",
-    "test:schema": "node --test test/schema/architecture-schema.test.mjs test/schema/architecture-edit-schema.test.mjs",
+    "test:schema": "node --test test/schema/architecture-schema.test.mjs test/schema/architecture-edit-schema.test.mjs test/schema/theme-metadata-schema.test.mjs",
     "test:unit": "cd .github/extensions/presentation && node --test",
     "test:visual": "playwright test --project=visual",
     "test:editing": "playwright test --project=editing",
