@@ -38,6 +38,48 @@ canvas iframe（renderer/）
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
 - コードフェンスに `csharp` / `json` / `diff` などの言語名を付けると、highlight.js がシンタックスハイライトします。
 
+## AI 向け作成ガイド
+
+Extension は `presentation_guide` ツールを提供します。AI は presentation canvas 用の
+Markdown を作る前にこのツールを呼び、`overview` / `slide-format` / `themes` /
+`architecture-dsl` / `architecture-schema` の必要な項目を確認できます。ガイド本文は
+実行時にこの README と `schema/architecture-v1.schema.json` から生成されるため、
+Extension 単体をユーザースコープへ導入した場合も同じ仕様を参照できます。
+
+プレゼン関連のプロンプトを検出すると、Extension は `presentation_guide` を使うよう促す
+短いコンテキストを 1 セッションにつき最大 1 回だけ追加します。先にツールを呼んだ
+セッションでは追加せず、セッション終了時に案内済み状態を破棄します。
+
+### スライド断片の書式
+
+`open` / `load_deck` の `slides` は、1 要素が 1 枚分の Markdown 文字列です。先頭には
+任意の front matter を `---` で囲み、その下に GFM 相当の本文を書きます。
+
+| front matter | 用途 |
+| --- | --- |
+| `deck` / `kicker` | フッターのデッキ名 / 見出し上のラベル |
+| `page` / `total` | 1 始まりの現在ページ / 総ページ数 |
+| `title` | ブラウザータブのタイトル |
+| `layout` | 表紙は `title`、背表紙は `backcover`。通常スライドは省略 |
+| `size` | `auto`（既定）/ `normal` / `large` / `xlarge` |
+| `theme` | スライド単位の上書き。通常はデッキの `theme` を使う |
+| `logo` / `copyright` | `backcover` の表示内容 |
+
+先頭スライドは `layout: title` の表紙として作ります。デッキ末尾の
+`layout: backcover` は Extension が自動追加します。本文では見出し、リスト、表、画像、
+コード、`mermaid`、`architecture` を利用できます。
+
+### テーマの選び方
+
+テーマはデッキ全体の `theme` に指定します。指定がなければ `dark` を使います。
+
+| テーマ | 選択基準 |
+| --- | --- |
+| `dark` | ダーク、暗め、黒っぽい、クール、かっこよい |
+| `light` | ライト、明るい、白基調、清潔感 |
+| `microsoft` | MS、Microsoft、マイクロソフト、Fluent、Office |
+| `ms-modern` | ms-modern、新しい MS テーマ、社内テンプレ |
+
 ## Architecture DSL v1
 
 `architecture` コードフェンスは、プレゼン資料で位置・サイズ・重なりを再現しやすい
@@ -561,7 +603,7 @@ size: xlarge
 
 | アクション | 入力 | 説明 |
 | --- | --- | --- |
-| `load_deck` | `{ slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft"｜"ms-modern" }` | 登録済みデッキを差し替える / 再ロードする（発表途中の内容・テーマ変更用）。`index`（既定 0）のスライドを表示し、`theme` でデッキ全体の配色（既定 `dark`）を指定。各要素はフロントマター＋本文 Markdown。テーマに関わらず末尾に背表紙を自動追加する（再ロードしても増殖しない）。戻り値 `{ ok, version, index, total, theme }`。 |
+| `load_deck` | `{ slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft"｜"ms-modern" }` | 登録済みデッキを差し替える / 再ロードする（発表途中の内容・テーマ変更用）。`index`（既定 0）のスライドを表示し、`theme` でデッキ全体の配色（既定 `dark`）を指定。各要素はフロントマター＋本文 Markdown。テーマに関わらず末尾に背表紙を自動追加する（再ロードしても増殖しない）。戻り値 `{ ok, version, index, total, theme, validationFeedback? }`。front matter の欠落や Architecture DSL エラーがあっても表示は続行し、修正指針を `validationFeedback` に返す。`open` でも同じ検証を行い、警告ログにも記録する。 |
 | `goto_slide` | `{ index: number }` | 登録済みデッキ内で表示スライドを 0 始まりインデックスで切り替える。範囲外は端に丸める。通常のページ送りは canvas 内で行われるため不要だが、チャットからの指定に使う。戻り値 `{ ok, changed, version, index, total }`。 |
 | `show_slide` | `{ markdown: string }` | 現在のスライドを1枚だけ差し替える（単発表示・その場限りの差し替え用）。フロントマター（`deck`/`kicker`/`page`/`total`/`title`/`layout`/`size`/`theme`）＋本文 Markdown。`theme` 省略時は現在のデッキテーマを引き継ぐ。 |
 | `open_presenter` | なし | 同期された外部プレゼン画面を Edge / Chrome / Chromium の app mode + fullscreen で起動する。既に起動中なら新しいウィンドウは増やさない。Surface Pen の末尾ボタン 2 回押しでも同じトグルができる。戻り値 `{ ok, started, alreadyRunning, browser?, pid? }`。 |

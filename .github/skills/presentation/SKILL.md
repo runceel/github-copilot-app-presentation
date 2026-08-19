@@ -22,6 +22,10 @@ Skill はプロジェクトの `.github/skills/presentation/SKILL.md` に置く�
 スコープへコピーします。配布上の注意（ZIP、Gist の単一ファイル上限、Mermaid の分割配布）は
 リポジトリの README と `THIRD-PARTY-NOTICES.md` を参照してください。
 
+Extension だけを導入した環境では、同梱の `presentation_guide` ツールがこの Skill 相当の
+スライド書式・テーマ・Architecture DSL 情報を返します。presentation canvas 用の Markdown
+を作る前に必要な topic を取得してください。
+
 ## いちばん大事な原則 ⚡
 
 1. **あなた（生成 AI）が書くのは、各スライド 1 枚分の「小さな Markdown 断片」だけ**です。HTML・CSS・テーマ・レイアウト・ページ番号・アニメーションは**すべて拡張機能側（marked）が担当**します。フル HTML を生成しないこと。
