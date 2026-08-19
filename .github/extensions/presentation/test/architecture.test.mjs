@@ -133,6 +133,44 @@ function routeIntersectsNode(points, node, margin = 18) {
   });
 }
 
+function boxesOverlap(first, second) {
+  return (
+    first.x < second.x + second.width &&
+    second.x < first.x + first.width &&
+    first.y < second.y + second.height &&
+    second.y < first.y + first.height
+  );
+}
+
+function terminalMarkerBounds(connector, points) {
+  const end = points.at(-1);
+  const previous = points.at(-2);
+  const length = Math.hypot(end.x - previous.x, end.y - previous.y);
+  assert.ok(length > 0.001, "terminal marker requires a non-zero final segment");
+  const direction = {
+    x: (end.x - previous.x) / length,
+    y: (end.y - previous.y) / length,
+  };
+  const normal = { x: -direction.y, y: direction.x };
+  const scale = connector.style.strokeWidth * 7 / 10;
+  const pointsInCanvas = [
+    { x: -9 * scale, y: -5 * scale },
+    { x: scale, y: 0 },
+    { x: -9 * scale, y: 5 * scale },
+  ].map((point) => ({
+    x: end.x + direction.x * point.x + normal.x * point.y,
+    y: end.y + direction.y * point.x + normal.y * point.y,
+  }));
+  const xs = pointsInCanvas.map((point) => point.x);
+  const ys = pointsInCanvas.map((point) => point.y);
+  return {
+    x: Math.min(...xs),
+    y: Math.min(...ys),
+    width: Math.max(...xs) - Math.min(...xs),
+    height: Math.max(...ys) - Math.min(...ys),
+  };
+}
+
 function countRouteCrossings(first, second) {
   const firstSegments = first.slice(1).map((end, index) => [first[index], end]);
   const secondSegments = second.slice(1).map((end, index) => [second[index], end]);
@@ -152,6 +190,35 @@ function countRouteCrossings(first, second) {
     }
   }
   return crossings;
+}
+
+function countImmediateBacktracks(points) {
+  let backtracks = 0;
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    const next = points[index + 1];
+    const incoming = {
+      x: current.x - previous.x,
+      y: current.y - previous.y,
+    };
+    const outgoing = {
+      x: next.x - current.x,
+      y: next.y - current.y,
+    };
+    const cross = incoming.x * outgoing.y - incoming.y * outgoing.x;
+    const dot = incoming.x * outgoing.x + incoming.y * outgoing.y;
+    if (Math.abs(cross) < 0.001 && dot < -0.001) backtracks += 1;
+  }
+  return backtracks;
+}
+
+function polylineLength(points) {
+  return points.slice(1).reduce(
+    (total, point, index) =>
+      total + Math.hypot(point.x - points[index].x, point.y - points[index].y),
+    0,
+  );
 }
 
 function routesInteract(first, second) {
@@ -483,6 +550,552 @@ test("cardinal ports, lane allocation, and obstacle-aware orthogonal routing are
   assert.ok(
     first.some((point) => point.y < 232 || point.y > 468),
     "route should detour around the expanded blocker bounds",
+  );
+});
+
+test("short facing orthogonal ports do not overshoot and backtrack", () => {
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas: { width: 700, height: 400 },
+      elements: [
+        { type: "node", id: "source", x: 100, y: 150, width: 200, height: 100 },
+        { type: "node", id: "target", x: 396, y: 150, width: 200, height: 100 },
+        {
+          type: "connector",
+          from: "source",
+          to: "target",
+          fromPort: "right",
+          toPort: "left",
+          routing: "orthogonal",
+        },
+      ],
+    }),
+  );
+  const connector = model.elements.find((element) => element.type === "connector");
+  const lookup = new Map(
+    model.elements
+      .filter((element) => element.type !== "connector")
+      .map((element) => [element.id, element]),
+  );
+  const route = computeConnectorRoute(connector, lookup, model.canvas);
+
+  assert.equal(
+    countImmediateBacktracks(route),
+    0,
+    `facing endpoint stubs must not cross each other: ${JSON.stringify(route)}`,
+  );
+});
+
+test("narrow facing ports retain an 8px visible span when possible", () => {
+  for (const gap of [28, 12, 8, 1]) {
+    const model = parseArchitecture(
+      JSON.stringify({
+        version: 1,
+        canvas: { width: 700, height: 300 },
+        elements: [
+          {
+            type: "group",
+            id: "row",
+            x: 50,
+            y: 50,
+            width: 400 + gap,
+            height: 100,
+            layout: { type: "row", gap, padding: 0 },
+            children: [
+              { type: "node", id: "source", width: 200, height: 100 },
+              { type: "node", id: "target", width: 200, height: 100 },
+            ],
+          },
+          {
+            type: "connector",
+            from: "source",
+            to: "target",
+            fromPort: "right",
+            toPort: "left",
+            routing: "orthogonal",
+          },
+        ],
+      }),
+    );
+    const snapshot = architectureSemanticSnapshot(model);
+    const route = snapshot.elements.find(
+      (element) => element.type === "connector",
+    ).points;
+
+    assert.ok(route.length >= 2, `gap ${gap} collapsed to ${JSON.stringify(route)}`);
+    const expectedSpan = Math.min(8, gap);
+    assert.ok(
+      polylineLength(route) >= expectedSpan - 0.001,
+      `gap ${gap} should retain a ${expectedSpan}px span: ${JSON.stringify(route)}`,
+    );
+    assert.equal(snapshot.routing.degraded, false);
+  }
+});
+
+test("automatic routes approach both requested ports in the required direction", () => {
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas: { width: 320, height: 180 },
+      elements: [
+        { type: "node", id: "source", x: 120, y: 60, width: 80, height: 90 },
+        { type: "node", id: "target", x: 220, y: 100, width: 70, height: 40 },
+        {
+          type: "connector",
+          from: "source",
+          to: "target",
+          fromPort: "left",
+          toPort: "left",
+          routing: "orthogonal",
+        },
+      ],
+    }),
+  );
+  const snapshot = architectureSemanticSnapshot(model);
+  const route = snapshot.elements.find(
+    (element) => element.type === "connector",
+  ).points;
+  const first = {
+    x: route[1].x - route[0].x,
+    y: route[1].y - route[0].y,
+  };
+  const last = {
+    x: route.at(-1).x - route.at(-2).x,
+    y: route.at(-1).y - route.at(-2).y,
+  };
+
+  assert.ok(first.x < -0.001, `route does not leave the left port: ${JSON.stringify(route)}`);
+  assert.ok(last.x > 0.001, `route does not enter the left port: ${JSON.stringify(route)}`);
+  assert.equal(snapshot.routing.degraded, false);
+});
+
+test("stub fitting preserves a corridor between offset facing ports", () => {
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas: { width: 320, height: 180 },
+      elements: [
+        { type: "node", id: "source", x: 145, y: 0, width: 100, height: 40 },
+        { type: "node", id: "target", x: 40, y: 20, width: 100, height: 100 },
+        {
+          type: "connector",
+          from: "source",
+          to: "target",
+          fromPort: "left",
+          toPort: "right",
+          routing: "orthogonal",
+        },
+      ],
+    }),
+  );
+  const snapshot = architectureSemanticSnapshot(model);
+  const route = snapshot.elements.find(
+    (element) => element.type === "connector",
+  ).points;
+
+  assert.ok(
+    route.some((point) => point.x > 140.001 && point.x < 144.999),
+    `route did not retain the 5px corridor: ${JSON.stringify(route)}`,
+  );
+  assert.equal(countImmediateBacktracks(route), 0);
+  assert.equal(snapshot.routing.degraded, false);
+});
+
+test("touching facing nodes report invalid endpoint geometry", () => {
+  const snapshot = architectureSemanticSnapshot(
+    parseArchitecture(
+      JSON.stringify({
+        version: 1,
+        canvas: { width: 400, height: 300 },
+        elements: [
+          { type: "node", id: "source", x: 100, y: 100, width: 100, height: 100 },
+          { type: "node", id: "target", x: 200, y: 100, width: 100, height: 100 },
+          {
+            type: "connector",
+            from: "source",
+            to: "target",
+            fromPort: "right",
+            toPort: "left",
+            routing: "orthogonal",
+          },
+        ],
+      }),
+    ),
+  );
+
+  assert.equal(snapshot.routing.degraded, true);
+  assert.equal(snapshot.routing.diagnostics.length, 1);
+  assert.equal(
+    snapshot.routing.diagnostics[0].kind,
+    "invalid-endpoint-geometry",
+  );
+  assert.equal(
+    snapshot.routing.diagnostics[0].reason,
+    ROUTE_FALLBACK_REASONS.invalidEndpointGeometry,
+  );
+});
+
+test("invalid endpoint fallback never renders an immediate reversal", () => {
+  const snapshot = architectureSemanticSnapshot(
+    parseArchitecture(
+      JSON.stringify({
+        version: 1,
+        canvas: { width: 400, height: 400 },
+        elements: [
+          { type: "node", id: "source", x: 100, y: 200, width: 100, height: 100 },
+          { type: "node", id: "target", x: 212, y: 180, width: 100, height: 100 },
+          {
+            type: "connector",
+            from: "source",
+            to: "target",
+            fromPort: "right",
+            toPort: "bottom",
+            routing: "orthogonal",
+          },
+        ],
+      }),
+    ),
+  );
+  const route = snapshot.elements.find(
+    (element) => element.type === "connector",
+  ).points;
+
+  assert.equal(
+    countImmediateBacktracks(route),
+    0,
+    `invalid endpoint fallback must still avoid hairpins: ${JSON.stringify(route)}`,
+  );
+  assert.equal(snapshot.routing.degraded, true);
+  assert.equal(
+    snapshot.routing.diagnostics[0].reason,
+    ROUTE_FALLBACK_REASONS.invalidEndpointGeometry,
+  );
+});
+
+test("near-aligned facing ports stay within their forward span", () => {
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas: { width: 700, height: 400 },
+      elements: [
+        { type: "node", id: "source", x: 100, y: 200, width: 200, height: 100 },
+        { type: "node", id: "target", x: 396, y: 201, width: 200, height: 100 },
+        {
+          type: "connector",
+          from: "source",
+          to: "target",
+          fromPort: "right",
+          toPort: "left",
+          routing: "orthogonal",
+        },
+      ],
+    }),
+  );
+  const connector = model.elements.find((element) => element.type === "connector");
+  const lookup = new Map(
+    model.elements
+      .filter((element) => element.type !== "connector")
+      .map((element) => [element.id, element]),
+  );
+  const route = computeConnectorRoute(connector, lookup, model.canvas);
+
+  assert.equal(countImmediateBacktracks(route), 0);
+  assert.ok(
+    polylineLength(route) <= 69.001,
+    `near-aligned facing ports should take the 69px Manhattan route: ${JSON.stringify(route)}`,
+  );
+});
+
+test("explicit polyline routing preserves its endpoint stubs", () => {
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas: { width: 500, height: 300 },
+      elements: [
+        { type: "node", id: "source", x: 100, y: 100, width: 100, height: 100 },
+        { type: "node", id: "target", x: 260, y: 100, width: 100, height: 100 },
+        {
+          type: "connector",
+          from: "source",
+          to: "target",
+          fromPort: "right",
+          toPort: "left",
+          routing: "polyline",
+          points: [{ x: 230, y: 50 }],
+        },
+      ],
+    }),
+  );
+  const connector = model.elements.find((element) => element.type === "connector");
+  const lookup = new Map(
+    model.elements
+      .filter((element) => element.type !== "connector")
+      .map((element) => [element.id, element]),
+  );
+  const route = computeConnectorRoute(connector, lookup, model.canvas);
+
+  assert.equal(route[1].x, 256);
+  assert.equal(route.at(-2).x, 204);
+});
+
+test("zero-length stubs never send a route backward through its endpoint", () => {
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas: { width: 400, height: 300 },
+      elements: [
+        { type: "node", id: "target", x: 0, y: 100, width: 50, height: 100 },
+        { type: "node", id: "source", x: 100, y: 100, width: 100, height: 100 },
+        { type: "node", id: "blocker", x: 234, y: 100, width: 100, height: 100 },
+        {
+          type: "connector",
+          from: "source",
+          to: "target",
+          fromPort: "right",
+          toPort: "right",
+          routing: "orthogonal",
+        },
+      ],
+    }),
+  );
+  const connector = model.elements.find((element) => element.type === "connector");
+  const lookup = new Map(
+    model.elements
+      .filter((element) => element.type !== "connector")
+      .map((element) => [element.id, element]),
+  );
+  const route = computeConnectorRoute(connector, lookup, model.canvas);
+
+  assert.ok(
+    route[1].x >= route[0].x,
+    `source.right must not depart to the left: ${JSON.stringify(route)}`,
+  );
+  assert.equal(
+    routeIntersectsNode(route, lookup.get("source"), 0),
+    false,
+    `route must not re-enter the source node: ${JSON.stringify(route)}`,
+  );
+});
+
+test("grid fallback keeps connector endpoints excluded from obstacles", () => {
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas: { width: 900, height: 700 },
+      elements: [
+        { type: "node", id: "source", x: 321, y: 524, width: 116, height: 81 },
+        { type: "node", id: "target", x: 288, y: 348, width: 102, height: 124 },
+        { type: "node", id: "blocker-a", x: 698, y: 67, width: 127, height: 86 },
+        { type: "node", id: "blocker-b", x: 117, y: 188, width: 130, height: 122 },
+        {
+          type: "connector",
+          from: "source",
+          to: "target",
+          routing: "orthogonal",
+        },
+      ],
+    }),
+  );
+  const snapshot = architectureSemanticSnapshot(model);
+  const route = snapshot.elements.find((element) => element.type === "connector");
+
+  assert.equal(
+    countImmediateBacktracks(route.points),
+    0,
+    `grid fallback must not leave an endpoint spur: ${JSON.stringify(route.points)}`,
+  );
+  assert.equal(snapshot.routing.degraded, false);
+});
+
+test("the slides.md dense sample has no spurs or excessive detours", async () => {
+  const markdown = await readFile(
+    new URL("../../../../slides.md", import.meta.url),
+    "utf8",
+  );
+  const blocks = [...markdown.matchAll(/^```architecture[^\S\r\n]*\r?\n([\s\S]*?)^```$/gm)];
+  const source = blocks
+    .map((match) => match[1])
+    .find((block) => block.includes('"title": "Dense service routing"'));
+  assert.ok(source, "slides.md の Dense service routing 図が見つからない");
+
+  const model = parseArchitecture(source);
+  const snapshot = architectureSemanticSnapshot(model);
+  const lookup = new Map(
+    model.elements
+      .filter((element) => element.type !== "connector")
+      .map((element) => [element.id, element]),
+  );
+  const modelConnectors = model.elements.filter((element) => element.type === "connector");
+  const plannedConnectors = snapshot.elements.filter((element) => element.type === "connector");
+
+  for (const planned of plannedConnectors) {
+    const edge = `${planned.from}->${planned.to}`;
+    assert.equal(
+      countImmediateBacktracks(planned.points),
+      0,
+      `${edge} に未接続線のように見える180度折り返しがある: ${JSON.stringify(planned.points)}`,
+    );
+
+    const connector = modelConnectors.find(
+      (element) => element.from === planned.from && element.to === planned.to,
+    );
+    const standalone = computeConnectorRoute(connector, lookup, model.canvas);
+    assert.ok(
+      polylineLength(planned.points) <= polylineLength(standalone) * 3 + 0.001,
+      `${edge} が単独経路の3倍を超えて迂回している: ` +
+        `${polylineLength(planned.points)} > ${polylineLength(standalone) * 3}`,
+    );
+  }
+});
+
+test("planned routes stay within the standalone detour limit", () => {
+  const nodes = [
+    { type: "node", id: "n0", x: 763, y: 518, width: 143, height: 107 },
+    { type: "node", id: "n1", x: 385, y: 221, width: 94, height: 77 },
+    { type: "node", id: "n2", x: 101, y: 115, width: 131, height: 109 },
+    { type: "node", id: "n3", x: 264, y: 63, width: 175, height: 82 },
+    { type: "node", id: "n4", x: 532, y: 366, width: 168, height: 92 },
+  ];
+  const pairs = [
+    ["n0", "n2"],
+    ["n2", "n4"],
+    ["n1", "n2"],
+    ["n1", "n0"],
+    ["n4", "n2"],
+  ];
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas: { width: 900, height: 700 },
+      elements: [
+        ...nodes,
+        ...pairs.map(([from, to]) => ({
+          type: "connector",
+          from,
+          to,
+          routing: "orthogonal",
+        })),
+      ],
+    }),
+  );
+  const lookup = new Map(
+    model.elements
+      .filter((element) => element.type !== "connector")
+      .map((element) => [element.id, element]),
+  );
+  const connector = model.elements.find(
+    (element) =>
+      element.type === "connector" &&
+      element.from === "n1" &&
+      element.to === "n0",
+  );
+  const planned = architectureSemanticSnapshot(model).elements.find(
+    (element) =>
+      element.type === "connector" &&
+      element.from === connector.from &&
+      element.to === connector.to,
+  );
+  const standalone = computeConnectorRoute(connector, lookup, model.canvas);
+
+  assert.ok(
+    polylineLength(planned.points) <= polylineLength(standalone) * 3 + 0.001,
+    `planned route is ${polylineLength(planned.points)}px, standalone is ` +
+      `${polylineLength(standalone)}px`,
+  );
+});
+
+test("backtrack replacement obeys the standalone detour limit during refinement", () => {
+  const nodes = [
+    { type: "node", id: "n0", x: 377, y: 142, width: 133, height: 100 },
+    { type: "node", id: "n1", x: 561, y: 236, width: 122, height: 66 },
+    { type: "node", id: "n2", x: 166, y: 545, width: 174, height: 90 },
+    { type: "node", id: "n3", x: 574, y: 507, width: 167, height: 106 },
+    { type: "node", id: "n4", x: 440, y: 417, width: 97, height: 86 },
+    { type: "node", id: "n5", x: 68, y: 418, width: 160, height: 79 },
+  ];
+  const pairs = [
+    ["n2", "n0"],
+    ["n3", "n4"],
+    ["n2", "n4"],
+    ["n5", "n3"],
+  ];
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas: { width: 900, height: 700 },
+      elements: [
+        ...nodes,
+        ...pairs.map(([from, to]) => ({
+          type: "connector",
+          from,
+          to,
+          routing: "orthogonal",
+        })),
+      ],
+    }),
+  );
+  const snapshot = architectureSemanticSnapshot(model);
+  const lookup = new Map(nodes.map((node) => [node.id, node]));
+  const connector = model.elements.find(
+    (element) =>
+      element.type === "connector" &&
+      element.from === "n2" &&
+      element.to === "n4",
+  );
+  const planned = snapshot.elements.find(
+    (element) =>
+      element.type === "connector" &&
+      element.from === connector.from &&
+      element.to === connector.to,
+  );
+  const standalone = computeConnectorRoute(connector, lookup, model.canvas);
+
+  assert.equal(snapshot.routing.degraded, false);
+  assert.equal(countImmediateBacktracks(planned.points), 0);
+  assert.ok(
+    polylineLength(planned.points) <= polylineLength(standalone) * 3 + 0.001,
+    `planned route is ${polylineLength(planned.points)}px, standalone is ` +
+      `${polylineLength(standalone)}px`,
+  );
+});
+
+test("hidden-content filtering never leaves a backtracking route", () => {
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas: { width: 800, height: 600 },
+      elements: [
+        { type: "node", id: "n0", x: 206, y: 258, width: 108, height: 94 },
+        { type: "node", id: "n1", x: 479, y: 296, width: 91, height: 90 },
+        { type: "node", id: "n2", x: 389, y: 118, width: 151, height: 125 },
+        { type: "node", id: "n3", x: 563, y: 151, width: 116, height: 82 },
+        {
+          type: "connector",
+          from: "n0",
+          to: "n3",
+          routing: "orthogonal",
+        },
+        {
+          type: "connector",
+          from: "n3",
+          to: "n2",
+          routing: "orthogonal",
+        },
+      ],
+    }),
+  );
+  const route = architectureSemanticSnapshot(model).elements.find(
+    (element) =>
+      element.type === "connector" &&
+      element.from === "n0" &&
+      element.to === "n3",
+  );
+
+  assert.equal(
+    countImmediateBacktracks(route.points),
+    0,
+    `content filtering must retain a forward route: ${JSON.stringify(route.points)}`,
   );
 });
 
@@ -1174,10 +1787,17 @@ function measureQuality(source) {
     first.y < second.y + second.height &&
     second.y < first.y + first.height;
 
-  const result = { crossings: 0, nodeHits: 0, labelHits: 0, degraded: snapshot.routing.degraded };
+  const result = {
+    crossings: 0,
+    nodeHits: 0,
+    labelHits: 0,
+    backtracks: 0,
+    degraded: snapshot.routing.degraded,
+  };
   for (let index = 0; index < connectors.length; index += 1) {
     const current = connectors[index];
     const excluded = new Set([current.from, current.to]);
+    result.backtracks += countImmediateBacktracks(current.points);
     for (const node of nodes) {
       if (!excluded.has(node.id) && routeIntersectsNode(current.points, node)) result.nodeHits += 1;
     }
@@ -1235,6 +1855,71 @@ const CRISSCROSS_NODE_PAIRS = [
   [0, 7], [1, 6], [2, 9], [3, 8], [4, 11], [5, 10], [6, 3],
   [7, 2], [8, 1], [9, 0], [10, 5], [11, 4], [0, 5], [2, 11],
 ];
+const CROSSING_GUARD_NODE_PAIRS = [
+  [3, 2], [3, 8], [6, 5], [4, 3], [4, 6], [3, 7], [3, 1],
+  [1, 2], [6, 7], [6, 4], [4, 5], [0, 4], [0, 7],
+];
+
+function crossingGuardDiagram() {
+  const ids = Array.from({ length: 9 }, (_, index) => `n${index}`);
+  const elements = ids.map((id, index) => ({
+    type: "node",
+    id,
+    text: id,
+    x: 90 + (index % 3) * 470,
+    y: 100 + Math.floor(index / 3) * 260,
+    width: 280,
+    height: 100,
+  }));
+  for (const [from, to] of CROSSING_GUARD_NODE_PAIRS) {
+    elements.push({
+      type: "connector",
+      from: ids[from],
+      to: ids[to],
+      routing: "orthogonal",
+      label: `${from}-${to}`,
+    });
+  }
+  return JSON.stringify({
+    version: 1,
+    canvas: { width: 1600, height: 900 },
+    elements,
+  });
+}
+
+function unavoidableLabelDiagram({ label = true } = {}) {
+  return JSON.stringify({
+    version: 1,
+    canvas: { width: 1600, height: 900 },
+    elements: [
+      { type: "node", id: "source", x: 50, y: 430, width: 120, height: 40 },
+      { type: "node", id: "target", x: 1430, y: 430, width: 120, height: 40 },
+      {
+        type: "node",
+        id: "top-wall",
+        x: 0,
+        y: 0,
+        width: 1600,
+        height: 431.45,
+      },
+      {
+        type: "node",
+        id: "bottom-wall",
+        x: 0,
+        y: 468.55,
+        width: 1600,
+        height: 431.45,
+      },
+      {
+        type: "connector",
+        from: "source",
+        to: "target",
+        routing: "orthogonal",
+        ...(label ? { label: "unavoidable label" } : {}),
+      },
+    ],
+  });
+}
 
 test("dense 9-node diagrams route around every node without manual polylines", () => {
   const quality = measureQuality(
@@ -1243,6 +1928,7 @@ test("dense 9-node diagrams route around every node without manual polylines", (
   // 経路がノードを貫通したら図として破綻している。ここは 0 でなければならない。
   assert.equal(quality.nodeHits, 0);
   assert.equal(quality.labelHits, 0);
+  assert.equal(quality.backtracks, 0);
   assert.equal(quality.degraded, false);
 });
 
@@ -1252,15 +1938,13 @@ test("dense 12-node diagrams never route a path through an unrelated node", () =
   );
   // 「破綻しない」の定義は経路がノードを貫通しないこと。ここは無条件に 0。
   assert.equal(quality.nodeHits, 0);
+  assert.equal(quality.backtracks, 0);
 });
 
 test("unavoidable label collisions are reported rather than silently drawn", () => {
-  // 4 列 x 3 行にノードを敷き詰めて長い斜め connector を張ると、ラベルを置く
-  // 余白が物理的に足りなくなる。経路自体は健全でもラベルはノードに乗る。
-  // 重要なのは「黙って乗せない」こと。
-  const model = parseArchitecture(
-    denseDiagram({ columns: 4, rows: 3, pairs: TWELVE_NODE_PAIRS }),
-  );
+  // 37.1px の通路は線の 18px clearance を両側に確保できるが、37.2px 高の
+  // ラベルは収まらない。経路自体は健全でもラベルは上下の wall に乗る。
+  const model = parseArchitecture(unavoidableLabelDiagram());
   const snapshot = architectureSemanticSnapshot(model);
   assert.equal(snapshot.routing.degraded, true);
   assert.ok(snapshot.routing.diagnostics.length > 0);
@@ -1272,9 +1956,7 @@ test("unavoidable label collisions are reported rather than silently drawn", () 
   }
   // ラベルを外せば劣化は消える。つまり報告はラベル起因だと作者が確かめられる。
   const unlabelled = architectureSemanticSnapshot(
-    parseArchitecture(
-      denseDiagram({ columns: 4, rows: 3, pairs: TWELVE_NODE_PAIRS, label: false }),
-    ),
+    parseArchitecture(unavoidableLabelDiagram({ label: false })),
   );
   assert.equal(unlabelled.routing.degraded, false);
 });
@@ -1283,16 +1965,17 @@ test("global refinement lowers crossings below the greedy-only result", () => {
   // 交差の数え方は「交差点の個数」。再配線の受理条件がまさにこの値を
   // 増やさないことを保証しているので、テストもこの値で見る。
   //
-  // 12 ノード / 12 connector（ラベル付き）は逐次配置だけだと 13 交差になる。
-  // 再配線が効いていれば 6 まで下がる。上限 8 は「再配線を無効化すると必ず
-  // 落ちる」位置に置いてある。
+  // 180度折り返しと端点再貫通を認めず、向かい合うスタブを前方範囲へ収める状態では、
+  // 逐次配置だけだと 29 交差になる。再配線が効いていれば 28 まで下がる。上限 28 は
+  // 「再配線を無効化すると必ず落ちる」位置に置いてある。
   const quality = measureQuality(
     denseDiagram({ columns: 4, rows: 3, pairs: TWELVE_NODE_PAIRS }),
   );
   assert.ok(
-    quality.crossings <= 8,
-    `expected refinement to keep crossings at or below 8, got ${quality.crossings}`,
+    quality.crossings <= 28,
+    `expected refinement to keep crossings at or below 28, got ${quality.crossings}`,
   );
+  assert.equal(quality.backtracks, 0);
 });
 
 test("refinement never trades a crossing away for label placement", () => {
@@ -1300,17 +1983,16 @@ test("refinement never trades a crossing away for label placement", () => {
   // このガードが無いと、ラベル penalty（ノードを隠す = 24,000）が交差
   // （約 10,000）より重いせいで、ラベルを避けるために交差を増やす取引が通る。
   //
-  // 12 ノード / 14 connector の総当たり交差図での実測（交差点の個数）:
-  //   ガードあり 22 / ガードなし 25 / 再配線なし 29
-  // 上限 22 はガードを外すと必ず落ちる位置に置いてある。
-  const quality = measureQuality(
-    denseDiagram({ columns: 4, rows: 3, pairs: CRISSCROSS_NODE_PAIRS }),
-  );
+  // 9 ノード / 13 connector の交差図での実測（2px のラベル枠まで含む）:
+  //   ガードあり 24 / ガードなし 25
+  // 上限 24 はガードを外すと必ず落ちる位置に置いてある。
+  const quality = measureQuality(crossingGuardDiagram());
   assert.ok(
-    quality.crossings <= 22,
-    `expected the crossing guard to hold crossings at or below 22, got ${quality.crossings}`,
+    quality.crossings <= 24,
+    `expected the crossing guard to hold crossings at or below 24, got ${quality.crossings}`,
   );
   assert.equal(quality.nodeHits, 0);
+  assert.equal(quality.backtracks, 0);
 });
 
 test("routing avoids parking a connector label on top of an unrelated node", () => {
@@ -1764,7 +2446,7 @@ test("every architecture diagram shipped in this repository routes without degra
   // そこで、必ず劣化する図・必ず貫通する図を先に通し、判定側が黙っていないことを
   // 確かめてから出荷図を検査する。
   const knownDegraded = architectureSemanticSnapshot(
-    parseArchitecture(denseDiagram({ columns: 4, rows: 3, pairs: TWELVE_NODE_PAIRS })),
+    parseArchitecture(unavoidableLabelDiagram()),
   );
   assert.equal(
     knownDegraded.routing.degraded,
@@ -1827,6 +2509,11 @@ test("every architecture diagram shipped in this repository routes without degra
     const quality = measureQuality(diagram.source);
     assert.equal(quality.nodeHits, 0, `${where} の経路が無関係なノードを貫通している`);
     assert.equal(quality.labelHits, 0, `${where} のラベルが無関係なノードに乗っている`);
+    assert.equal(
+      quality.backtracks,
+      0,
+      `${where} の経路に未接続線のように見える180度折り返しがある`,
+    );
   }
 });
 
@@ -1890,12 +2577,18 @@ function labeledConnector({ label = "HTML", gap = 60, routing = "orthogonal", ..
 test("connector label no longer hides its own line and arrowhead", () => {
   // Issue #22 の再現配置。ラベル枠には 70px の下限があるため、
   // gap 60 から両端 14px を差し引いた 32px の可視線を中央配置の枠が覆い切っていた。
-  const { points, box } = labeledConnector({ gap: 60 });
+  const { connector, points, box } = labeledConnector({ gap: 60 });
   assert.ok(box, "ラベル枠が算出されていない");
   const visible = routeLengthOutsideBox(points, box);
+  const expectedVisible = Math.min(MIN_VISIBLE_ROUTE_LENGTH, polylineLength(points));
   assert.ok(
-    visible >= MIN_VISIBLE_ROUTE_LENGTH,
-    `ラベルが自分の経路を覆っている: 可視長 ${visible.toFixed(2)} < ${MIN_VISIBLE_ROUTE_LENGTH}`,
+    visible >= expectedVisible - 0.001,
+    `ラベルが自分の経路を覆っている: 可視長 ${visible.toFixed(2)} < ${expectedVisible}`,
+  );
+  assert.equal(
+    boxesOverlap(box, terminalMarkerBounds(connector, points)),
+    false,
+    `ラベルが矢頭の2次元領域を覆っている: ${JSON.stringify(box)}`,
   );
 });
 
@@ -1912,7 +2605,7 @@ test("label anchor stays on the midpoint when the line has room", () => {
 test("label escapes perpendicular to its own segment", () => {
   // 水平な線からは上下へ、垂直な線からは左右へ逃がす。線に沿って動かしても
   // 覆う範囲は変わらないので、法線方向であることがこの修正の本質になる。
-  const horizontal = labeledConnector({ gap: 60 });
+  const horizontal = labeledConnector({ gap: 60, arrow: false });
   const midpoint = pointAtHalfLength(horizontal.points);
   const anchor = connectorLabelAnchor(horizontal.connector, horizontal.points);
   assert.equal(anchor.escaped, true);
@@ -1924,6 +2617,253 @@ test("label escapes perpendicular to its own segment", () => {
     Math.abs(clearance - CONNECTOR_LABEL_CLEARANCE) < 1e-9,
     `線との間隔が ${clearance} で ${CONNECTOR_LABEL_CLEARANCE} と一致しない`,
   );
+});
+
+test("escaped labels stay inside the canvas near folded edge routes", () => {
+  const canvas = { width: 1518, height: 550 };
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas,
+      elements: [
+        { type: "node", id: "source", x: 0, y: 180, width: 40, height: 100 },
+        { type: "node", id: "target", x: 60, y: 180, width: 40, height: 100 },
+        {
+          type: "connector",
+          from: "source",
+          to: "target",
+          label: "a",
+          routing: "orthogonal",
+        },
+      ],
+    }),
+  );
+  const connector = model.elements.find((element) => element.type === "connector");
+  const points = [
+    { x: 47, y: 231 },
+    { x: 5, y: 231 },
+    { x: 5, y: 223 },
+    { x: 53.5, y: 223 },
+  ];
+  const box = connectorLabelBox(connector, points, canvas);
+
+  assert.ok(box.x >= 0, `label escaped beyond the left edge: ${JSON.stringify(box)}`);
+  assert.ok(
+    box.x + box.width <= canvas.width,
+    `label escaped beyond the right edge: ${JSON.stringify(box)}`,
+  );
+  assert.ok(box.y >= 0 && box.y + box.height <= canvas.height);
+});
+
+test("near-edge arrowless labels prefer the escape side that already fits", () => {
+  const canvas = { width: 320, height: 180 };
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas,
+      elements: [
+        { type: "node", id: "source", x: 0, y: 20, width: 40, height: 40 },
+        { type: "node", id: "target", x: 45, y: 20, width: 40, height: 40 },
+        {
+          type: "connector",
+          from: "source",
+          to: "target",
+          label: "a",
+          arrow: false,
+          routing: "orthogonal",
+        },
+      ],
+    }),
+  );
+  const connector = model.elements.find((element) => element.type === "connector");
+  const points = [{ x: 40, y: 40 }, { x: 45, y: 40 }];
+  const box = connectorLabelBox(connector, points, canvas);
+  const clearance = box.y - points[0].y;
+
+  assert.ok(
+    clearance >= CONNECTOR_LABEL_CLEARANCE - 0.001,
+    `contained escape side lost its line clearance: ${clearance}`,
+  );
+});
+
+test("wide labels try another route axis before clamping over their route", () => {
+  const canvas = { width: 560, height: 298 };
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas,
+      elements: [
+        { type: "node", id: "source", x: 100, y: 100, width: 100, height: 100 },
+        { type: "node", id: "target", x: 360, y: 100, width: 100, height: 100 },
+        {
+          type: "connector",
+          from: "source",
+          to: "target",
+          label: "publishes events to the terminal service",
+          routing: "orthogonal",
+        },
+      ],
+    }),
+  );
+  const connector = model.elements.find((element) => element.type === "connector");
+  const points = [
+    { x: 222, y: 154 },
+    { x: 285.5, y: 154 },
+    { x: 285.5, y: 142 },
+    { x: 349, y: 142 },
+  ];
+  const box = connectorLabelBox(connector, points, canvas);
+  const visible = routeLengthOutsideBox(points, box);
+  const expectedVisible = Math.min(MIN_VISIBLE_ROUTE_LENGTH, polylineLength(points));
+
+  assert.ok(box.x >= 0 && box.y >= 0);
+  assert.ok(box.x + box.width <= canvas.width && box.y + box.height <= canvas.height);
+  assert.ok(
+    visible >= expectedVisible - 0.001,
+    `clamped label hides its route: ${visible} < ${expectedVisible}`,
+  );
+  assert.equal(
+    boxesOverlap(box, terminalMarkerBounds(connector, points)),
+    false,
+    `clamped label covers the terminal marker: ${JSON.stringify(box)}`,
+  );
+});
+
+test("single-axis routes can move wide labels beyond an endpoint", () => {
+  const canvas = { width: 504, height: 400 };
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas,
+      elements: [
+        { type: "node", id: "source", x: 200, y: 185, width: 100, height: 100 },
+        { type: "node", id: "target", x: 200, y: 20, width: 100, height: 111 },
+        {
+          type: "connector",
+          from: "source",
+          to: "target",
+          label: "publishes events to the terminal service",
+          routing: "orthogonal",
+        },
+      ],
+    }),
+  );
+  const snapshot = architectureSemanticSnapshot(model);
+  const index = model.elements.findIndex((element) => element.type === "connector");
+  const connector = model.elements[index];
+  const points = snapshot.elements[index].points;
+  const box = connectorLabelBox(connector, points, canvas);
+
+  assert.equal(routeLengthOutsideBox(points, box), polylineLength(points));
+  assert.equal(
+    boxesOverlap(box, terminalMarkerBounds(connector, points)),
+    false,
+    `label covers the terminal marker: ${JSON.stringify(box)}`,
+  );
+  assert.equal(snapshot.routing.degraded, false);
+});
+
+test("impossible label placement is reported instead of silently hiding the connector", () => {
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas: { width: 320, height: 180 },
+      elements: [
+        { type: "node", id: "source", x: 20, y: 70, width: 100, height: 40 },
+        { type: "node", id: "target", x: 146, y: 70, width: 100, height: 40 },
+        {
+          type: "connector",
+          from: "source",
+          to: "target",
+          fromPort: "right",
+          toPort: "left",
+          label: "WW",
+          routing: "orthogonal",
+          style: { fontSize: 160 },
+        },
+      ],
+    }),
+  );
+  const snapshot = architectureSemanticSnapshot(model);
+
+  assert.equal(snapshot.routing.degraded, true);
+  assert.equal(snapshot.routing.diagnostics.length, 1);
+  assert.equal(snapshot.routing.diagnostics[0].kind, "label-overlaps-route");
+  assert.equal(
+    snapshot.routing.diagnostics[0].reason,
+    ROUTE_FALLBACK_REASONS.labelPlacementImpossible,
+  );
+  assert.ok(
+    snapshot.routing.diagnostics[0].routeVisible <
+      snapshot.routing.diagnostics[0].requiredRouteVisible,
+  );
+});
+
+test("escaped labels keep the terminal marker footprint visible", () => {
+  const canvas = { width: 1518, height: 550 };
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas,
+      elements: [
+        { type: "node", id: "source", x: 300, y: 140, width: 60, height: 80 },
+        { type: "node", id: "target", x: 730, y: 120, width: 60, height: 80 },
+        {
+          type: "connector",
+          from: "source",
+          to: "target",
+          label: "publishes events to the terminal service",
+          routing: "orthogonal",
+          style: { strokeWidth: 8 },
+        },
+      ],
+    }),
+  );
+  const connector = model.elements.find((element) => element.type === "connector");
+  const points = [
+    { x: 377, y: 186.5 },
+    { x: 545.5, y: 186.5 },
+    { x: 545.5, y: 160.5 },
+    { x: 714, y: 160.5 },
+  ];
+  const box = connectorLabelBox(connector, points, canvas);
+
+  assert.equal(
+    boxesOverlap(box, terminalMarkerBounds(connector, points)),
+    false,
+    `label covers the scaled terminal marker: ${JSON.stringify(box)}`,
+  );
+});
+
+test("connector labels are capped to the canvas dimensions", () => {
+  const canvas = { width: 320, height: 180 };
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas,
+      elements: [
+        { type: "node", id: "source", x: 10, y: 60, width: 40, height: 60 },
+        { type: "node", id: "target", x: 270, y: 60, width: 40, height: 60 },
+        {
+          type: "connector",
+          from: "source",
+          to: "target",
+          label:
+            "this connector label is intentionally much wider than the small canvas",
+          routing: "orthogonal",
+        },
+      ],
+    }),
+  );
+  const connector = model.elements.find((element) => element.type === "connector");
+  const points = [
+    { x: 64, y: 90 },
+    { x: 256, y: 90 },
+  ];
+  const box = connectorLabelBox(connector, points, canvas);
+
+  assert.ok(box.x >= 0 && box.x + box.width <= canvas.width);
+  assert.ok(box.y >= 0 && box.y + box.height <= canvas.height);
 });
 
 test("pointAtHalfLength reports a unit direction, including the degenerate span", () => {
@@ -1966,11 +2906,14 @@ test("orthogonal labels never cover their own route across a generated space", (
   let checked = 0;
   let worst = Infinity;
   let worstCase = null;
+  let backtrackingCase = null;
+  let collapsedCase = null;
   for (const fromPort of ports) {
     for (const toPort of ports) {
       for (const dx of [-320, -200, -120, -40, 0, 40, 120, 200, 320]) {
         for (const dy of [-320, -200, -80, 0, 80, 200, 320]) {
           for (const label of ["a", "HTML", "publishes events"]) {
+            const endpointsOverlap = Math.abs(dx) < 220 && Math.abs(dy) < 110;
             const elements = [
               { type: "node", id: "a", x: 600, y: 380, width: 220, height: 110, text: "A" },
               { type: "node", id: "b", x: 600 + dx, y: 380 + dy, width: 220, height: 110, text: "B" },
@@ -1983,14 +2926,41 @@ test("orthogonal labels never cover their own route across a generated space", (
             const snapshot = architectureSemanticSnapshot(model);
             const index = model.elements.findIndex((element) => element.type === "connector");
             const points = snapshot.elements[index].points;
-            if (!points || points.length < 2) continue;
+            if (!points || points.length < 2) {
+              if (!endpointsOverlap && !collapsedCase) {
+                collapsedCase = { fromPort, toPort, dx, dy, label, points };
+              }
+              continue;
+            }
+            if (
+              !endpointsOverlap &&
+              !backtrackingCase &&
+              countImmediateBacktracks(points) > 0
+            ) {
+              backtrackingCase = { fromPort, toPort, dx, dy, label, points };
+            }
             const box = connectorLabelBox(model.elements[index], points);
             if (!box) continue;
             const visible = routeLengthOutsideBox(points, box);
+            const expectedVisible = Math.min(
+              MIN_VISIBLE_ROUTE_LENGTH,
+              polylineLength(points),
+            );
+            const margin = visible - expectedVisible;
             checked++;
-            if (visible < worst) {
-              worst = visible;
-              worstCase = { fromPort, toPort, dx, dy, label, visible };
+            if (margin < worst) {
+              worst = margin;
+              worstCase = {
+                fromPort,
+                toPort,
+                dx,
+                dy,
+                label,
+                visible,
+                expectedVisible,
+                points,
+                box,
+              };
             }
           }
         }
@@ -2000,7 +2970,17 @@ test("orthogonal labels never cover their own route across a generated space", (
   // 走査が痩せて自明に通ることを防ぐ番人。
   assert.ok(checked > 4000, `検査した配置が ${checked} 件しかない`);
   assert.ok(
-    worst >= MIN_VISIBLE_ROUTE_LENGTH,
-    `可視長 ${worst.toFixed(2)} の配置がある: ${JSON.stringify(worstCase)}`,
+    worst >= -0.001,
+    `必要な可視長に ${(-worst).toFixed(2)}px 足りない配置がある: ${JSON.stringify(worstCase)}`,
+  );
+  assert.equal(
+    backtrackingCase,
+    null,
+    `180度折り返す配置がある: ${JSON.stringify(backtrackingCase)}`,
+  );
+  assert.equal(
+    collapsedCase,
+    null,
+    `経路が線分を持たない配置がある: ${JSON.stringify(collapsedCase)}`,
   );
 });
