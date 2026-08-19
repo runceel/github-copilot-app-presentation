@@ -682,7 +682,17 @@ function setArchitectureEditMode(enabled) {
   if (next === architectureEditMode) return false;
   architectureEditMode = next;
   document.body.classList.toggle("architecture-edit-mode", next);
+  updateArchitectureEditButton(next);
   return true;
+}
+
+function updateArchitectureEditButton(enabled = architectureEditMode) {
+  const button = document.getElementById("navEdit");
+  if (!button) return;
+  button.hidden = presenterMode;
+  button.dataset.state = enabled && !presenterMode ? "active" : "";
+  button.title = enabled ? "図形編集モードを終了" : "図形編集モード";
+  button.setAttribute("aria-label", button.title);
 }
 
 /**
@@ -699,6 +709,12 @@ async function requestArchitectureEditMode(enabled) {
   } catch (_) {
     /* サーバーが落ちていれば編集モードには入れない。次の poll で整合する。 */
   }
+}
+
+async function toggleArchitectureEditMode() {
+  if (presenterMode) return;
+  await requestArchitectureEditMode(!architectureEditMode);
+  await fetchState();
 }
 
 /**
@@ -984,6 +1000,7 @@ function wireControls() {
   };
   bind("navPrev", goPrev);
   bind("navNext", goNext);
+  bind("navEdit", toggleArchitectureEditMode);
   bind("navPresent", openPresenterWindow);
   bind("navExport", exportPdfFromCanvas);
   bind("navList", toggleOverview);
@@ -1128,6 +1145,7 @@ function init() {
     requestArchitectureEditMode(true);
   }
 
+  updateArchitectureEditButton();
   wireControls();
   window.addEventListener("resize", scheduleLayoutRefresh);
   if (document.fonts?.ready) {
