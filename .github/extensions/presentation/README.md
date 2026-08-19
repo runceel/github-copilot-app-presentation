@@ -22,7 +22,7 @@ canvas iframe（renderer/）
   │ highlight.js で言語付きコードフェンスをシンタックスハイライト
   │ ```mermaid を図に変換 → mermaid.run
   │ ```architecture の検証済み JSON DSL を安全な SVG DOM に変換
-  │ ◀ ▶ ボタン・余白の左/右クリック・矢印キー・☰ 一覧でページ送り（canvas 内で完結）
+  │ ◀ ▶ ボタン・✎ 編集・余白の左/右クリック・矢印キー・☰ 一覧で操作（canvas 内で完結）
   │ ⛶ ボタンで同期された外部全画面ウィンドウを起動
   ▼
 テーマ付きスライドを表示（更新は自動反映）
@@ -32,7 +32,7 @@ canvas iframe（renderer/）
 - Windows では、**Surface Pen の末尾ボタンを 1 回押すと次へ、長押しすると前へ**移動し、**2 回押し（ダブルクリック）で外部プレゼン画面を起動 / 終了**します。末尾ボタンが生成する `Win+F20`（1 回押し）・`Win+F19`（2 回押し）・`Win+F18`（長押し）を小さな Windows PowerShell ヘルパーのキーボードフックで受け取り、既存のナビゲーション処理と外部プレゼン画面の制御へ渡します。ジェスチャーの判定は Windows 側が行い、2 回押しのときに 1 回押しの `Win+F20` は送られないため、ページ送りの応答が遅くなることはありません。公式 `PenButtonListener` に必要なアプリのパッケージ ID には依存しません。
 - 配色は **dark（既定）/ light / microsoft / ms-modern** の 4 テーマ。`open` の `input` または `load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。`ms-modern` は社内 PowerPoint テンプレート（`2024-07-29-theme.thmx`）由来の配色です。**どのテーマでもデッキ末尾に背表紙（`layout: backcover`）が自動追加**されます（既に背表紙があれば追加しません）。背表紙の背景はテーマごとの濃色で、ロゴと著作権表示は `microsoft` / `ms-modern` のときだけ既定で出ます（他テーマでは front matter の `logo` / `copyright` を明示したときのみ）。
 - コンテンツサイズは **auto（既定）/ normal / large / xlarge** の4段階。`auto` はコード・表・画像・Mermaidを含まない通常スライドを計測し、余白が大きい場合だけ安全な範囲で拡大します。
-- ナビゲーション UI（操作バー・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。余白クリックは通常の canvas/presenter 表示でのみ有効で、PDF 印刷モードでは登録されません。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
+- ナビゲーション UI（操作バー・✎ 編集モード・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。操作バーの ✎ を押すと `edit_architecture` と同じ編集モードを切り替えられます。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。余白クリックは通常の canvas/presenter 表示でのみ有効で、PDF 印刷モードでは登録されません。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
 - **PDF Export は Canvas の操作バーにあるプリンターアイコンからも実行できます。** 元 Markdown のファイル名を `open` / `load_deck` の `sourceName` に渡すと、`<元ファイル名>.pdf` として workspace に保存します。AI から `export_pdf` action を呼ぶ場合は従来どおり任意の `outputPath` を指定できます。現在のデッキを hidden print mode で全ページ描画し、headless Edge/Chromeで背景・画像・コード強調・Mermaidを含む16:9 PDFへ変換します。
 - **外部プレゼン画面**は canvas の ⛶ ボタン、`open_presenter` action、または **Surface Pen の末尾ボタン 2 回押し**で起動します。Edge / Chrome / Chromium を専用の一時プロファイルで app mode + fullscreen 起動し、同じ `/state`・`/navigate`・SSE を使うため、canvas・キーボード・Surface Pen のページ位置が同期します。外部ウィンドウを閉じるには **もう一度ペンを 2 回押し**、`Alt+F4`、または AI から `close_presenter` を使います。canvas を閉じた場合も自動終了します。
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。

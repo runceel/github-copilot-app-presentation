@@ -101,6 +101,179 @@ flowchart LR
 
 ---
 
+## v1.1.0: Architecture DSL の図
+
+`architecture` コードフェンスに JSON を書くと、配置を固定した構成図を表示できます。
+
+- レイアウト: `row` / `column` / `grid` / `layered`
+- 図形とスタイル: `rect` / `rounded-rect` / `ellipse`
+- 経路: `straight` / `orthogonal` / `polyline`
+
+---
+
+## レイアウト駆動の構成図
+
+子要素の座標を個別に書かず、group のレイアウトで整列します。
+
+```architecture
+{
+  "version": 1,
+  "title": "Layout-driven platform",
+  "description": "A client, service and data flow arranged with nested layouts.",
+  "canvas": { "width": 1600, "height": 900 },
+  "elements": [
+    {
+      "type": "group",
+      "id": "layout-clients",
+      "title": "Clients",
+      "x": 60,
+      "y": 240,
+      "width": 360,
+      "height": 360,
+      "layout": { "type": "column", "gap": 42, "padding": 54 },
+      "children": [
+        { "type": "node", "id": "layout-browser", "text": "Browser", "icon": "browser" },
+        { "type": "node", "id": "layout-mobile", "text": "Mobile", "icon": "mobile" }
+      ]
+    },
+    {
+      "type": "group",
+      "id": "layout-services",
+      "title": "Services",
+      "x": 520,
+      "y": 160,
+      "width": 620,
+      "height": 520,
+      "layout": { "type": "grid", "columns": 2, "columnGap": 70, "rowGap": 46, "padding": 54 },
+      "children": [
+        { "type": "node", "id": "layout-api", "text": "API", "icon": "api" },
+        { "type": "node", "id": "layout-worker", "text": "Worker", "icon": "server" },
+        { "type": "node", "id": "layout-queue", "text": "Queue", "icon": "queue" },
+        { "type": "node", "id": "layout-cache", "text": "Cache", "icon": "database" }
+      ]
+    },
+    {
+      "type": "node",
+      "id": "layout-data",
+      "x": 1270,
+      "y": 330,
+      "width": 260,
+      "height": 140,
+      "text": "Database",
+      "icon": "database",
+      "shape": "ellipse"
+    },
+    { "type": "connector", "from": "layout-browser", "to": "layout-api", "routing": "orthogonal" },
+    { "type": "connector", "from": "layout-mobile", "to": "layout-api", "routing": "orthogonal", "lane": 1 },
+    { "type": "connector", "from": "layout-api", "to": "layout-data", "routing": "orthogonal", "label": "query" },
+    { "type": "connector", "from": "layout-worker", "to": "layout-data", "routing": "straight" }
+  ]
+}
+```
+
+---
+
+## 図形・スタイル・経路
+
+図形の種類、style、connector の routing を1枚で確認できます。
+
+```architecture
+{
+  "version": 1,
+  "title": "Shape and routing coverage",
+  "description": "Three shapes, styled nodes and three connector routing modes.",
+  "canvas": { "width": 1600, "height": 900 },
+  "elements": [
+    {
+      "type": "node",
+      "id": "shape-rect",
+      "x": 90,
+      "y": 170,
+      "width": 300,
+      "height": 140,
+      "text": "Rect",
+      "shape": "rect",
+      "style": { "fill": "surface", "stroke": "accent", "strokeWidth": 3 }
+    },
+    {
+      "type": "node",
+      "id": "shape-rounded",
+      "x": 90,
+      "y": 380,
+      "width": 300,
+      "height": 140,
+      "text": "Rounded",
+      "shape": "rounded-rect",
+      "style": { "fill": "accentSoft", "stroke": "accentStrong", "cornerRadius": 28 }
+    },
+    {
+      "type": "node",
+      "id": "shape-ellipse",
+      "x": 90,
+      "y": 590,
+      "width": 300,
+      "height": 140,
+      "text": "Ellipse",
+      "shape": "ellipse",
+      "style": { "fill": "bg", "stroke": "accentLine", "dash": "10 6" }
+    },
+    {
+      "type": "node",
+      "id": "shape-target",
+      "x": 1120,
+      "y": 380,
+      "width": 320,
+      "height": 160,
+      "text": "Target",
+      "icon": "cloud",
+      "style": { "fill": "surface", "stroke": "accent" }
+    },
+    { "type": "connector", "from": "shape-rect", "to": "shape-target", "routing": "straight", "label": "straight" },
+    { "type": "connector", "from": "shape-rounded", "to": "shape-target", "routing": "orthogonal", "label": "orthogonal" },
+    {
+      "type": "connector",
+      "from": "shape-ellipse",
+      "to": "shape-target",
+      "routing": "polyline",
+      "points": [{ "x": 720, "y": 660 }, { "x": 900, "y": 660 }],
+      "label": "polyline"
+    }
+  ]
+}
+```
+
+---
+
+## 密な構成図の自動ルーティング
+
+依存関係だけを宣言し、複数の経路が交差する図も自動配線できます。
+
+```architecture
+{
+  "version": 1,
+  "title": "Dense service routing",
+  "description": "A compact service graph with orthogonal connectors and no manual polylines.",
+  "canvas": { "width": 1600, "height": 900 },
+  "elements": [
+    { "type": "node", "id": "dense-web", "x": 80, "y": 140, "width": 240, "height": 100, "text": "Web", "icon": "browser" },
+    { "type": "node", "id": "dense-mobile", "x": 80, "y": 400, "width": 240, "height": 100, "text": "Mobile", "icon": "mobile" },
+    { "type": "node", "id": "dense-gateway", "x": 470, "y": 270, "width": 250, "height": 100, "text": "Gateway", "icon": "api" },
+    { "type": "node", "id": "dense-orders", "x": 870, "y": 140, "width": 250, "height": 100, "text": "Orders", "icon": "server" },
+    { "type": "node", "id": "dense-search", "x": 870, "y": 400, "width": 250, "height": 100, "text": "Search", "icon": "analytics" },
+    { "type": "node", "id": "dense-store", "x": 1270, "y": 270, "width": 240, "height": 100, "text": "Data store", "icon": "database" },
+    { "type": "connector", "from": "dense-web", "to": "dense-gateway", "routing": "orthogonal" },
+    { "type": "connector", "from": "dense-mobile", "to": "dense-gateway", "routing": "orthogonal", "lane": 1 },
+    { "type": "connector", "from": "dense-gateway", "to": "dense-orders", "routing": "orthogonal" },
+    { "type": "connector", "from": "dense-gateway", "to": "dense-search", "routing": "orthogonal", "label": "query" },
+    { "type": "connector", "from": "dense-orders", "to": "dense-store", "routing": "orthogonal" },
+    { "type": "connector", "from": "dense-search", "to": "dense-store", "routing": "orthogonal" },
+    { "type": "connector", "from": "dense-web", "to": "dense-search", "routing": "orthogonal", "label": "direct" }
+  ]
+}
+```
+
+---
+
 ## 画像とリンクを追加する
 
 画像は `assets/` フォルダーに置き、絶対パスで参照します。
