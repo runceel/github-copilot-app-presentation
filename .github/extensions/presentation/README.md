@@ -30,8 +30,8 @@ canvas iframe（renderer/）
 
 - **全スライドはプレゼン開始時に `open_canvas` の `input`（`slides`）で一括登録**します。open ハンドラーが URL を返す前にデッキを適用するため、canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。発表途中の差し替え・テーマ変更は `load_deck` で行います。**ページ送りは canvas 内のボタン（◀ ▶）・スライド面の余白を左クリック/右クリックする操作・矢印キー・スライド一覧（☰）で完結**し、その操作は拡張機能のループバックサーバー（`POST /navigate`）に送られて全クライアントへ反映されます。余白の左クリックは次のスライド、右クリックは前のスライドです。本文、リンク、画像、ナビゲーション UI、スライド一覧では既存の操作を優先し、右クリックのコンテキストメニューも維持します。外部サーバーや `localhost` ポートの手動起動は不要です。
 - Windows では、**Surface Pen の末尾ボタンを 1 回押すと次へ、長押しすると前へ**移動し、**2 回押し（ダブルクリック）で外部プレゼン画面を起動 / 終了**します。末尾ボタンが生成する `Win+F20`（1 回押し）・`Win+F19`（2 回押し）・`Win+F18`（長押し）を小さな Windows PowerShell ヘルパーのキーボードフックで受け取り、既存のナビゲーション処理と外部プレゼン画面の制御へ渡します。ジェスチャーの判定は Windows 側が行い、2 回押しのときに 1 回押しの `Win+F20` は送られないため、ページ送りの応答が遅くなることはありません。公式 `PenButtonListener` に必要なアプリのパッケージ ID には依存しません。
-- 配色は **dark（既定）/ light / microsoft / ms-modern / custom**。`open` の `input` または `load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。`microsoft` / `ms-modern` は組み込みのブランドプリセット、`custom` は `themeFile` または front matter の `theme-file` で指定した CSS カスタムプロパティ専用ファイルです。テーマ指定は **明示的な依頼（canvas の theme） > Markdown front matter > dark** の順です。テーマファイルは元 Markdown と同じフォルダーを基準にした相対パスで、workspace 外や任意セレクターは拒否します。**どのテーマでもデッキ末尾に背表紙（`layout: backcover`）が自動追加**されます（既に背表紙があれば追加しません）。背表紙の背景はテーマごとの濃色で、ロゴと著作権表示は `microsoft` / `ms-modern` のときだけ既定で出ます（他テーマでは front matter の `logo` / `copyright` を明示したときのみ）。
-- カスタムテーマの詳細は [`docs/custom-theme-authoring.md`](docs/custom-theme-authoring.md) を参照してください。生成 AI からは `presentation_guide` の `custom-themes` / `theme-schema` トピックで同じ情報を取得できます。`schema/theme-v1.json` は標準カスタムプロパティの機械可読カタログです。
+- 配色は **dark（既定）/ light / microsoft / custom**。`open` の `input` または `load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。`microsoft` は組み込みの配色プリセット、`custom` は `themeFile` または front matter の `theme-file` で指定した CSS カスタムプロパティ専用ファイルです。テーマ指定は **明示的な依頼（canvas の theme） > Markdown front matter > dark** の順です。テーマファイルは元 Markdown と同じフォルダーを基準にした相対パスで、workspace 外や任意セレクターは拒否します。CSS と同じフォルダーに `theme.json` があれば、表紙背景・表紙/背表紙ロゴ・著作権表示を自動的に読み込みます。**どのテーマでもデッキ末尾に背表紙（`layout: backcover`）が自動追加**されます（既に背表紙があれば追加しません）。ロゴと著作権表示はメタデータまたは front matter で明示したときだけ表示されます。
+- カスタムテーマの詳細は [`docs/custom-theme-authoring.md`](docs/custom-theme-authoring.md) を参照してください。生成 AI からは `presentation_guide` の `custom-themes` / `theme-schema` トピックで同じ情報を取得できます。`schema/theme-v1.json` は標準カスタムプロパティ、`schema/theme-metadata-v1.schema.json` は `theme.json` の機械可読スキーマです。
 - コンテンツサイズは **auto（既定）/ normal / large / xlarge** の4段階。`auto` はコード・表・画像・Mermaidを含まない通常スライドを計測し、余白が大きい場合だけ安全な範囲で拡大します。
 - ナビゲーション UI（操作バー・✎ 編集モード・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。操作バーの ✎ を押すと `edit_architecture` と同じ編集モードを切り替えられます。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。余白クリックは通常の canvas/presenter 表示でのみ有効で、PDF 印刷モードでは登録されません。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
 - **PDF Export は Canvas の操作バーにあるプリンターアイコンからも実行できます。** 元 Markdown のファイル名を `open` / `load_deck` の `sourceName` に渡すと、`<元ファイル名>.pdf` として workspace に保存します。AI から `export_pdf` action を呼ぶ場合は従来どおり任意の `outputPath` を指定できます。現在のデッキを hidden print mode で全ページ描画し、headless Edge/Chromeで背景・画像・コード強調・Mermaidを含む16:9 PDFへ変換します。
@@ -64,7 +64,7 @@ Extension 単体をユーザースコープへ導入した場合も同じ仕様�
 | `layout` | 表紙は `title`、背表紙は `backcover`。通常スライドは省略 |
 | `size` | `auto`（既定）/ `normal` / `large` / `xlarge` |
 | `theme` | スライド単位の上書き。通常はデッキの `theme` を使う |
-| `logo` / `copyright` | `backcover` の表示内容 |
+| `logo` / `copyright` | `backcover` のメタデータ既定値を上書きする表示内容 |
 
 先頭スライドは `layout: title` の表紙として作ります。デッキ末尾の
 `layout: backcover` は Extension が自動追加します。本文では見出し、リスト、表、画像、
@@ -79,7 +79,7 @@ Extension 単体をユーザースコープへ導入した場合も同じ仕様�
 | `dark` | ダーク、暗め、黒っぽい、クール、かっこよい |
 | `light` | ライト、明るい、白基調、清潔感 |
 | `microsoft` | MS、Microsoft、マイクロソフト、Fluent、Office |
-| `ms-modern` | ms-modern、新しい MS テーマ、社内テンプレ |
+| `custom` | ブランドカラーや社内テンプレートを CSS カスタムプロパティで再現 |
 
 ## Architecture DSL v1
 
@@ -356,8 +356,8 @@ icon name (...) or a path under assets/; ...` のように修正指針まで示�
 - **テーマ色に追従しません。** `<image>` として読み込むため、拡張機能側から中身の色を
   差し替えられません。PNG / JPEG / WebP はもちろん、**SVG でも同じ**です。
   4 テーマすべてで**同じ見た目のまま**描画されます。
-- したがって **4 テーマの背景（濃色の `dark` と、淡色の `light` / `microsoft` /
-  `ms-modern`）で判読できるかは素材の作者の責任**です。次のいずれかを推奨します。
+- したがって **組み込み 3 テーマの背景（濃色の `dark` と、淡色の `light` /
+  `microsoft`）で判読できるかは素材の作者の責任**です。次のいずれかを推奨します。
   - どちらの背景でも十分なコントラストを持つ配色にする。
   - アイコン自身が不透明な背景（円形の下地など）を持つ形にする。
   - テーマを 1 つに固定して発表する。
@@ -600,16 +600,16 @@ size: xlarge
 
 ## アクション
 
-> **開始は `open_canvas`（`canvasId: "presentation"`）の `input` でデッキごと開く**のが基本です: `input: { slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft"｜"ms-modern", sourceName?: string }`。`sourceName` には元 Markdown ファイル名を渡してください。Canvas のプリンターアイコンは `<sourceName の拡張子を除いた名前>.pdf` を保存します。open ハンドラーが URL を返す前にデッキを適用するので、最初からスライドが表示されます（再フォーカスのみのときは `input` を省略すると現在位置を維持）。下表は開始後に使うアクションです。
+> **開始は `open_canvas`（`canvasId: "presentation"`）の `input` でデッキごと開く**のが基本です: `input: { slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft"｜"custom", sourceName?: string }`。`sourceName` には元 Markdown ファイル名を渡してください。Canvas のプリンターアイコンは `<sourceName の拡張子を除いた名前>.pdf` を保存します。open ハンドラーが URL を返す前にデッキを適用するので、最初からスライドが表示されます（再フォーカスのみのときは `input` を省略すると現在位置を維持）。下表は開始後に使うアクションです。
 
 | アクション | 入力 | 説明 |
 | --- | --- | --- |
-| `load_deck` | `{ slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft"｜"ms-modern" }` | 登録済みデッキを差し替える / 再ロードする（発表途中の内容・テーマ変更用）。`index`（既定 0）のスライドを表示し、`theme` でデッキ全体の配色（既定 `dark`）を指定。各要素はフロントマター＋本文 Markdown。テーマに関わらず末尾に背表紙を自動追加する（再ロードしても増殖しない）。戻り値 `{ ok, version, index, total, theme, validationFeedback? }`。front matter の欠落や Architecture DSL エラーがあっても表示は続行し、修正指針を `validationFeedback` に返す。`open` でも同じ検証を行い、警告ログにも記録する。 |
+| `load_deck` | `{ slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft"｜"custom" }` | 登録済みデッキを差し替える / 再ロードする（発表途中の内容・テーマ変更用）。`index`（既定 0）のスライドを表示し、`theme` でデッキ全体の配色（既定 `dark`）を指定。各要素はフロントマター＋本文 Markdown。テーマに関わらず末尾に背表紙を自動追加する（再ロードしても増殖しない）。戻り値 `{ ok, version, index, total, theme, validationFeedback? }`。front matter の欠落や Architecture DSL エラーがあっても表示は続行し、修正指針を `validationFeedback` に返す。`open` でも同じ検証を行い、警告ログにも記録する。 |
 | `goto_slide` | `{ index: number }` | 登録済みデッキ内で表示スライドを 0 始まりインデックスで切り替える。範囲外は端に丸める。通常のページ送りは canvas 内で行われるため不要だが、チャットからの指定に使う。戻り値 `{ ok, changed, version, index, total }`。 |
 | `show_slide` | `{ markdown: string }` | 現在のスライドを1枚だけ差し替える（単発表示・その場限りの差し替え用）。フロントマター（`deck`/`kicker`/`page`/`total`/`title`/`layout`/`size`/`theme`）＋本文 Markdown。`theme` 省略時は現在のデッキテーマを引き継ぐ。 |
 | `open_presenter` | なし | 同期された外部プレゼン画面を Edge / Chrome / Chromium の app mode + fullscreen で起動する。既に起動中なら新しいウィンドウは増やさない。Surface Pen の末尾ボタン 2 回押しでも同じトグルができる。戻り値 `{ ok, started, alreadyRunning, browser?, pid? }`。 |
 | `close_presenter` | なし | 外部プレゼン画面を終了し、専用の一時ブラウザープロファイルを削除する。Surface Pen の末尾ボタン 2 回押しでも終了できる。戻り値 `{ ok, stopped }`。 |
-| `export_pdf` | `{ outputPath?: string, theme?: "dark"｜"light"｜"microsoft"｜"ms-modern" }` | 表示中のデッキを1スライド1ページの16:9 PDFへ書き出すAI用action。相対パスはworkspace基準、省略時は `presentation.pdf`。Canvas のプリンターアイコンは `sourceName` から `<元ファイル名>.pdf` を自動保存する。`theme` はPDFだけに適用し、canvasの表示テーマは変えない（PDF側にも背表紙を補う）。workspace外と `.pdf` 以外は拒否する。`show_slide` による現在ページの一時差し替えも反映する。戻り値 `{ ok, path, total, theme, bytes }`。Microsoft Edge / Google Chrome / Chromiumのいずれかが必要。 |
+| `export_pdf` | `{ outputPath?: string, theme?: "dark"｜"light"｜"microsoft"｜"custom" }` | 表示中のデッキを1スライド1ページの16:9 PDFへ書き出すAI用action。相対パスはworkspace基準、省略時は `presentation.pdf`。Canvas のプリンターアイコンは `sourceName` から `<元ファイル名>.pdf` を自動保存する。`theme` はPDFだけに適用し、canvasの表示テーマは変えない（PDF側にも背表紙を補う）。workspace外と `.pdf` 以外は拒否する。`show_slide` による現在ページの一時差し替えも反映する。戻り値 `{ ok, path, total, theme, bytes }`。Microsoft Edge / Google Chrome / Chromiumのいずれかが必要。 |
 | `edit_architecture` | `{ enabled: boolean }` | Architecture 図の編集モードを切り替える。有効にすると canvas 上で node をドラッグ／キーボード操作でき、結果は元 Markdown の ```architecture フェンスへ書き戻る。presenter と印刷では編集 UI を出さない。デッキと一緒には永続化せず、`reset` で解除する。戻り値 `{ ok, enabled, version }`。 |
 | `reset` | なし | スライドとデッキをクリアして待機プレースホルダーに戻す。編集モードも解除する。 |
 
@@ -640,7 +640,7 @@ size: xlarge
     pen-button-listener.ps1 # Surface Pen の Win+F20 / Win+F19 / Win+F18 を Node へ中継
   renderer/
     index.html             # iframe シェル・操作バー・スライド一覧オーバーレイ
-    slides.css             # 4 テーマ（dark/light/microsoft/ms-modern）の配色定義・ナビ UI のスタイル
+    slides.css             # 3 組み込みテーマ（dark/light/microsoft）の配色定義・ナビ UI のスタイル
     renderer.js            # フロントマター解析 / marked / mermaid / architecture / SSE / 操作 UI
     architecture.mjs       # JSON DSL の検証と安全な SVG DOM 生成
     architecture-edit.mjs  # 編集の中核（DOM 非依存: 移動・layout 解除・Undo/Redo・直列化）

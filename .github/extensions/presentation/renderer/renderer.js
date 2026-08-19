@@ -59,19 +59,13 @@ const MERMAID_THEME = {
   dark: "dark",
   light: "default",
   microsoft: "neutral",
-  "ms-modern": "neutral",
 };
 const SIZE_MODES = new Set(["auto", "normal", "large", "xlarge"]);
 const DEFAULT_SIZE_MODE = "auto";
-// 背表紙 (layout: backcover) の既定のワードマークと著作権表示。Microsoft 系テーマ
-// (microsoft / ms-modern) でのみ既定値を出し、他テーマでは front matter で明示した
-// ときだけ表示する。`copyright:` に空文字を指定すると常に非表示。
-const DEFAULT_LOGO = "Microsoft";
-const DEFAULT_COPYRIGHT = "\u00A9 Copyright Microsoft Corporation. All rights reserved.";
-const BRANDED_THEMES = new Set(["microsoft", "ms-modern"]);
 let deckTheme = DEFAULT_THEME;
 let deckThemeLocked = false;
 let customThemeCss = "";
+let customThemeMeta = null;
 // Bumped on every render so a late mermaid finish from a previous slide can't
 // reveal a newer, still-rendering one.
 let renderToken = 0;
@@ -101,12 +95,23 @@ function applyCustomThemeCss(css) {
     style?.remove();
     return;
   }
+
   if (!style) {
     style = document.createElement("style");
     style.id = "custom-theme-style";
     document.head.appendChild(style);
   }
   style.textContent = `:root[data-theme="custom"], .deck[data-theme="custom"]{${customThemeCss}}`;
+}
+
+function themeImage(entry, className, { decorative = false } = {}) {
+  if (!entry?.image) return null;
+  const image = document.createElement("img");
+  image.className = className;
+  image.src = entry.image;
+  image.alt = decorative ? "" : entry.alt || "";
+  if (decorative) image.setAttribute("aria-hidden", "true");
+  return image;
 }
 
 function normalizeSizeMode(value) {
@@ -336,6 +341,7 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
   // A slide-level `theme:` overrides the deck theme. Keep it on the deck element
   // as well as <html> so print mode can render differently themed pages together.
   const theme = normalizeTheme(themeLocked ? fallbackTheme : meta.theme || fallbackTheme);
+  const themeMetadata = theme === "custom" ? customThemeMeta : null;
 
   const deck = document.createElement("div");
   deck.className = "deck";
@@ -344,25 +350,29 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
   else if (backcoverSlide) deck.className = "deck backcover-slide";
   if (sizeMode !== "auto") setSizeLevel(deck, sizeMode);
 
-  // 背表紙は 4 色スクエア + ワードマークのロゴを左上に、著作権表示を左下に置く。
-  // ロゴ画像は同梱せず CSS だけで描くので、ここでは器だけ組み立てる。
-  // Microsoft 系テーマ以外では既定のブランド表示を出さず、front matter で明示された
-  // ときだけワードマークを出す（4 色スクエアは Microsoft ロゴなので付けない）。
-  const branded = BRANDED_THEMES.has(theme);
+  if (titleSlide) {
+    const background = themeImage(
+      themeMetadata?.cover?.background,
+      "theme-cover-background",
+      { decorative: true },
+    );
+    if (background) deck.appendChild(background);
+    const logo = themeImage(themeMetadata?.cover?.logo, "theme-cover-logo");
+    if (logo) deck.appendChild(logo);
+  }
+
   if (backcoverSlide) {
-    const wordmarkText = "logo" in meta ? meta.logo : branded ? DEFAULT_LOGO : "";
-    if (nonEmpty(wordmarkText)) {
+    if ("logo" in meta && nonEmpty(meta.logo)) {
       const logo = document.createElement("div");
-      logo.className = "backcover-logo";
-      if (branded) {
-        const mark = document.createElement("span");
-        mark.className = "backcover-mark";
-        logo.appendChild(mark);
-      }
-      const wordmark = document.createElement("span");
-      wordmark.textContent = wordmarkText;
-      logo.appendChild(wordmark);
+      logo.className = "theme-backcover-logo theme-backcover-logo-text";
+      logo.textContent = meta.logo;
       deck.appendChild(logo);
+    } else if (!("logo" in meta)) {
+      const logo = themeImage(
+        themeMetadata?.backcover?.logo,
+        "theme-backcover-logo",
+      );
+      if (logo) deck.appendChild(logo);
     }
   }
 
@@ -430,12 +440,13 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
   const total = nonEmpty(meta.total) ? meta.total : "";
   const showFooter = !(deckName === "" && (page === "" || total === ""));
   if (backcoverSlide) {
-    // `copyright:` を明示すればどのテーマでも出せる（空文字なら非表示）。省略時は
-    // Microsoft 系テーマのみ既定文言を出す。
-    const notice = "copyright" in meta ? meta.copyright : branded ? DEFAULT_COPYRIGHT : "";
+    const notice =
+      "copyright" in meta
+        ? meta.copyright
+        : themeMetadata?.backcover?.copyright || "";
     if (nonEmpty(notice)) {
       const small = document.createElement("div");
-      small.className = "backcover-copyright";
+      small.className = "theme-backcover-copyright";
       small.textContent = notice;
       deck.appendChild(small);
     }
@@ -497,7 +508,7 @@ function renderSlide(markdown) {
   // that the slide is fully painted, and PDF export and the visual regression
   // suite rely on it. Revealing while an architecture icon under `assets/` is
   // still loading would capture a half-drawn slide.
-  const images = waitForImages(slide.bodyEl).then(() => {
+  const images = waitForImages(slide.deck).then(() => {
     if (token === renderToken) scheduleLayoutRefresh();
   });
   const mermaid = runMermaid(slide.bodyEl, slide.theme, token, false).finally(() => {
@@ -554,9 +565,16 @@ async function reportPrintStatus(token, status, error = "") {
   if (!response.ok) throw new Error(`Could not report print status (${response.status}).`);
 }
 
-async function renderPrintDeck(slides, theme, customCss = "", themeLocked = false) {
+async function renderPrintDeck(
+  slides,
+  theme,
+  customCss = "",
+  themeMetadata = null,
+  themeLocked = false,
+) {
   deckTheme = normalizeTheme(theme);
   deckThemeLocked = Boolean(themeLocked);
+  customThemeMeta = themeMetadata && typeof themeMetadata === "object" ? themeMetadata : null;
   applyCustomThemeCss(customCss);
   document.documentElement.setAttribute("data-theme", deckTheme);
   document.body.classList.add("print-mode", "mermaid-loading");
@@ -599,7 +617,13 @@ async function initPrint(params) {
     ) {
       throw new Error("PDF export data does not contain a valid deck.");
     }
-    await renderPrintDeck(data.slides, data.theme, data.customThemeCss, data.themeLocked);
+    await renderPrintDeck(
+      data.slides,
+      data.theme,
+      data.customThemeCss,
+      data.customThemeMeta,
+      data.themeLocked,
+    );
     await reportPrintStatus(token, "ready");
   } catch (error) {
     const message = error?.message || "Print rendering failed.";
@@ -774,6 +798,10 @@ async function fetchState() {
   if (typeof data.theme === "string") deckTheme = normalizeTheme(data.theme);
   if (typeof data.themeLocked === "boolean") deckThemeLocked = data.themeLocked;
   if (typeof data.customThemeCss === "string") applyCustomThemeCss(data.customThemeCss);
+  customThemeMeta =
+    data.customThemeMeta && typeof data.customThemeMeta === "object"
+      ? data.customThemeMeta
+      : null;
   if (typeof data.presenterRunning === "boolean") {
     updatePresenterButton(data.presenterRunning);
   }
@@ -1119,7 +1147,8 @@ function wireControls() {
 function connectEvents() {
   try {
     const es = new EventSource("./events");
-    es.onmessage = () => fetchState().catch(() => {});
+    es.onmessage = () =>
+      fetchState().catch((error) => console.error("Presentation state refresh failed", error));
     // On error EventSource auto-reconnects; the safety poll covers the gap.
   } catch (_) {
     // EventSource unavailable; the safety poll keeps us in sync.
@@ -1166,10 +1195,16 @@ function init() {
   }
 
   fetchState()
-    .catch(() => {})
+    .catch((error) => console.error("Initial presentation state load failed", error))
     .finally(() => {
       connectEvents();
-      setInterval(() => fetchState().catch(() => {}), 2000);
+      setInterval(
+        () =>
+          fetchState().catch((error) =>
+            console.error("Presentation state poll failed", error),
+          ),
+        2000,
+      );
     });
 }
 

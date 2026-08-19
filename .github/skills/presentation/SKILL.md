@@ -79,12 +79,12 @@ total: 6
 
 | アクション | 用途 |
 | --- | --- |
-| `load_deck` | 登録済みデッキを差し替える / 再ロードする。`slides`（各スライド 1 枚分の Markdown 断片の配列）、任意の `index`（最初に表示する 0 始まりインデックス、既定 0）、任意の `theme`（デッキ全体の配色テーマ、`dark`/`light`/`microsoft`/`ms-modern`、既定 `dark`）を渡す。**発表途中で内容やテーマを変える**ときに使う（開始時は通常 `open` の `input` で渡す）。 |
+| `load_deck` | 登録済みデッキを差し替える / 再ロードする。`slides`（各スライド 1 枚分の Markdown 断片の配列）、任意の `index`（最初に表示する 0 始まりインデックス、既定 0）、任意の `theme`（デッキ全体の配色テーマ、`dark`/`light`/`microsoft`/`custom`、既定 `dark`）を渡す。**発表途中で内容やテーマを変える**ときに使う（開始時は通常 `open` の `input` で渡す）。 |
 | `goto_slide` | 登録済みデッキ内で表示スライドを切り替える。`index`（0 始まり）を渡す。範囲外は端に丸められる。**通常のページ送りは canvas 内で行われるため不要**だが、ユーザーがチャットで「3 ページ目に飛んで」のように特定ページを指定したときに使う。 |
 | `show_slide` | スライドを 1 枚だけ差し替える。デッキ未登録での単発表示や、その場限りの差し替え用。通常のプレゼンでは使わない。 |
 | `open_presenter` | 表示中のデッキを、canvas と同期された外部全画面ウィンドウで開く。Edge / Chrome / Chromium の app mode を使い、ページ位置・キーボード・Surface Pen 操作を共有する。Surface Pen の末尾ボタン 2 回押しでも起動 / 終了できる。 |
 | `close_presenter` | `open_presenter` で起動した外部プレゼン画面を閉じる。 |
-| `export_pdf` | 表示中のデッキを16:9 PDFへ書き出すAI用action。任意の `outputPath` はworkspaceからの相対 `.pdf` パス、省略時は `presentation.pdf`。Canvas のプリンターアイコンは `sourceName` から `<元ファイル名>.pdf` を自動保存する。任意の `theme`（`dark`/`light`/`microsoft`/`ms-modern`）はPDFだけに適用し、canvas表示は変えない。1スライド1ページで、背景・画像・コード強調・Mermaidを含む。`show_slide` による現在ページの一時差し替えも反映する。 |
+| `export_pdf` | 表示中のデッキを16:9 PDFへ書き出すAI用action。任意の `outputPath` はworkspaceからの相対 `.pdf` パス、省略時は `presentation.pdf`。Canvas のプリンターアイコンは `sourceName` から `<元ファイル名>.pdf` を自動保存する。任意の `theme`（`dark`/`light`/`microsoft`/`custom`）はPDFだけに適用し、canvas表示は変えない。1スライド1ページで、背景・画像・コード強調・Mermaidを含む。`show_slide` による現在ページの一時差し替えも反映する。 |
 | `reset` | スライドとデッキをクリアして待機表示に戻す。 |
 
 > `load_deck` / `goto_slide` は結果に `{ ok, version, index, total }` を返します（`goto_slide` は `changed` も返し、表示が実際に変わったかを示します）。`index` は現在表示中の 0 始まりインデックス、`total` は総スライド数です。
@@ -101,12 +101,12 @@ total: 6
 | `page` | 現在ページ番号（1 始まり）。`total` と両方あるときだけフッター右に表示 |
 | `total` | 総ページ数 |
 | `title` | ブラウザータブのタイトル（省略時は `deck`） |
-| `layout` | `title` を指定すると中央寄せの表紙レイアウト、`backcover` を指定すると背表紙レイアウト（テーマ色のベタ塗り／グラデーション＋白文字。Microsoft 系テーマではロゴ＋著作権表示も付く）になる。通常スライドは省略 |
+| `layout` | `title` を指定すると表紙レイアウト、`backcover` を指定すると背表紙レイアウトになる。カスタムテーマの `theme.json` に背景・ロゴ・著作権表示があれば反映される。通常スライドは省略 |
 | `size` | コンテンツサイズ。`auto`（既定）/`normal`/`large`/`xlarge`。`auto` は余白の多い通常スライドだけを canvas が安全な範囲で拡大する |
-| `theme` | （任意・上書き用）このスライドだけ配色テーマを変える。`dark`/`light`/`microsoft`/`ms-modern`/`custom`。明示的な canvas の `theme` がある場合はそちらが優先 |
-| `theme-file` | `custom` 用。CSS カスタムプロパティだけを定義したファイルを、元 Markdown と同じフォルダーを基準にした相対パスで指定する（例: `./brand.css`） |
-| `logo` | （`layout: backcover` のみ）背表紙左上のワードマーク文字列。`microsoft` / `ms-modern` テーマでは省略時 `Microsoft`、他テーマでは明示したときだけ表示 |
-| `copyright` | （`layout: backcover` のみ）背表紙左下の著作権表示。`microsoft` / `ms-modern` テーマでは省略時 `© Copyright Microsoft Corporation. All rights reserved.`、他テーマでは明示したときだけ表示。空にすると常に非表示 |
+| `theme` | （任意・上書き用）このスライドだけ配色テーマを変える。`dark`/`light`/`microsoft`/`custom`。明示的な canvas の `theme` がある場合はそちらが優先 |
+| `theme-file` | `custom` 用。CSS カスタムプロパティだけを定義したファイルを、元 Markdown と同じフォルダーを基準にした相対パスで指定する（例: `./themes/brand/theme.css`）。同じフォルダーの `theme.json` は自動読込 |
+| `logo` | （`layout: backcover` のみ）背表紙左上の文字列。`theme.json` のロゴより優先し、空にすると非表示 |
+| `copyright` | （`layout: backcover` のみ）背表紙左下の著作権表示。`theme.json` の文言より優先し、空にすると非表示 |
 
 本文では通常の Markdown が使えます（GFM 相当: marked + 表）:
 見出し `#`/`##`/`###`、箇条書き `-`/番号付き `1.`、強調 `**太字**`/`*色付き*`、`` `コード` ``、コードブロック ` ``` `、引用 `>`、表 `|...|`、リンク、画像 `![](...)`、Mermaid 図 ` ```mermaid `、固定配置の構成図 ` ```architecture `、絵文字 `:rocket:` など。**HTML エスケープやタグ生成は不要**で、素の Markdown をそのまま書きます。
@@ -117,41 +117,41 @@ total: 6
 
 ## テーマ（配色テーマ）
 
-スライドの配色は **dark / light / microsoft / ms-modern / custom** から選べます。テーマはデッキ全体に適用し、**明示的な canvas の `theme` > Markdown front matter > `dark`** の順で決まります。
+スライドの配色は **dark / light / microsoft / custom** から選べます。テーマはデッキ全体に適用し、**明示的な canvas の `theme` > Markdown front matter > `dark`** の順で決まります。
 
 | テーマ | 見た目 |
 | --- | --- |
 | `dark` | **既定**。落ち着いた紺色の背景＋明るいアクセントのダークテーマ |
 | `light` | 白基調の明るく中立なテーマ（特定ブランドに寄らない汎用ライト） |
 | `microsoft` | Microsoft / Fluent 配色の組み込みブランドプリセット |
-| `ms-modern` | 社内 PowerPoint テンプレート（`2024-07-29-theme.thmx`）風の組み込みブランドプリセット |
+| `custom` | CSS カスタムプロパティでブランドや社内テンプレートを定義するテーマ |
 | `custom` | `themeFile` または front matter の `theme-file` で読み込む CSS カスタムプロパティ専用テーマ |
 
-カスタムテーマはスライド Markdown と同じフォルダーに置けます:
+カスタムテーマは自己完結したフォルダーに置けます:
 
 ```markdown
 ---
 theme: custom
-theme-file: ./slides.theme.css
+theme-file: ./themes/brand/theme.css
 ---
 ## ブランドテーマ
 ```
 
-テーマファイルには `--bg: #101820;` のような CSS カスタムプロパティだけを書きます。セレクターや `url()` は使用できません。
+`theme.css` には `--bg: #101820;` のような CSS カスタムプロパティだけを書きます。セレクターや `url()` は使用できません。表紙背景・表紙/背表紙ロゴ・著作権表示が必要な場合は、同じフォルダーに `theme.json` と `assets/` を置きます。画像は `theme.json` 基準の `assets/...` 相対パスで指定し、テーマフォルダー外へは出せません。
 
-> **どのテーマでも、デッキの末尾に背表紙（Closing logo slide）が自動で 1 枚追加されます。** 最終スライドが `layout: backcover` でなければ拡張機能が既定の背表紙を補います（すでにある場合は追加しません）。agent 側で背表紙を書く必要はありません。背表紙の背景はテーマごとの濃色（`dark` は紺〜紫、`light` はインディゴ〜バイオレット、`microsoft` / `ms-modern` は Microsoft ブルー）で、**ロゴと著作権表示は `microsoft` / `ms-modern` のときだけ**既定で表示されます。文言やロゴを変えたい・他テーマでも出したいときだけ、末尾に `layout: backcover` のスライドを自分で用意して `logo` / `copyright` を指定します。
+> **どのテーマでも、デッキの末尾に背表紙（Closing logo slide）が自動で 1 枚追加されます。** 最終スライドが `layout: backcover` でなければ拡張機能が既定の背表紙を補います（すでにある場合は追加しません）。agent 側で背表紙を書く必要はありません。ロゴと著作権表示は `theme.json` または背表紙 front matter で明示したときだけ表示されます。
 
 ### テーマの選び方（ユーザーのテイストから判定）
 
 プレゼンを依頼されたとき、ユーザーの言葉に**テーマに関わるテイスト**が含まれていれば、それに合うテーマを選んで `load_deck` の `theme` に渡します。判断の目安:
 
-- **ms-modern** … 「ms-modern」「新しい MS テーマ」「社内テンプレ（で）」など、この新テーマを名指しする表現。
+- **custom** … ブランドカラーや社内テンプレートを指定する表現。
 - **microsoft** … 「マイクロソフトっぽく」「Microsoft / Fluent / Office っぽい」「あの 4 色で」など、Microsoft らしさを示す表現。
 - **light** … 「明るい感じで」「ライトで」「白基調で」「清潔感のある」など、明るい配色を示す表現。
 - **dark** … 「ダークで」「暗めで」「黒っぽく」「クール / かっこよく」など、暗い配色を示す表現。
 - **指定なし** … テーマに関する言及がなければ **`dark`（既定）** で進めます。
 
-> どのテーマか迷うとき、または複数のテイストが混ざるときだけ、`ask_user` で選択肢（dark / light / microsoft / ms-modern）を尋ねます。明確なテイストがあるなら尋ねずにそのテーマで進めます。
+> どのテーマか迷うとき、または複数のテイストが混ざるときだけ、`ask_user` で選択肢（dark / light / microsoft / custom）を尋ねます。明確なテイストがあるなら尋ねずにそのテーマで進めます。
 > 発表の途中で「ライトにして」などテーマ変更を頼まれたら、`load_deck` を同じ `slides` と現在の `index`、新しい `theme` で呼び直せば、内容はそのまま配色だけ切り替わります。
 
 ## 図（ダイアグラム）と画像
@@ -215,7 +215,7 @@ DSL の機械可読な JSON Schema は
 ### 3. 全スライドの Markdown 断片を一括生成する
 **ここがプレゼン開始時の主作業**です。パースした各ページについて、「スライド断片の生成」のルールに従って**全ページ分の Markdown 断片を生成**し、表示順に並べた**配列**を作ります。各断片には `page` / `total` のフロントマターを正しい値で埋め込みます（`total` は総スライド数、`page` はそのスライドの 1 始まり番号）。元 Markdown に `slide-size` ディレクティブがあるページは、その値を `size` として引き継ぎます。指定がなければ `size` は省略し、canvas の `auto` 判定に任せます。
 
-このとき、ユーザーの依頼に**テーマに関わるテイスト**があれば「テーマの選び方」に従って `dark` / `light` / `microsoft` / `ms-modern` のどれかを決めておき、次の手順 4 で `open` の `input` の `theme` に渡します（言及がなければ `dark`）。テーマは各スライドの front matter には書かず、デッキ単位で 1 回指定します。
+このとき、ユーザーの依頼に**テーマに関わるテイスト**があれば「テーマの選び方」に従って `dark` / `light` / `microsoft` / `custom` のどれかを決めておき、次の手順 4 で `open` の `input` の `theme` に渡します（言及がなければ `dark`）。テーマは各スライドの front matter には書かず、デッキ単位で 1 回指定します。
 
 > この一括生成は**プレゼン開始時に一度だけ**行います。あとのページ送りでは断片を作り直しません。
 > スライド一覧（☰）のタイトルは canvas 側が各断片から自動生成するため、agent が `titles` を会話メモリに保持する必要はありません。現在位置の管理も canvas（拡張機能）が行います。

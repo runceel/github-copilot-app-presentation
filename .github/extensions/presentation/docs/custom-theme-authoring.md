@@ -5,14 +5,26 @@
 
 ## 最小構成
 
-テーマファイルには CSS カスタムプロパティだけを書きます。ファイルは
-スライド Markdown と同じフォルダーに置くことができます。
+テーマはフォルダー単位で管理できます。CSS にはカスタムプロパティだけを書き、
+同じフォルダーの `theme.json` に任意の表紙・背表紙素材を定義します。
 
 ```markdown
 ---
 theme: custom
-theme-file: ./brand.css
+theme-file: ./themes/brand/theme.css
 ---
+```
+
+最小のテーマフォルダーは次の構成です。`theme.json` は省略でき、その場合は
+従来どおり CSS だけのテーマとして動作します。
+
+```text
+themes/brand/
+  theme.css
+  theme.json
+  assets/
+    cover.svg
+    logo.svg
 ```
 
 ```css
@@ -69,13 +81,47 @@ theme-file: ./brand.css
 | `--topbar` | 上部バーの背景 |
 | `--kicker-mark` | kicker のマーク |
 | `--cover-bg` | 表紙背景 |
+| `--cover-topbar` | 表紙だけに使う上部バー背景 |
+| `--cover-text-align` | 表紙本文の文字揃え |
+| `--cover-content-align` | 表紙本文内の横方向配置 |
+| `--cover-content-self` | 表紙本文領域の配置 |
+| `--cover-content-width` | 表紙本文領域の幅 |
+| `--cover-logo-width` | 表紙ロゴの幅 |
 | `--backcover-bg` | 背表紙背景 |
+| `--backcover-logo-width` | 背表紙ロゴの幅 |
 | `--print-slide-bg` | PDF の通常ページ背景 |
 | `--print-cover-bg` | PDF の表紙背景 |
 | `--ms-font` | Microsoft 系テーマのフォント指定 |
 
 `--ms-red`、`--ms-green`、`--ms-blue`、`--ms-yellow` もブランド用の
 補助色として利用できます。
+
+## theme.json
+
+CSS と同じフォルダーに `theme.json` があると自動的に読み込まれます。
+画像パスは `theme.json` を基準にした `assets/...` 形式で指定します。
+
+```json
+{
+  "$schema": "../../.github/extensions/presentation/schema/theme-metadata-v1.schema.json",
+  "version": 1,
+  "cover": {
+    "background": { "image": "assets/cover.svg" },
+    "logo": { "image": "assets/logo.svg", "alt": "Example" }
+  },
+  "backcover": {
+    "logo": { "image": "assets/logo-light.svg", "alt": "Example" },
+    "copyright": "Copyright Example"
+  }
+}
+```
+
+- `cover.background` は装飾画像なので `alt` を省略できます。
+- ロゴの `alt` は必須です。
+- 対応形式は SVG / PNG / WebP / JPEG、1 ファイル 2 MiB 以下です。
+- 絶対パス、外部 URL、`..`、テーマフォルダー外へのシンボリックリンクは拒否します。
+- `theme.json` が存在するのに不正な場合は、CSS だけへ黙ってフォールバックせずエラーを返します。
+- slide front matter の `logo` / `copyright` は背表紙メタデータより優先されます。
 
 ### サイズと余白
 
@@ -92,6 +138,7 @@ theme-file: ./brand.css
 - CSS の任意ルールや JavaScript をテーマファイルへ書かないでください。
 - テーマファイルはワークスペース内に置き、Markdown からの相対パスで指定してください。
 - テーマファイルの最大サイズは 64 KiB です。
+- `theme.json` の最大サイズは 64 KiB です。
 - 同じプロパティを複数回指定した場合は最後の値が使われます。
 - 色だけでなくグラデーションも指定できます。本文と補助テキストのコントラストは確認してください。
 - PDF 出力にも同じテーマが適用されます。
@@ -115,6 +162,9 @@ theme-file: ./brand.css
   --topbar: linear-gradient(90deg, #42d3ff, #a6f36b);
   --kicker-mark: linear-gradient(135deg, #42d3ff, #a6f36b);
   --cover-bg: linear-gradient(145deg, #102b48, #101729);
+  --cover-text-align: left;
+  --cover-content-align: flex-start;
+  --cover-content-width: 62%;
   --backcover-bg: linear-gradient(145deg, #0d6b91, #315b32);
 }
 ```
