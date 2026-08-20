@@ -87,14 +87,21 @@ themes/brand/
 | `--cover-content-self` | 表紙本文領域の配置 |
 | `--cover-content-width` | 表紙本文領域の幅 |
 | `--cover-logo-width` | 表紙ロゴの幅 |
+| `--section-bg` | セクション区切り背景 |
 | `--backcover-bg` | 背表紙背景 |
 | `--backcover-logo-width` | 背表紙ロゴの幅 |
 | `--print-slide-bg` | PDF の通常ページ背景 |
 | `--print-cover-bg` | PDF の表紙背景 |
+| `--print-section-bg` | PDF のセクション区切り背景 |
 | `--ms-font` | Microsoft 系テーマのフォント指定 |
 
 `--ms-red`、`--ms-green`、`--ms-blue`、`--ms-yellow` もブランド用の
 補助色として利用できます。
+
+`--section-bg` と `--print-section-bg` は CSS の `background` として使われます。
+単色だけでなく、カンマ区切りの複数グラデーションも指定できます。テーマファイルの
+安全制約により `url()` は使用できません。セクション区切りには画像・ロゴ・アイコン用の
+`theme.json` 設定はありません。
 
 ## theme.json
 
@@ -165,6 +172,11 @@ CSS と同じフォルダーに `theme.json` があると自動的に読み込�
   --cover-text-align: left;
   --cover-content-align: flex-start;
   --cover-content-width: 62%;
+  --section-bg:
+    linear-gradient(55deg, transparent 76%, #42d3ff 77%, transparent 78%),
+    radial-gradient(110% 55% at 60% 115%, #42d3ff, #315b32 42%, transparent 72%),
+    #0b1320;
+  --print-section-bg: var(--section-bg);
   --backcover-bg: linear-gradient(145deg, #0d6b91, #315b32);
 }
 ```

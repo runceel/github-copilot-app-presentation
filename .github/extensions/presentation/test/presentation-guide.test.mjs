@@ -28,7 +28,10 @@ test("readGuide returns every document-backed topic", async () => {
 
   const themeSchemaGuide = await readGuide("theme-schema");
   assert.match(themeSchemaGuide, /"--accent"/);
+  assert.match(themeSchemaGuide, /"--section-bg"/);
+  assert.match(themeSchemaGuide, /"--print-section-bg"/);
   assert.match(themeSchemaGuide, /CSS custom property/);
+  assert.match(await readGuide("slide-format"), /layout: section/);
   assert.match(await readGuide("custom-ehemes"), /カスタムテーマ作成ガイド/);
 });
 

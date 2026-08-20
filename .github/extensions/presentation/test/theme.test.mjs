@@ -38,6 +38,23 @@ test("theme CSS accepts custom properties and a root wrapper", () => {
   );
 });
 
+test("section backgrounds accept layered gradients and a print override", () => {
+  const variables = parseThemeVariables(`
+    --section-bg:
+      linear-gradient(55deg, transparent 76%, #42d3ff 77%, transparent 78%),
+      radial-gradient(110% 55% at 60% 115%, #42d3ff, #315b32 42%, transparent 72%),
+      #0b1320;
+    --print-section-bg: var(--section-bg);
+  `);
+  assert.deepEqual(variables, {
+    "--section-bg":
+      "linear-gradient(55deg, transparent 76%, #42d3ff 77%, transparent 78%),\n" +
+      "      radial-gradient(110% 55% at 60% 115%, #42d3ff, #315b32 42%, transparent 72%),\n" +
+      "      #0b1320",
+    "--print-section-bg": "var(--section-bg)",
+  });
+});
+
 test("theme CSS rejects selectors and unsafe values", () => {
   assert.throws(() => parseThemeVariables(".deck { color: red; }"), /only --custom-property/);
   assert.throws(() => parseThemeVariables("--bg: url(https://example.test/bg.png);"), /unsafe/);

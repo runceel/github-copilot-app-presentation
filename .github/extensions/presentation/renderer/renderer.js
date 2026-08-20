@@ -333,6 +333,7 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
 
   const layout = (meta.layout || "").toLowerCase();
   const titleSlide = layout === "title";
+  const sectionSlide = layout === "section";
   // 背表紙 (.thmx の "Closing logo slide" 相当)。ロゴと著作権表示は本文とは別に
   // 組み立てるので、専用レイアウトとして扱う。
   const backcoverSlide = layout === "backcover";
@@ -347,6 +348,7 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
   deck.className = "deck";
   deck.dataset.theme = theme;
   if (titleSlide) deck.className = "deck title-slide";
+  else if (sectionSlide) deck.className = "deck section-slide";
   else if (backcoverSlide) deck.className = "deck backcover-slide";
   if (sizeMode !== "auto") setSizeLevel(deck, sizeMode);
 
@@ -472,6 +474,7 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
     theme,
     sizeMode,
     titleSlide,
+    sectionSlide,
     backcoverSlide,
     title: meta.title || meta.deck || "Slide",
   };
@@ -498,7 +501,10 @@ function renderSlide(markdown) {
     deck: slide.deck,
     bodyEl: slide.bodyEl,
     autoSize:
-      slide.sizeMode === "auto" && !slide.titleSlide && !slide.backcoverSlide,
+      slide.sizeMode === "auto" &&
+      !slide.titleSlide &&
+      !slide.sectionSlide &&
+      !slide.backcoverSlide,
   };
   scheduleLayoutRefresh();
   // Mermaid diagrams and images resolve their size asynchronously, so the
@@ -586,7 +592,12 @@ async function renderPrintDeck(
   if (document.fonts?.ready) await document.fonts.ready;
   await afterLayout();
   for (const slide of rendered) {
-    if (slide.sizeMode === "auto" && !slide.titleSlide && !slide.backcoverSlide) {
+    if (
+      slide.sizeMode === "auto" &&
+      !slide.titleSlide &&
+      !slide.sectionSlide &&
+      !slide.backcoverSlide
+    ) {
       applyAutoSize(slide.deck, slide.bodyEl);
     }
   }
