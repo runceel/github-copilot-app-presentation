@@ -61,7 +61,7 @@ Extension 単体をユーザースコープへ導入した場合も同じ仕様�
 | `deck` / `kicker` | フッターのデッキ名 / 見出し上のラベル |
 | `page` / `total` | 1 始まりの現在ページ / 総ページ数 |
 | `title` | ブラウザータブのタイトル |
-| `layout` | 表紙は `title`、背表紙は `backcover`。通常スライドは省略 |
+| `layout` | 表紙は `title`、セクション区切りは `section`、背表紙は `backcover`。通常スライドは省略 |
 | `size` | `auto`（既定）/ `normal` / `large` / `xlarge` |
 | `theme` | スライド単位の上書き。通常はデッキの `theme` を使う |
 | `logo` / `copyright` | `backcover` のメタデータ既定値を上書きする表示内容 |
@@ -69,6 +69,18 @@ Extension 単体をユーザースコープへ導入した場合も同じ仕様�
 先頭スライドは `layout: title` の表紙として作ります。デッキ末尾の
 `layout: backcover` は Extension が自動追加します。本文では見出し、リスト、表、画像、
 コード、`mermaid`、`architecture` を利用できます。
+
+章の区切りには、途中のスライドへ `layout: section` を指定します。本文は通常 H1 または
+H2 の見出し 1 つだけにし、`kicker` やフッターは必要な場合だけ指定します。背景はテーマ色へ
+追従し、画像・ロゴ・アイコンは追加されません。
+
+```markdown
+---
+layout: section
+---
+
+## GitHub Copilot の主な機能
+```
 
 ### テーマの選び方
 
@@ -580,7 +592,7 @@ size: xlarge
 ## 強調したいスライド
 ```
 
-指定値は `auto` / `normal` / `large` / `xlarge`。front matter とコメントの両方がある場合は front matter が優先されます。`layout: title` / `layout: backcover` は専用レイアウトを維持し、自動拡大の対象外です。
+指定値は `auto` / `normal` / `large` / `xlarge`。front matter とコメントの両方がある場合は front matter が優先されます。`layout: title` / `layout: section` / `layout: backcover` は専用レイアウトを維持し、自動拡大の対象外です。
 
 ## Surface Pen で操作する
 

@@ -18,9 +18,17 @@
   --cover-bg:
     radial-gradient(1200px 760px at 50% 34%, rgba(78,168,255,.20) 0%, transparent 66%),
     linear-gradient(160deg,#11203a 0%,#0e1117 60%);
+  --section-bg:
+    linear-gradient(56deg,transparent 0 76%,rgba(225,78,181,.78) 76.4%,
+      rgba(122,92,255,.9) 77.2%,rgba(78,168,255,.95) 78%,transparent 78.4%)
+      top right/52% 80% no-repeat,
+    radial-gradient(120% 58% at 62% 118%,rgba(78,168,255,.92) 0%,
+      rgba(122,92,255,.68) 34%,rgba(14,17,23,0) 72%),
+    linear-gradient(160deg,#101827 0%,#0e1117 62%);
   --backcover-bg:linear-gradient(135deg,#1d2b52 0%,#2a1f52 100%);
   --print-slide-bg:#0e1117;
   --print-cover-bg:linear-gradient(160deg,#11203a 0%,#0e1117 60%);
+  --print-section-bg:var(--section-bg);
 }:root[data-theme="light"],
 .deck[data-theme="light"]{
   --bg:#ffffff; --fg:#15181f; --muted:#5b6470; --body:#333a44;
@@ -37,9 +45,17 @@
   --cover-bg:
     radial-gradient(1200px 760px at 50% 32%, #e0e7ff 0%, transparent 70%),
     linear-gradient(160deg,#eef2ff 0%,#ffffff 58%);
+  --section-bg:
+    linear-gradient(56deg,transparent 0 76%,rgba(225,78,181,.72) 76.4%,
+      rgba(124,58,237,.88) 77.2%,rgba(59,130,246,.94) 78%,transparent 78.4%)
+      top right/52% 80% no-repeat,
+    radial-gradient(120% 58% at 62% 118%,rgba(37,99,235,.95) 0%,
+      rgba(79,70,229,.84) 31%,rgba(124,58,237,.42) 48%,rgba(255,255,255,0) 72%),
+    linear-gradient(160deg,#fff 0%,#f7f7fa 72%);
   --backcover-bg:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);
   --print-slide-bg:#ffffff;
   --print-cover-bg:linear-gradient(160deg,#e0e7ff 0%,#eef2ff 45%,#ffffff 100%);
+  --print-section-bg:var(--section-bg);
 }
 :root[data-theme="microsoft"],
 .deck[data-theme="microsoft"]{
@@ -59,9 +75,17 @@
   --cover-bg:
     radial-gradient(1100px 720px at 50% 26%, #9fd0f4 0%, transparent 72%),
     linear-gradient(160deg,#bfe1fb 0%,#daeefc 100%);
+  --section-bg:
+    linear-gradient(56deg,transparent 0 76%,rgba(216,59,154,.74) 76.4%,
+      rgba(115,74,200,.88) 77.2%,rgba(0,120,212,.94) 78%,transparent 78.4%)
+      top right/52% 80% no-repeat,
+    radial-gradient(120% 58% at 62% 118%,rgba(0,120,212,.94) 0%,
+      rgba(47,98,205,.82) 31%,rgba(115,74,200,.4) 49%,rgba(255,255,255,0) 72%),
+    linear-gradient(160deg,#fff 0%,#f5f5f5 72%);
   --backcover-bg:#0078d4;
   --print-slide-bg:#ffffff;
   --print-cover-bg:linear-gradient(160deg,#a7d4f5 0%,#b7dcf7 55%,#d1e9fa 100%);
+  --print-section-bg:var(--section-bg);
 }
 *{box-sizing:border-box}
 /* The canvas viewport itself never scrolls: a slide always fills exactly one
@@ -262,6 +286,21 @@ footer .page{color:var(--accent-strong);font-weight:600;background:var(--accent-
       border-radius:0;box-shadow:none;z-index:2;}
 .deck.title-slide>header,.deck.title-slide>footer{z-index:1;}
 
+/* ===== Section divider layout =====
+   Keeps the heading block vertically centered and left aligned. The diagonal
+   accent and lower color sweep are part of --section-bg, so custom themes can
+   replace the background without introducing an icon or image asset path. */
+.deck.section-slide{justify-content:center;text-align:left;
+      background:var(--section-bg,var(--cover-bg,var(--bg)));}
+.deck.section-slide::before{display:none;}
+.deck.section-slide>header{flex:0 0 auto;z-index:1;}
+.deck.section-slide>.body{flex:0 1 auto;justify-content:center;justify-content:safe center;
+      max-height:calc(100% - 2*var(--deck-pad-y));z-index:1;}
+.deck.section-slide h1,.deck.section-slide h2{font-weight:400;letter-spacing:-.025em;}
+.deck.section-slide>footer{position:absolute;
+      left:var(--deck-pad-x);right:var(--deck-pad-x);bottom:var(--deck-pad-y);
+      margin-top:0;z-index:1;}
+
 /* ===== Back cover (背表紙) =====
    .thmx の「Closing logo slide」に相当し、どのテーマでもデッキの最後に付く。
    背景はテーマごとの --backcover-bg（濃色）に白文字。ロゴと著作権表示は
@@ -377,10 +416,13 @@ body.presenter-mode #navExport{display:none;}
     --slide-h1-size:60px;--slide-h2-size:48px;--slide-h3-size:33px;
     --slide-body-size:28px;--slide-code-size:19px;
   }
-  body.print-mode .deck:not(.title-slide):not(.backcover-slide){
+  body.print-mode .deck:not(.title-slide):not(.section-slide):not(.backcover-slide){
     background:var(--print-slide-bg,var(--bg));
   }
   body.print-mode .deck.title-slide{background:var(--print-cover-bg,var(--cover-bg));}
+  body.print-mode .deck.section-slide{
+    background:var(--print-section-bg,var(--section-bg,var(--bg)));
+  }
   body.print-mode .deck.backcover-slide{background:var(--backcover-bg,var(--accent));}
   body.print-mode .deck:last-child{break-after:auto;page-break-after:auto;}
   body.print-mode .deck::before{position:absolute;}

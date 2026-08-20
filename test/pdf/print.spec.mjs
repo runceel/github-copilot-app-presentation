@@ -31,6 +31,9 @@ const MIXED_SLIDE = readFileSync(
   join(REPO_ROOT, "test", "fixtures", "print-mixed.md"),
   "utf8",
 ).trim();
+const SECTION_DECK = splitFixtureDeck(
+  readFileSync(join(REPO_ROOT, "test", "fixtures", "layout-visual.md"), "utf8"),
+);
 // 背表紙の手前に mermaid + architecture 混在スライドを差し込んだデッキ。
 const MIXED_DECK = [...ARCHITECTURE_DECK.slice(0, -1), MIXED_SLIDE, ...ARCHITECTURE_DECK.slice(-1)];
 
@@ -46,6 +49,8 @@ const PDF_OPTIONS = { printBackground: true, preferCSSPageSize: true };
 function readPrintStructure(page) {
   return page.evaluate(() =>
     [...document.querySelectorAll("#stage > .deck")].map((deck) => ({
+      className: deck.className,
+      backgroundImage: getComputedStyle(deck).backgroundImage,
       diagrams: [...deck.querySelectorAll("svg.architecture-svg")].map((svg) => ({
         viewBox: svg.getAttribute("viewBox"),
         groups: svg.querySelectorAll('[data-architecture-type="group"]').length,
@@ -138,6 +143,25 @@ test("mermaid を含むデッキも 16:9 で出力される", async ({ page }) =
 
     const { pageCount, mediaBoxes } = inspectPdf(pdf);
     expect(pageCount, "mermaid を含んでも 1 スライド = 1 ページ").toBe(MIXED_DECK.length);
+    assertSixteenByNine(mediaBoxes);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("セクション区切りも背景付きの 16:9 ページとして出力される", async ({ page }) => {
+  const harness = await startHarness({ slides: SECTION_DECK, theme: "microsoft" });
+  try {
+    const { structure, pdf } = await renderPrintDeck(page, harness);
+
+    expect(structure).toHaveLength(SECTION_DECK.length);
+    for (const slide of structure) {
+      expect(slide.className.split(/\s+/)).toContain("section-slide");
+      expect(slide.backgroundImage).not.toBe("none");
+    }
+
+    const { pageCount, mediaBoxes } = inspectPdf(pdf);
+    expect(pageCount, "セクション区切りも 1 スライド = 1 ページ").toBe(SECTION_DECK.length);
     assertSixteenByNine(mediaBoxes);
   } finally {
     await harness.close();
