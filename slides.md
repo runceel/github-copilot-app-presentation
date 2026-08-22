@@ -299,7 +299,20 @@ flowchart LR
 - `dark`: 落ち着いたダークテーマ（既定）
 - `light`: 明るく中立的なテーマ
 - `microsoft`: Fluent 配色
-- `ms-modern`: Microsoft の新しいテンプレート風
+- `custom`: CSS カスタムプロパティで独自の配色や表紙を定義
+
+カスタムテーマは、Markdown からテーマファイルを指定します。
+
+```markdown
+---
+theme: custom
+theme-file: ./themes/brand/theme.css
+---
+```
+
+---
+
+## スライドのサイズを調整する
 
 特に強調したいページには、本文の先頭へ指定を追加できます。
 
