@@ -346,6 +346,9 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
   // 背表紙 (.thmx の "Closing logo slide" 相当)。ロゴと著作権表示は本文とは別に
   // 組み立てるので、専用レイアウトとして扱う。
   const backcoverSlide = layout === "backcover";
+  // 通常スライドは上寄せが既定。`layout: center` のときだけ、見出しと本文を
+  // まとめて上下中央に置く（見出しの抽出やサイズ自動調整は通常どおり働く）。
+  const centerSlide = layout === "center";
   const sizeMode = normalizeSizeMode(meta.size || directive.size);
 
   // A slide-level `theme:` overrides the deck theme. Keep it on the deck element
@@ -359,6 +362,7 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
   if (titleSlide) deck.className = "deck title-slide";
   else if (sectionSlide) deck.className = "deck section-slide";
   else if (backcoverSlide) deck.className = "deck backcover-slide";
+  else if (centerSlide) deck.className = "deck center-slide";
   if (sizeMode !== "auto") setSizeLevel(deck, sizeMode);
 
   if (titleSlide) {

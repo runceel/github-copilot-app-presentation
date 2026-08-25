@@ -18,7 +18,16 @@ function section(markdown, heading) {
   if (start < 0) throw new Error(`guide section not found: ${heading}`);
   const level = heading.match(/^#+/)?.[0].length ?? 1;
   let end = lines.length;
+  let fence = null;
   for (let index = start + 1; index < lines.length; index += 1) {
+    const fenceMatch = lines[index].match(/^\s*(`{3,}|~{3,})/);
+    if (fenceMatch) {
+      const marker = fenceMatch[1][0];
+      if (!fence) fence = marker;
+      else if (fence === marker) fence = null;
+      continue;
+    }
+    if (fence) continue;
     const match = lines[index].match(/^(#+)\s/);
     if (match && match[1].length <= level) {
       end = index;

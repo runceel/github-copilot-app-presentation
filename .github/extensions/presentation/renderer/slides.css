@@ -147,11 +147,11 @@ h1{font-size:var(--slide-h1-size);line-height:1.08;margin:.1em 0 .25em;
 h2{font-size:var(--slide-h2-size);line-height:1.14;margin:.1em 0 .45em;
    font-weight:600;letter-spacing:-.005em;color:var(--fg);}
 h3{font-size:var(--slide-h3-size);margin:.25em 0 .3em;font-weight:600;color:var(--accent-strong);}
-/* Standard slides reserve the header for their leading H1/H2, while the body
-   keeps its independent centered layout below. */
+/* Standard slides reserve the header for their leading H1/H2, and the body flows
+   from the top right below it (`layout: center` opts back into centering). */
 .deck.has-slide-title>header{display:flex;flex-direction:column;align-items:flex-start;}
 .deck.has-slide-title .slide-title{flex:0 0 auto;width:100%;margin-top:0;}
-.body{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;justify-content:safe center;
+.body{flex:1 1 auto;display:flex;flex-direction:column;justify-content:flex-start;
       font-size:var(--slide-body-size);line-height:1.55;gap:.5em;min-height:0;overflow:hidden;color:var(--body);}
 /* `overflow:auto` would show a scrollbar for a sub-pixel overflow, so scrolling
    is opted into by the renderer only when the content really does not fit
@@ -267,6 +267,17 @@ footer{flex:0 0 auto;display:flex;justify-content:space-between;align-items:cent
        margin-top:clamp(12px,2.2vh,26px);border-top:1px solid var(--border);padding-top:12px;}
 footer .page{color:var(--accent-strong);font-weight:600;background:var(--accent-soft);
              border:1px solid var(--accent-line);border-radius:999px;padding:.18em .8em;}
+/* ===== Center layout (`layout: center`) =====
+   通常スライドは見出しも本文も上寄せが既定。`layout: center` のときだけ、
+   見出しと本文をひとかたまりとして上下中央に置く。中央寄せの基準がずれない
+   よう、フッターは表紙・セクションと同じく絶対配置で下端に固定する。 */
+.deck.center-slide{justify-content:center;}
+.deck.center-slide>.body{flex:0 1 auto;justify-content:center;justify-content:safe center;
+      max-height:calc(100% - 2*var(--deck-pad-y));}
+.deck.center-slide>footer{position:absolute;
+      left:var(--deck-pad-x);right:var(--deck-pad-x);bottom:var(--deck-pad-y);
+      margin-top:0;}
+
 /* ===== Cover (title) layout =====
    Centers the kicker + body as one block (footer pinned to the bottom via
    absolute positioning so it doesn't shift the centering) with its own

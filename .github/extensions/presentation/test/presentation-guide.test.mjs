@@ -33,6 +33,8 @@ test("readGuide returns every document-backed topic", async () => {
   assert.match(themeSchemaGuide, /CSS custom property/);
   assert.match(await readGuide("slide-format"), /layout: section/);
   assert.match(await readGuide("slide-format"), /上部のタイトル領域/);
+  assert.match(await readGuide("slide-format"), /layout: center/);
+  assert.doesNotMatch(await readGuide("slide-format"), /### テーマの選び方/);
   assert.match(await readGuide("custom-ehemes"), /カスタムテーマ作成ガイド/);
 });
 

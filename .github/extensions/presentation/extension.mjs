@@ -1961,7 +1961,7 @@ const session = await joinSession({
             items: { type: "string" },
             minItems: 1,
             description:
-              "スライド1枚分の Markdown 断片の配列。open と同時に渡すとデッキを登録し、最初のスライドを即座に表示する（プレースホルダーを挟まない）。各要素の先頭に deck/kicker/page/total/title/layout/theme のフロントマターを任意で付けられる。表示順に並べる。",
+              "スライド1枚分の Markdown 断片の配列。open と同時に渡すとデッキを登録し、最初のスライドを即座に表示する（プレースホルダーを挟まない）。各要素の先頭に deck/kicker/page/total/title/layout/theme のフロントマターを任意で付けられる。layout は title / section / backcover / center で、省略時は見出しも本文も上寄せ、center は見出しと本文をまとめて上下中央に置く。表示順に並べる。",
           },
           index: {
             type: "integer",
@@ -2000,7 +2000,7 @@ const session = await joinSession({
                 items: { type: "string" },
                 minItems: 1,
                 description:
-                  "スライド1枚分の Markdown 断片の配列。各要素の先頭に deck/kicker/page/total/title/layout/theme/theme-file のフロントマターを任意で付けられる。表示順に並べる。",
+                  "スライド1枚分の Markdown 断片の配列。各要素の先頭に deck/kicker/page/total/title/layout/theme/theme-file のフロントマターを任意で付けられる。layout は title / section / backcover / center で、省略時は見出しも本文も上寄せ、center は見出しと本文をまとめて上下中央に置く。表示順に並べる。",
               },
               index: {
                 type: "number",
@@ -2117,7 +2117,7 @@ const session = await joinSession({
               markdown: {
                 type: "string",
                 description:
-                  "表示するスライド1枚分の Markdown。先頭に `---` で囲んだ deck/kicker/page/total/title/layout/theme のフロントマターを任意で付けられる（theme 省略時は現在のデッキテーマを引き継ぐ）。",
+                  "表示するスライド1枚分の Markdown。先頭に `---` で囲んだ deck/kicker/page/total/title/layout/theme のフロントマターを任意で付けられる（theme 省略時は現在のデッキテーマを引き継ぐ）。layout は title / section / backcover / center で、省略時は見出しも本文も上寄せ、center は見出しと本文をまとめて上下中央に置く。",
               },
             },
             required: ["markdown"],
