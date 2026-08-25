@@ -4,7 +4,7 @@
 //   1. ドラッグでノードが動き、**connector が引き直される**
 //      （旧 PoC は transform だけを当てていたので線が置き去りになっていた）
 //   2. キーボードだけで一通り操作できる（選択・移動・layout 解除・undo/redo）
-//   3. 編集結果が /edit で元の Markdown へ書き戻り、再描画後も残る
+//   3. 編集結果が /edit でデッキの Markdown 断片へ書き戻り、再描画後も残る
 //   4. presenter / 印刷では編集 UI が **DOM に存在しない**
 //
 // スクリーンショット比較はしない（ここは振る舞いの検証で、見た目は visual が担当）。
@@ -145,7 +145,7 @@ test.describe("編集モード", () => {
     }
   });
 
-  test("編集は元の Markdown へ書き戻り、再読み込み後も残る", async ({ page }) => {
+  test("編集はデッキの Markdown 断片へ書き戻り、再読み込み後も残る", async ({ page }) => {
     const harness = await openEditor(page);
     try {
       await page.locator(NODE("client")).focus();
@@ -260,7 +260,7 @@ test.describe("編集 UI が発表・印刷へ漏れない", () => {
 test.describe("編集モードへの到達（利用者が通る経路）", () => {
   // ここが通らないと Phase 5 は「実装したが誰も使えない」状態になる。
   // 単体で setArchitectureEditMode が動くことではなく、URL を開いてから
-  // 図を動かし、元の Markdown が実際に書き換わるまでを 1 本で見る。
+  // 図を動かし、デッキの Markdown 断片が実際に書き換わるまでを 1 本で見る。
 
   test("?architectureEdit=1 で編集モードに入り、書き戻しまで通る", async ({ page }) => {
     // サーバーは無効な状態から始める（クライアントだけ true になる余地を潰す）。
@@ -279,7 +279,7 @@ test.describe("編集モードへの到達（利用者が通る経路）", () =>
       await page.waitForTimeout(2600);
       await expect(page.locator(EDITOR)).toHaveCount(1);
 
-      // 実際に動かして、元の Markdown が書き換わる。
+      // 実際に動かして、デッキの Markdown 断片が書き換わる。
       const before = harness.slideAt(0);
       await page.locator(NODE("client")).focus();
       await page.keyboard.press("ArrowDown");

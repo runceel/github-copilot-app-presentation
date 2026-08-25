@@ -25,12 +25,15 @@
 //   GET  /assets/*              → リポジトリ直下 assets/
 
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve, normalize, sep, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { reconstructAsset } from "../../.github/extensions/presentation/scripts/vendor-assets.mjs";
-import { replaceArchitectureBlock } from "../../.github/extensions/presentation/scripts/markdown-blocks.mjs";
+import {
+  replaceArchitectureBlock,
+  replaceImportedArchitectureBlock,
+} from "../../.github/extensions/presentation/scripts/markdown-blocks.mjs";
 import {
   isMarkdownPath,
   listMarkdownFiles,
@@ -151,6 +154,8 @@ export async function startHarness({
     architectureEdit: Boolean(architectureEdit),
     // インポートされた Markdown の相対パス（未インポートなら空）。
     sourceName: "",
+    sourceWriteback: false,
+    sourceWritebackSnapshot: "",
   };
   // renderer が POST してきた印刷結果。テスト側が "ready" を確認するために保持する。
   const printReports = [];
@@ -354,14 +359,57 @@ export async function startHarness({
       }
       const target = Number.isInteger(body.index) ? body.index : state.index;
       const block = Number.isInteger(body.block) ? body.block : 0;
+      const deckVersion = Number.isInteger(body.deckVersion)
+        ? body.deckVersion
+        : state.deckVersion;
       if (target < 0 || target >= state.slides.length) {
         sendJson(res, 400, { ok: false, error: "index_out_of_range" });
+        return;
+      }
+      if (deckVersion !== state.deckVersion) {
+        sendJson(res, 409, { ok: false, error: "deck_changed" });
         return;
       }
       const next = replaceArchitectureBlock(state.slides[target], block, body.source);
       if (next === null) {
         sendJson(res, 404, { ok: false, error: "block_not_found" });
         return;
+      }
+      if (state.sourceWriteback) {
+        const sourcePath = state.sourceName ? safeJoin(markdownRoot, state.sourceName) : null;
+        if (!sourcePath || !isMarkdownPath(sourcePath)) {
+          sendJson(res, 409, { ok: false, error: "source_file_unavailable" });
+          return;
+        }
+        let sourceMarkdown;
+        try {
+          sourceMarkdown = await readFile(sourcePath, "utf8");
+        } catch (_) {
+          sendJson(res, 404, { ok: false, error: "source_file_not_found" });
+          return;
+        }
+        const fileEdit = replaceImportedArchitectureBlock(
+          sourceMarkdown,
+          state.slides,
+          target,
+          block,
+          body.source,
+          state.sourceWritebackSnapshot,
+        );
+        if (!fileEdit.ok) {
+          sendJson(res, fileEdit.reason === "block_not_found" ? 404 : 409, {
+            ok: false,
+            error: fileEdit.reason,
+          });
+          return;
+        }
+        try {
+          await writeFile(sourcePath, fileEdit.markdown, "utf8");
+          state.sourceWritebackSnapshot = fileEdit.markdown;
+        } catch (_) {
+          sendJson(res, 500, { ok: false, error: "source_write_failed" });
+          return;
+        }
       }
       state.slides[target] = next;
       state.deckVersion += 1;
@@ -375,6 +423,7 @@ export async function startHarness({
         index: target,
         block,
         markdown: state.slides[state.index] ?? "",
+        fileSaved: state.sourceWriteback,
       });
       return;
     }
@@ -437,6 +486,8 @@ export async function startHarness({
       state.slides = imported;
       state.index = 0;
       state.sourceName = rel;
+      state.sourceWriteback = true;
+      state.sourceWritebackSnapshot = text;
       state.deckVersion += 1;
       state.version += 1;
       broadcast();

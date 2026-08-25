@@ -98,6 +98,8 @@ export function attachArchitectureEditor(container, options = {}) {
   let svg = null;
   // 保存応答の追い越し対策。最後に投げた保存だけが表示を書き換えられる。
   let saveToken = 0;
+  // 移動を連打しても、前の保存応答（deckVersion）を受け取ってから次を送る。
+  let commitQueue = Promise.resolve();
 
   function createButton(label, action) {
     const button = documentRef.createElement("button");
@@ -132,7 +134,9 @@ export function attachArchitectureEditor(container, options = {}) {
     reportSave("saving", "保存中…");
     let result;
     try {
-      result = await onCommit(source);
+      const pending = commitQueue.catch(() => {}).then(() => onCommit(source));
+      commitQueue = pending;
+      result = await pending;
     } catch (e) {
       result = { ok: false, message: e?.message || "不明なエラー" };
     }
@@ -141,7 +145,10 @@ export function attachArchitectureEditor(container, options = {}) {
     // 成功と言い切れるとき **だけ** 成功にする。onCommit が結果を返し忘れた場合も
     // 「失敗」側へ倒す: 保存できたと嘘をつくより、できていないと言う方が安全。
     if (result?.ok === true) {
-      reportSave("saved", "保存しました。");
+      reportSave(
+        "saved",
+        result.fileSaved ? "元 Markdown に保存しました。" : "canvas に保存しました。",
+      );
       return;
     }
     const message = result?.message || "保存結果を確認できませんでした";

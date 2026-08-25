@@ -548,14 +548,18 @@ connector の `from` / `to` を入れ替えます）。`direction` は `layered`
 
 ### 編集モード（位置調整）
 
-Architecture 図はレンダリング結果の上で直接動かせます。編集した内容は**元の Markdown の
-```architecture フェンスへ書き戻り**、再描画・再読み込み後も残ります。
+Architecture 図はレンダリング結果の上で直接動かせます。Canvas の 📂 から Markdown を
+インポートしたデッキでは、編集した内容が**元ファイルの ```architecture フェンスへ
+書き戻り**、再インポート後も残ります。`open` / `load_deck` で渡されたデッキは元ファイルとの
+可逆な対応を保証できないため、従来どおり canvas のデッキ状態だけへ保存します。
 
 **編集モードは Architecture DSL v1 の一部で、stable です。** 実験的な付属機能ではなく、
 以下は v1 の契約として維持します。
 
 - 書き戻し先は**元の ```architecture フェンスだけ**で、フェンス外の地の文・front matter・
   改行コードは変更しません。
+- インポート後に対象フェンスが外部変更されていた場合は、元ファイルを上書きせず競合として
+  保存を拒否します。Markdown を再インポートしてから編集し直してください。
 - 保存の成否は**必ず画面に出ます**（後述）。黙って失敗することはありません。
 - `?present=1` と `?print=1` では編集 UI を**生成しません**。
 - 編集モードはサーバー側の状態で、デッキと一緒には永続化しません。
@@ -596,7 +600,8 @@ Architecture 図はレンダリング結果の上で直接動かせます。編�
 
 #### 保存の成否は必ず表示されます
 
-編集は 1 操作ごとにサーバーへ書き戻します。**その結果は成功・失敗ともツールバーに
+編集は 1 操作ごとにサーバーへ書き戻します。📂 インポートしたデッキでは元 Markdown、
+それ以外では canvas のデッキ状態が保存先です。**その結果は成功・失敗ともツールバーに
 出ます**（`data-architecture-save-state` = `saving` / `saved` / `failed`）。
 
 図は画面上で動いてしまうので、保存できなかったことを表示しないと、利用者は保存
@@ -688,7 +693,7 @@ size: xlarge
 | `open_presenter` | なし | 同期された外部プレゼン画面を Edge / Chrome / Chromium の app mode + fullscreen で起動する。既に起動中なら新しいウィンドウは増やさない。Surface Pen の末尾ボタン 2 回押しでも同じトグルができる。戻り値 `{ ok, started, alreadyRunning, browser?, pid? }`。 |
 | `close_presenter` | なし | 外部プレゼン画面を終了し、専用の一時ブラウザープロファイルを削除する。Surface Pen の末尾ボタン 2 回押しでも終了できる。戻り値 `{ ok, stopped }`。 |
 | `export_pdf` | `{ outputPath?: string, theme?: "dark"｜"light"｜"microsoft"｜"custom" }` | 表示中のデッキを1スライド1ページの16:9 PDFへ書き出すAI用action。相対パスはworkspace基準、省略時は `presentation.pdf`。Canvas のプリンターアイコンは `sourceName` から `<元ファイル名>.pdf` を自動保存する。`theme` はPDFだけに適用し、canvasの表示テーマは変えない（PDF側にも背表紙を補う）。workspace外と `.pdf` 以外は拒否する。`show_slide` による現在ページの一時差し替えも反映する。戻り値 `{ ok, path, total, theme, bytes }`。Microsoft Edge / Google Chrome / Chromiumのいずれかが必要。 |
-| `edit_architecture` | `{ enabled: boolean }` | Architecture 図の編集モードを切り替える。有効にすると canvas 上で node をドラッグ／キーボード操作でき、結果は元 Markdown の ```architecture フェンスへ書き戻る。presenter と印刷では編集 UI を出さない。デッキと一緒には永続化せず、`reset` で解除する。戻り値 `{ ok, enabled, version }`。 |
+| `edit_architecture` | `{ enabled: boolean }` | Architecture 図の編集モードを切り替える。有効にすると canvas 上で node をドラッグ／キーボード操作できる。📂 インポートしたデッキは元 Markdown の ```architecture フェンスにも書き戻し、それ以外は canvas 状態へ保存する。presenter と印刷では編集 UI を出さない。編集モード自体はデッキと一緒には永続化せず、`reset` で解除する。戻り値 `{ ok, enabled, version }`。 |
 | `reset` | なし | スライドとデッキをクリアして待機プレースホルダーに戻す。編集モードも解除する。 |
 
 ### canvas が内部で使う HTTP エンドポイント（renderer 専用）

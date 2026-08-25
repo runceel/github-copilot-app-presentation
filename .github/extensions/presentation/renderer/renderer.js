@@ -428,6 +428,7 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
   bodyEl.querySelectorAll("code.language-architecture").forEach((code, blockIndex) => {
     const target = code.closest("pre") || code;
     const source = code.textContent;
+    const slideIndex = navIndex;
     if (!architectureEditMode) {
       target.replaceWith(renderArchitectureBlock(source, document));
       return;
@@ -442,7 +443,7 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
       source,
       documentRef: document,
       // 保存結果を editor へ返す（返し忘れると失敗が「成功」に見えてしまう）。
-      onCommit: (next) => saveArchitectureBlock(blockIndex, next),
+      onCommit: (next) => saveArchitectureBlock(slideIndex, blockIndex, next),
     });
     if (!editor) {
       // DSL が不正なら編集させず、通常のエラー表示へ戻す。
@@ -792,13 +793,18 @@ async function toggleArchitectureEditMode() {
  * 保存の成否は必ず呼び出し元へ返す。ここで握り潰すと、保存されていないのに
  * 保存できたように見える（Phase 5 が潰したかった「黙って無視される」挙動そのもの）。
  */
-async function saveArchitectureBlock(block, source) {
+async function saveArchitectureBlock(index, block, source) {
   let res;
   try {
     res = await fetch("./edit", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ index: navIndex, block, source }),
+      body: JSON.stringify({
+        index,
+        block,
+        source,
+        deckVersion: knownDeckVersion,
+      }),
     });
   } catch (e) {
     return { ok: false, message: "サーバーへ接続できませんでした" };
@@ -808,7 +814,19 @@ async function saveArchitectureBlock(block, source) {
     try {
       const failure = await res.json();
       if (failure?.error === "edit_mode_disabled") error = "編集モードが無効です";
-      else if (typeof failure?.error === "string") error = failure.error;
+      else if (failure?.error === "source_changed") {
+        error = "元 Markdown が外部で変更されています。再読み込みしてから編集してください";
+      } else if (failure?.error === "deck_changed") {
+        error = "表示中のデッキが差し替わりました。図を選び直してください";
+      } else if (failure?.error === "source_file_not_found") {
+        error = "元 Markdown が見つかりません";
+      } else if (failure?.error === "source_file_too_large") {
+        error = "元 Markdown が大きすぎるため保存できません";
+      } else if (failure?.error === "source_file_unavailable") {
+        error = "元 Markdown の保存先を確認できません";
+      } else if (failure?.error === "source_write_failed") {
+        error = "元 Markdown への書き込みに失敗しました";
+      } else if (typeof failure?.error === "string") error = failure.error;
     } catch (_) {
       /* 本文が JSON でなければ HTTP ステータスをそのまま見せる。 */
     }
@@ -820,8 +838,11 @@ async function saveArchitectureBlock(block, source) {
   if (typeof data.version === "number" && data.version > currentVersion) {
     currentVersion = data.version;
   }
+  if (typeof data.deckVersion === "number" && data.deckVersion > knownDeckVersion) {
+    knownDeckVersion = data.deckVersion;
+  }
   if (typeof data.markdown === "string") lastMarkdown = data.markdown;
-  return { ok: true };
+  return { ok: true, fileSaved: data.fileSaved === true };
 }
 
 async function fetchState() {

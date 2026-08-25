@@ -127,3 +127,55 @@ export function replaceArchitectureBlock(markdown, blockIndex, source) {
   if (!tail.length && inserted.length) inserted[inserted.length - 1].eol = "";
   return [...head, ...inserted, ...tail].map((line) => line.text + line.eol).join("");
 }
+
+/**
+ * スライド内の architecture ブロック番号を、インポート元 Markdown 全体での番号へ変換する。
+ * 自動追加された背表紙など、元ファイルに無い末尾スライドは対象ブロックを持たないため null。
+ */
+export function importedArchitectureBlockIndex(slides, slideIndex, blockIndex) {
+  if (
+    !Array.isArray(slides) ||
+    !Number.isInteger(slideIndex) ||
+    !Number.isInteger(blockIndex) ||
+    slideIndex < 0 ||
+    slideIndex >= slides.length ||
+    blockIndex < 0
+  ) {
+    return null;
+  }
+  const localBlocks = findArchitectureBlocks(slides[slideIndex]);
+  if (blockIndex >= localBlocks.length) return null;
+  let globalIndex = blockIndex;
+  for (let i = 0; i < slideIndex; i += 1) {
+    globalIndex += findArchitectureBlocks(slides[i]).length;
+  }
+  return globalIndex;
+}
+
+/**
+ * インポート元 Markdown の対象フェンスを、現在のデッキと一致するときだけ差し替える。
+ * 外部編集で対象が移動・変更されていたら source_changed として fail closed にする。
+ */
+export function replaceImportedArchitectureBlock(
+  markdown,
+  slides,
+  slideIndex,
+  blockIndex,
+  source,
+  expectedMarkdown = null,
+) {
+  if (typeof expectedMarkdown === "string" && markdown !== expectedMarkdown) {
+    return { ok: false, reason: "source_changed" };
+  }
+  const globalIndex = importedArchitectureBlockIndex(slides, slideIndex, blockIndex);
+  if (globalIndex === null) return { ok: false, reason: "block_not_found" };
+
+  const expected = findArchitectureBlocks(slides[slideIndex])[blockIndex];
+  const actual = findArchitectureBlocks(markdown)[globalIndex];
+  if (!actual) return { ok: false, reason: "source_changed" };
+  if (actual.body !== expected.body) return { ok: false, reason: "source_changed" };
+
+  const next = replaceArchitectureBlock(markdown, globalIndex, source);
+  if (next === null) return { ok: false, reason: "block_not_found" };
+  return { ok: true, markdown: next, globalIndex };
+}

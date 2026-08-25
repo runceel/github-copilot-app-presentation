@@ -10,6 +10,8 @@
 // 「UI から末端まで繋がっていること」だけを見る。
 
 import { readFileSync } from "node:fs";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { expect, test } from "@playwright/test";
@@ -17,9 +19,11 @@ import { expect, test } from "@playwright/test";
 import { REPO_ROOT, startHarness } from "../harness/server.mjs";
 import { splitFixtureDeck } from "../harness/deck.mjs";
 import { waitForSlideReady } from "../utils/ready.mjs";
+import { findArchitectureBlocks } from "../../.github/extensions/presentation/scripts/markdown-blocks.mjs";
 
 const FIXTURES = join(REPO_ROOT, "test", "fixtures");
 const SLIDES = splitFixtureDeck(readFileSync(join(FIXTURES, "standard-title.md"), "utf8"));
+const EDITABLE_SOURCE = readFileSync(join(FIXTURES, "architecture-editing.md"), "utf8");
 
 /** インポート可能なハーネスを起動して描画完了まで待つ。 */
 async function openCanvas(page, query = "") {
@@ -77,6 +81,80 @@ test.describe("Markdown インポート", () => {
       await expect(page.locator("#navImport")).toBeHidden();
     } finally {
       await harness.close();
+    }
+  });
+
+  test("インポートした図の編集は元ファイルへ保存され、編集モード再開後も残る", async ({
+    page,
+  }) => {
+    const root = await mkdtemp(join(tmpdir(), "presentation-import-edit-"));
+    const sourcePath = join(root, "editable.md");
+    await writeFile(sourcePath, EDITABLE_SOURCE, "utf8");
+    const harness = await startHarness({ slides: SLIDES, markdownRoot: root });
+    try {
+      await page.goto(harness.url, { waitUntil: "load" });
+      await waitForSlideReady(page);
+      await page.locator("#navImport").click();
+      await page.locator("#importList .overview-link", { hasText: "editable.md" }).click();
+      await waitForSlideReady(page);
+
+      await page.locator("#navEdit").click();
+      await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(1);
+      await page.locator('[data-architecture-id="client"]').focus();
+      await page.keyboard.press("ArrowDown");
+      await page.locator('[data-architecture-id="client"]').focus();
+      await page.keyboard.press("ArrowDown");
+      const saveState = page.locator('[data-architecture-save-state="saved"]');
+      await expect(saveState).toBeVisible();
+      await expect(saveState).toContainText("元 Markdown に保存しました");
+
+      const saved = await readFile(sourcePath, "utf8");
+      const savedDsl = JSON.parse(findArchitectureBlocks(saved)[0].body);
+      expect(savedDsl.elements.find((element) => element.id === "client").y).toBe(400);
+
+      await page.locator("#navEdit").click();
+      await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(0);
+      await page.locator("#navEdit").click();
+      await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(1);
+      const reopenedY = await page
+        .locator('[data-architecture-id="client"]')
+        .evaluate((element) => Math.round(element.getBBox().y));
+      expect(reopenedY).toBe(400);
+    } finally {
+      await harness.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("インポート元が外部変更されたら保存を拒否してファイルを上書きしない", async ({
+    page,
+  }) => {
+    const root = await mkdtemp(join(tmpdir(), "presentation-import-conflict-"));
+    const sourcePath = join(root, "editable.md");
+    await writeFile(sourcePath, EDITABLE_SOURCE, "utf8");
+    const harness = await startHarness({ slides: SLIDES, markdownRoot: root });
+    try {
+      await page.goto(harness.url, { waitUntil: "load" });
+      await waitForSlideReady(page);
+      await page.locator("#navImport").click();
+      await page.locator("#importList .overview-link", { hasText: "editable.md" }).click();
+      await waitForSlideReady(page);
+      await page.locator("#navEdit").click();
+      await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(1);
+
+      const external = EDITABLE_SOURCE.replace('"y": 380', '"y": 777');
+      await writeFile(sourcePath, external, "utf8");
+      await page.locator('[data-architecture-id="client"]').focus();
+      await page.keyboard.press("ArrowDown");
+
+      const failure = page.locator('[data-architecture-save-state="failed"]');
+      await expect(failure).toBeVisible();
+      await expect(failure).toContainText("外部で変更されています");
+      const unchanged = await readFile(sourcePath, "utf8");
+      expect(JSON.parse(findArchitectureBlocks(unchanged)[0].body).elements[0].y).toBe(777);
+    } finally {
+      await harness.close();
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

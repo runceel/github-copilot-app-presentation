@@ -26,7 +26,9 @@ import {
 } from "../renderer/architecture-edit.mjs";
 import {
   findArchitectureBlocks,
+  importedArchitectureBlockIndex,
   replaceArchitectureBlock,
+  replaceImportedArchitectureBlock,
 } from "../scripts/markdown-blocks.mjs";
 
 // free           … 最上位のノード（親なし）
@@ -349,4 +351,87 @@ test("LF の Markdown は LF のまま保たれる", () => {
   const next = replaceArchitectureBlock(markdown, 0, '{"version":1,"elements":[]}');
   assert.equal(next.includes("\r"), false);
   assert.equal(next.includes("## 見出し\n"), true);
+});
+
+test("スライド内のブロック番号をインポート元 Markdown 全体へ対応付ける", () => {
+  const slides = [
+    ["## 1", "```architecture", '{"version":1,"elements":[]}', "```"].join("\n"),
+    [
+      "## 2",
+      "```architecture",
+      '{"version":1,"elements":[]}',
+      "```",
+      "```architecture",
+      '{"version":1,"elements":[]}',
+      "```",
+    ].join("\n"),
+    "## 背表紙",
+  ];
+
+  assert.equal(importedArchitectureBlockIndex(slides, 0, 0), 0);
+  assert.equal(importedArchitectureBlockIndex(slides, 1, 0), 1);
+  assert.equal(importedArchitectureBlockIndex(slides, 1, 1), 2);
+  assert.equal(importedArchitectureBlockIndex(slides, 2, 0), null);
+  assert.equal(importedArchitectureBlockIndex(slides, 9, 0), null);
+});
+
+test("インポート元は期待するフェンスだけを書き換え、外部変更は拒否する", () => {
+  const markdown = [
+    "## 1",
+    "```architecture",
+    '{"version":1,"elements":[]}',
+    "```",
+    "",
+    "---",
+    "",
+    "## 2",
+    "```architecture",
+    '{"version":1,"elements":[{"type":"node","id":"target","x":1,"y":2,"width":3,"height":4}]}',
+    "```",
+  ].join("\r\n");
+  const slides = [
+    ["## 1", "```architecture", '{"version":1,"elements":[]}', "```"].join("\n"),
+    [
+      "---",
+      "page: 2",
+      "total: 2",
+      "---",
+      "## 2",
+      "```architecture",
+      '{"version":1,"elements":[{"type":"node","id":"target","x":1,"y":2,"width":3,"height":4}]}',
+      "```",
+    ].join("\n"),
+  ];
+  const edited =
+    '{"version":1,"elements":[{"type":"node","id":"target","x":11,"y":12,"width":3,"height":4}]}';
+
+  const result = replaceImportedArchitectureBlock(markdown, slides, 1, 0, edited, markdown);
+  assert.equal(result.ok, true);
+  assert.equal(result.globalIndex, 1);
+  assert.equal(findArchitectureBlocks(result.markdown)[0].body, '{"version":1,"elements":[]}');
+  assert.equal(JSON.parse(findArchitectureBlocks(result.markdown)[1].body).elements[0].x, 11);
+  assert.equal(/(?<!\r)\n/.test(result.markdown), false);
+
+  const externallyChanged = markdown.replace('"x":1', '"x":99');
+  assert.deepEqual(
+    replaceImportedArchitectureBlock(externallyChanged, slides, 1, 0, edited, markdown),
+    { ok: false, reason: "source_changed" },
+  );
+
+  const identicalInserted = markdown.replace(
+    "## 1\r\n",
+    [
+      "## inserted",
+      "```architecture",
+      '{"version":1,"elements":[]}',
+      "```",
+      "",
+      "## 1",
+      "",
+    ].join("\r\n"),
+  );
+  assert.deepEqual(
+    replaceImportedArchitectureBlock(identicalInserted, slides, 1, 0, edited, markdown),
+    { ok: false, reason: "source_changed" },
+  );
 });
