@@ -39,6 +39,51 @@ canvas iframe（renderer/）
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
 - コードフェンスに `csharp` / `json` / `diff` などの言語名を付けると、highlight.js がシンタックスハイライトします。
 
+## Markdown インポート（📂）
+
+**AI を介さずに、canvas から直接 Markdown ファイルを読み込んでスライド表示できます。**
+操作バーの 📂（または `I` キー）を押すと、workspace 内の `*.md` / `*.markdown` の一覧が
+オーバーレイに出ます。絞り込んで選ぶと、拡張機能側がファイルを読み、スライドに分割して
+デッキを差し替えます。「スライド未読込」のプレースホルダー状態からも実行できます。
+presenter と PDF 印刷モードでは導線を出しません。
+
+分割は **Slidev / Marp と同じ書式**の機械的な処理です（自然言語の段落を要約して
+スライド化するのは従来どおり AI 側の役割です）。
+
+- 空行の直後にある `---` の行がスライドの区切りです。見出しの下線（setext）や
+  コードフェンス内の `---` は区切りにしません。
+- **ファイル先頭の front matter はデッキ共通設定**として全スライドへ継承します
+  （`theme` / `theme-file` / `deck` / `kicker` / `size` / `logo` / `copyright` など）。
+  同時に**先頭 front matter は 1 枚目自身の front matter でもある**ため、
+  `layout: title` を書けば 1 枚目だけが表紙になります（2 枚目以降へは広がりません）。
+- **各ページも front matter を持てます。** 区切りの `---` の直後が `key: value` だけの
+  ブロックで、閉じる `---` があるときは、それをそのページの front matter として扱います
+  （区切り行そのものが front matter の開始行を兼ねます）。
+- 優先度は **ページ front matter > デッキ front matter > 自動付与**です。
+- `page` / `total` は明示が無いときだけ自動付与します（`title` / `section` / `backcover`
+  レイアウトには付けません）。手書きの値はそのまま尊重します。
+
+```markdown
+---
+title: サンプル
+theme: microsoft
+layout: title      ← 1 枚目（表紙）にだけ効く
+---
+
+# 表紙
+
+---
+kicker: Getting started
+layout: section    ← このページだけ章扉
+---
+
+## 2 枚目
+```
+
+読み込んだファイル名は `sourceName` として保持されるので、PDF Export の
+`<元ファイル名>.pdf` や、相対パス指定の画像・`theme-file` もそのまま解決できます。
+workspace 外のファイルは選べません（OS のファイルダイアログは使いません）。
+
 ## AI 向け作成ガイド
 
 Extension は `presentation_guide` ツールを提供します。AI は presentation canvas 用の
@@ -660,6 +705,8 @@ size: xlarge
 | `POST /edit` | 編集モードの canvas が、書き換えた ```architecture フェンスをデッキへ書き戻す。body は `{ index, block, source }`。編集モードが無効なら `409 edit_mode_disabled` で拒否する。 |
 | `POST /edit-mode` | 編集モードの有効・無効を切り替える。body は `{ enabled }`。`?architectureEdit=1` で開いた renderer もここを叩き、サーバー状態を唯一の真実にする。同一 origin の POST のみ受け付ける。 |
 | `GET /events` | SSE。`version` 変化を低遅延で通知する nudge。 |
+| `GET /markdown-files` | 📂 のオーバーレイ用に、workspace 内の `*.md` / `*.markdown` の相対パス一覧を返す。`.git` / `node_modules` / `.` 始まりは除外し、件数と深さに上限を設ける。 |
+| `POST /import` | 選んだ Markdown を読み込み、スライドに分割してデッキを差し替える。body は `{ path }`（workspace 相対）。workspace 外・拡張子違い・サイズ超過は拒否する。同一 origin の POST のみ受け付ける。 |
 
 ## ファイル構成
 
@@ -667,12 +714,14 @@ size: xlarge
 .github/extensions/presentation/
   extension.mjs            # canvas 宣言・ループバックサーバー・アクション
   copilot-extension.json   # gist 共有用マニフェスト
+  markdown-deck.mjs        # 生 Markdown → スライド断片配列の分割（📂 インポート用）
   scripts/
     markdown-blocks.mjs    # ```architecture フェンスの走査と差し替え（extension とテストで共有）
+    markdown-files.mjs     # workspace の Markdown 走査（extension とテストで共有）
   windows/
     pen-button-listener.ps1 # Surface Pen の Win+F20 / Win+F19 / Win+F18 を Node へ中継
   renderer/
-    index.html             # iframe シェル・操作バー・スライド一覧オーバーレイ
+    index.html             # iframe シェル・操作バー・スライド一覧/インポートのオーバーレイ
     slides.css             # 3 組み込みテーマ（dark/light/microsoft）の配色定義・ナビ UI のスタイル
     renderer.js            # フロントマター解析 / marked / mermaid / architecture / SSE / 操作 UI
     architecture.mjs       # JSON DSL の検証と安全な SVG DOM 生成

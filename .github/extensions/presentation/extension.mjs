@@ -15,6 +15,7 @@
 import { createServer } from "node:http";
 import {
   readFile,
+  readdir,
   writeFile,
   mkdir,
   mkdtemp,
@@ -44,6 +45,12 @@ import { createInterface } from "node:readline";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 import { reconstructAsset } from "./scripts/vendor-assets.mjs";
 import { replaceArchitectureBlock } from "./scripts/markdown-blocks.mjs";
+import {
+  isMarkdownPath,
+  listMarkdownFiles,
+  MARKDOWN_MAX_BYTES,
+} from "./scripts/markdown-files.mjs";
+import { buildDeckSlides } from "./markdown-deck.mjs";
 import {
   createPresentationHooks,
   deckValidationFeedback,
@@ -1040,6 +1047,9 @@ function resolveRepoRoot(workingDirectory) {
   return resolve(EXT_DIR, "..", "..", "..");
 }
 
+// Markdown インポート（canvas の 📂 ボタン）の安全弁は scripts/markdown-files.mjs
+// に切り出してある（テストハーネスからも同じ実装を使うため）。
+
 // Join `rel` onto `rootDir` and guarantee the result stays under rootDir
 // (defends /assets and static routes against path traversal).
 function safeJoin(rootDir, rel) {
@@ -1740,6 +1750,119 @@ async function startServer(inst) {
           index,
           block,
           markdown: inst.markdown,
+        }),
+      );
+      return;
+    }
+    // Canvas の 📂 ボタン用。workspace 内の Markdown を一覧して返す。
+    if (pathname === "/markdown-files") {
+      if (req.method !== "GET") {
+        res.statusCode = 405;
+        res.setHeader("Allow", "GET");
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+        return;
+      }
+      const { files, truncated } = await listMarkdownFiles(inst.workspaceRoot);
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(JSON.stringify({ ok: true, files, truncated, current: inst.sourceName || "" }));
+      return;
+    }
+    // Canvas から選ばれた Markdown を読み込み、拡張機能側で分割して表示する。
+    // agent を介さずにユーザーが自分のファイルをそのままスライド化できる経路。
+    if (pathname === "/import") {
+      if (req.method !== "POST") {
+        res.statusCode = 405;
+        res.setHeader("Allow", "POST");
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+        return;
+      }
+      const origin = req.headers.origin;
+      if (origin && origin !== new URL(inst.url).origin) {
+        res.statusCode = 403;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "origin_not_allowed" }));
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (e) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader("Connection", "close");
+        res.end(JSON.stringify({ ok: false, error: e?.message || "bad_request" }));
+        return;
+      }
+      const rel = typeof body.path === "string" ? body.path.trim() : "";
+      if (!rel) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "path (string) is required" }));
+        return;
+      }
+      const root = resolve(inst.workspaceRoot);
+      const abs = isAbsolute(rel) ? null : safeJoin(root, rel);
+      if (!abs || !isPathInside(root, abs)) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "path_outside_workspace" }));
+        return;
+      }
+      if (!isMarkdownPath(abs)) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "not_markdown" }));
+        return;
+      }
+      let text;
+      try {
+        const info = await stat(abs);
+        if (!info.isFile()) throw new Error("not_a_file");
+        if (info.size > MARKDOWN_MAX_BYTES) {
+          res.statusCode = 413;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ ok: false, error: "file_too_large" }));
+          return;
+        }
+        text = await readFile(abs, "utf8");
+      } catch (_) {
+        res.statusCode = 404;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "file_not_found" }));
+        return;
+      }
+      const slides = buildDeckSlides(text);
+      if (!slides.length) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "empty_markdown" }));
+        return;
+      }
+      const sourceName = relative(root, abs).split(sep).join("/");
+      activateInstance(inst);
+      try {
+        await applyDeck(inst, { slides, index: 0, sourceName });
+      } catch (e) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: e?.message || "import_failed" }));
+        return;
+      }
+      res.statusCode = 200;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(
+        JSON.stringify({
+          ok: true,
+          version: inst.version,
+          index: inst.index,
+          total: inst.slides.length,
+          theme: inst.theme,
+          sourceName: inst.sourceName,
         }),
       );
       return;

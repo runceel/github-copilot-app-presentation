@@ -372,6 +372,9 @@ body.presenter-mode .nav{opacity:0;}
 body.presenter-mode .nav:hover,body.presenter-mode .nav:focus-within{opacity:1;}
 body.presenter-mode #navPresent{display:none;}
 body.presenter-mode #navExport{display:none;}
+body.presenter-mode #navImport{display:none;}
+/* デッキ未読込のときは、読み込みボタンだけを残して導線にする。 */
+.nav.nav-empty > :not(#navImport){display:none;}
 
 /* ===== Slide-list overview overlay ===== */
 .overview{position:fixed;inset:0;z-index:60;display:flex;
@@ -404,6 +407,17 @@ body.presenter-mode #navExport{display:none;}
 .overview-item.current .overview-num{color:var(--fg);background:var(--accent);
      border-color:var(--accent);}
 .overview-item.current .overview-label{color:var(--fg);font-weight:600;}
+
+/* ===== Markdown import overlay ===== */
+.import-filter{flex:0 0 auto;margin:.7em 1em 0;padding:.5em .7em;
+     font:inherit;font-size:.95em;color:var(--fg);
+     background:var(--code);border:1px solid var(--border);border-radius:8px;}
+.import-filter:focus-visible{outline:2px solid var(--accent);outline-offset:-1px;}
+.import-message{flex:0 0 auto;margin:.6em 1em 0;font-size:.86em;color:var(--muted);}
+.import-message:empty{display:none;}
+.import-message[data-state="error"]{color:#d13438;}
+.import-path{flex:1 1 auto;font-size:.94em;line-height:1.35;
+     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
 /* ===== Headless PDF export ===== */
 @page{size:13.333333in 7.5in;margin:0;}

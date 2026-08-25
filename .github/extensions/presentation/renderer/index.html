@@ -17,6 +17,7 @@
     <button id="navEdit" class="nav-btn" type="button" title="図形編集モード" aria-label="図形編集モード">&#x270E;</button>
     <button id="navPresent" class="nav-btn" type="button" title="外部画面で全画面表示" aria-label="外部画面で全画面表示">&#x26F6;</button>
     <button id="navExport" class="nav-btn" type="button" title="PDFに保存" aria-label="PDFに保存">&#128438;</button>
+    <button id="navImport" class="nav-btn" type="button" title="Markdown を読み込む (I)" aria-label="Markdown を読み込む">&#128193;</button>
     <button id="navList" class="nav-btn" type="button" title="スライド一覧 (O)" aria-label="スライド一覧">&#9776;</button>
     <span id="presentStatus" class="sr-only" aria-live="polite"></span>
     <span id="exportStatus" class="sr-only" aria-live="polite"></span>
@@ -30,6 +31,19 @@
         <button id="overviewClose" class="nav-btn" type="button" title="閉じる (Esc)" aria-label="閉じる">&#10005;</button>
       </div>
       <ol id="overviewList" class="overview-list"></ol>
+    </div>
+  </div>
+
+  <!-- Markdown import overlay: pick a *.md from the workspace and show it. -->
+  <div id="importPicker" class="overview" hidden>
+    <div class="overview-panel" role="dialog" aria-modal="true" aria-label="Markdown を読み込む">
+      <div class="overview-head">
+        <span>Markdown を読み込む</span>
+        <button id="importClose" class="nav-btn" type="button" title="閉じる (Esc)" aria-label="閉じる">&#10005;</button>
+      </div>
+      <input id="importFilter" class="import-filter" type="search" placeholder="ファイル名で絞り込み" aria-label="ファイル名で絞り込み" autocomplete="off">
+      <p id="importMessage" class="import-message" role="status" aria-live="polite"></p>
+      <ol id="importList" class="overview-list"></ol>
     </div>
   </div>
 

@@ -695,6 +695,9 @@ let navIndex = 0;
 let navTotal = 0;
 let navMode = "deck";
 let overviewOpen = false;
+let importOpen = false;
+let importPending = false;
+let importFiles = [];
 let presenterLaunchPending = false;
 let pdfExportPending = false;
 
@@ -970,7 +973,11 @@ async function exportPdfFromCanvas() {
 function updateNav() {
   const nav = document.getElementById("nav");
   if (!nav) return;
-  nav.hidden = navTotal <= 0;
+  // デッキが無いときも、presenter 以外では読み込みボタンだけを残して出す
+  // （まだスライドが無い状態から Markdown をインポートできるようにする）。
+  const empty = navTotal <= 0;
+  nav.hidden = empty && presenterMode;
+  nav.classList.toggle("nav-empty", empty);
   const counter = document.getElementById("navCounter");
   if (counter) {
     counter.textContent =
@@ -1041,6 +1048,118 @@ function toggleOverview() {
   else openOverview();
 }
 
+// --- markdown import -------------------------------------------------------
+// workspace 内の Markdown を拡張機能に一覧させ、選ばれたファイルを拡張機能側で
+// 分割・表示する。agent を介さずにユーザーが自分の Markdown を出せる導線。
+function setImportMessage(text, state = "") {
+  const el = document.getElementById("importMessage");
+  if (!el) return;
+  el.textContent = text;
+  if (state) el.dataset.state = state;
+  else delete el.dataset.state;
+}
+
+function renderImportList() {
+  const list = document.getElementById("importList");
+  if (!list) return;
+  const filterEl = document.getElementById("importFilter");
+  const needle = (filterEl?.value || "").trim().toLowerCase();
+  const matches = needle
+    ? importFiles.filter((path) => path.toLowerCase().includes(needle))
+    : importFiles.slice();
+  list.replaceChildren();
+  for (const path of matches) {
+    const li = document.createElement("li");
+    li.className = "overview-item";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "overview-link";
+    const label = document.createElement("span");
+    label.className = "import-path";
+    label.textContent = path;
+    btn.appendChild(label);
+    btn.addEventListener("click", () => importMarkdown(path));
+    li.appendChild(btn);
+    list.appendChild(li);
+  }
+  if (!matches.length && importFiles.length) {
+    setImportMessage("一致するファイルがありません。");
+  }
+}
+
+async function loadImportFiles() {
+  setImportMessage("Markdown ファイルを探しています。");
+  try {
+    const res = await fetch("./markdown-files", { cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !Array.isArray(data.files)) {
+      throw new Error(data.error || `一覧を取得できませんでした (${res.status})。`);
+    }
+    importFiles = data.files;
+    if (!importFiles.length) {
+      setImportMessage("workspace に Markdown ファイルが見つかりませんでした。");
+    } else if (data.truncated) {
+      setImportMessage(`件数が多いため先頭 ${importFiles.length} 件のみ表示しています。`);
+    } else {
+      setImportMessage("");
+    }
+    renderImportList();
+  } catch (error) {
+    console.error("Markdown file listing failed", error);
+    importFiles = [];
+    renderImportList();
+    setImportMessage(error?.message || "一覧を取得できませんでした。", "error");
+  }
+}
+
+async function importMarkdown(path) {
+  if (importPending) return;
+  importPending = true;
+  setImportMessage(`${path} を読み込んでいます。`);
+  try {
+    const res = await fetch("./import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error || `読み込みに失敗しました (${res.status})。`);
+    }
+    closeImportPicker();
+    await fetchState();
+  } catch (error) {
+    console.error("Markdown import failed", error);
+    setImportMessage(error?.message || "読み込みに失敗しました。", "error");
+  } finally {
+    importPending = false;
+  }
+}
+
+function openImportPicker() {
+  if (presenterMode) return;
+  importOpen = true;
+  const el = document.getElementById("importPicker");
+  if (el) el.hidden = false;
+  const filter = document.getElementById("importFilter");
+  if (filter) {
+    filter.value = "";
+    filter.focus();
+  }
+  loadImportFiles();
+}
+
+function closeImportPicker() {
+  importOpen = false;
+  const el = document.getElementById("importPicker");
+  if (el) el.hidden = true;
+}
+
+function toggleImportPicker() {
+  if (importOpen) closeImportPicker();
+  else openImportPicker();
+}
+
 function isSlideWhitespaceTarget(target) {
   if (!(target instanceof Element)) return false;
   const deck = target.closest(".deck");
@@ -1074,8 +1193,21 @@ function wireControls() {
   bind("navEdit", toggleArchitectureEditMode);
   bind("navPresent", openPresenterWindow);
   bind("navExport", exportPdfFromCanvas);
+  bind("navImport", toggleImportPicker);
   bind("navList", toggleOverview);
   bind("overviewClose", closeOverview);
+  bind("importClose", closeImportPicker);
+
+  const importFilter = document.getElementById("importFilter");
+  if (importFilter) {
+    importFilter.addEventListener("input", renderImportList);
+  }
+  const importPicker = document.getElementById("importPicker");
+  if (importPicker) {
+    importPicker.addEventListener("click", (e) => {
+      if (e.target === importPicker) closeImportPicker();
+    });
+  }
 
   const overview = document.getElementById("overview");
   if (overview) {
@@ -1128,6 +1260,13 @@ function wireControls() {
   document.addEventListener("keydown", (e) => {
     if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target;
+    // Esc だけは入力欄にフォーカスがあっても効かせる（インポートの絞り込み中に
+    // 閉じられないと行き止まりになるため）。
+    if (e.key === "Escape" && importOpen) {
+      closeImportPicker();
+      e.preventDefault();
+      return;
+    }
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
     // When a button (◀ ▶ ☰ ✕ or an overview link) has focus, let the browser's
     // native Space/Enter activation run instead of hijacking it for "next".
@@ -1162,8 +1301,16 @@ function wireControls() {
         toggleOverview();
         e.preventDefault();
         break;
+      case "i":
+      case "I":
+        toggleImportPicker();
+        e.preventDefault();
+        break;
       case "Escape":
-        if (overviewOpen) {
+        if (importOpen) {
+          closeImportPicker();
+          e.preventDefault();
+        } else if (overviewOpen) {
           closeOverview();
           e.preventDefault();
         }
