@@ -44,7 +44,10 @@ import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 import { reconstructAsset } from "./scripts/vendor-assets.mjs";
-import { replaceArchitectureBlock } from "./scripts/markdown-blocks.mjs";
+import {
+  replaceArchitectureBlock,
+  replaceImportedArchitectureBlock,
+} from "./scripts/markdown-blocks.mjs";
 import {
   isMarkdownPath,
   listMarkdownFiles,
@@ -1143,6 +1146,9 @@ async function persistNow(inst) {
         customThemeMeta: inst.customThemeMeta,
         customThemeAssets: [...inst.customThemeAssets],
         sourceName: inst.sourceName,
+        sourceWriteback: inst.sourceWriteback,
+        sourceWritebackPath: inst.sourceWritebackPath,
+        sourceWritebackSnapshot: inst.sourceWritebackSnapshot,
         mode: inst.mode,
         presenterProfileDir: inst.presenterProfileDir,
       }),
@@ -1298,7 +1304,19 @@ function resolveDeckTheme({ slides, explicitTheme, explicitThemeFile }) {
   };
 }
 
-async function applyDeck(inst, { slides, index, theme, themeFile, sourceName }) {
+async function applyDeckNow(
+  inst,
+  {
+    slides,
+    index,
+    theme,
+    themeFile,
+    sourceName,
+    sourceWriteback = false,
+    sourceWritebackPath = "",
+    sourceWritebackSnapshot = "",
+  },
+) {
   if (typeof sourceName === "string" && sourceName.trim()) {
     const requested = sourceName.trim();
     const candidate = resolve(inst.workspaceRoot, requested);
@@ -1322,10 +1340,22 @@ async function applyDeck(inst, { slides, index, theme, themeFile, sourceName }) 
   inst.customThemeDir = custom.dir;
   inst.customThemeMeta = custom.metadata;
   inst.customThemeAssets = new Set(custom.assets);
+  inst.sourceWriteback = Boolean(
+    sourceWriteback &&
+      inst.sourceName &&
+      sourceWritebackPath &&
+      typeof sourceWritebackSnapshot === "string",
+  );
+  inst.sourceWritebackPath = inst.sourceWriteback ? sourceWritebackPath : "";
+  inst.sourceWritebackSnapshot = inst.sourceWriteback ? sourceWritebackSnapshot : "";
   inst.slides = ensureBackCover(slides.slice());
   inst.index = clampIndex(index ?? 0, inst.slides.length);
   inst.deckVersion += 1;
   await applyDeckSlide(inst);
+}
+
+async function applyDeck(inst, options) {
+  return serializeArchitectureEdit(inst, () => applyDeckNow(inst, options));
 }
 
 // Move to targetIndex within the loaded deck. Returns whether the visible slide
@@ -1343,6 +1373,136 @@ async function applyNavigation(inst, targetIndex) {
 // Architecture DSL は 1 スライドに複数枚あり得るうえ、図そのものが JSON なので
 // /navigate の 4KB では収まらない。図 1 枚ぶんの上限として別枠を設ける。
 const MAX_EDIT_BODY = 256 * 1024;
+
+function serializeArchitectureEdit(inst, operation) {
+  const previous = inst._architectureEditQueue ?? Promise.resolve();
+  const current = previous.catch(() => {}).then(operation);
+  inst._architectureEditQueue = current;
+  return current.finally(() => {
+    if (inst._architectureEditQueue === current) inst._architectureEditQueue = null;
+  });
+}
+
+async function atomicReplaceImportedSource(sourcePath, markdown, expectedMarkdown, mode) {
+  const temporaryPath = join(
+    dirname(sourcePath),
+    `.${basename(sourcePath)}.${randomUUID()}.tmp`,
+  );
+  let handle = null;
+  try {
+    handle = await open(temporaryPath, "wx", mode);
+    await handle.writeFile(markdown, "utf8");
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    if ((await readFile(sourcePath, "utf8")) !== expectedMarkdown) {
+      const error = new Error("source_changed");
+      error.code = "SOURCE_CHANGED";
+      throw error;
+    }
+    await rename(temporaryPath, sourcePath);
+  } finally {
+    await handle?.close().catch(() => {});
+    await rm(temporaryPath, { force: true }).catch(() => {});
+  }
+}
+
+async function applyArchitectureEdit(inst, { index, block, source, deckVersion }) {
+  return serializeArchitectureEdit(inst, async () => {
+    if (deckVersion !== inst.deckVersion) {
+      return { status: 409, body: { ok: false, error: "deck_changed" } };
+    }
+    const next = replaceArchitectureBlock(inst.slides[index], block, source);
+    if (next === null) return { status: 404, body: { ok: false, error: "block_not_found" } };
+
+    if (inst.sourceWriteback) {
+      let canonicalRoot;
+      try {
+        canonicalRoot = await realpath(resolve(inst.workspaceRoot));
+      } catch (_) {
+        return { status: 409, body: { ok: false, error: "source_file_unavailable" } };
+      }
+      const candidate = inst.sourceWritebackPath
+        ? safeJoin(canonicalRoot, inst.sourceWritebackPath)
+        : null;
+      if (!candidate || !isPathInside(canonicalRoot, candidate) || !isMarkdownPath(candidate)) {
+        return { status: 409, body: { ok: false, error: "source_file_unavailable" } };
+      }
+
+      let sourcePath;
+      let sourceMarkdown;
+      let sourceMode;
+      try {
+        const canonicalSource = await realpath(candidate);
+        if (
+          !isPathInside(canonicalRoot, canonicalSource) ||
+          resolve(canonicalSource) !== resolve(candidate)
+        ) {
+          return { status: 409, body: { ok: false, error: "source_file_unavailable" } };
+        }
+        const info = await stat(canonicalSource);
+        if (!info.isFile()) {
+          return { status: 404, body: { ok: false, error: "source_file_not_found" } };
+        }
+        if (info.size > MARKDOWN_MAX_BYTES) {
+          return { status: 413, body: { ok: false, error: "source_file_too_large" } };
+        }
+        sourcePath = canonicalSource;
+        sourceMode = info.mode;
+        sourceMarkdown = await readFile(sourcePath, "utf8");
+      } catch (_) {
+        return { status: 404, body: { ok: false, error: "source_file_not_found" } };
+      }
+
+      const fileEdit = replaceImportedArchitectureBlock(
+        sourceMarkdown,
+        inst.slides,
+        index,
+        block,
+        source,
+        inst.sourceWritebackSnapshot,
+      );
+      if (!fileEdit.ok) {
+        return {
+          status: fileEdit.reason === "block_not_found" ? 404 : 409,
+          body: { ok: false, error: fileEdit.reason },
+        };
+      }
+
+      try {
+        await atomicReplaceImportedSource(
+          sourcePath,
+          fileEdit.markdown,
+          sourceMarkdown,
+          sourceMode,
+        );
+        inst.sourceWritebackSnapshot = fileEdit.markdown;
+      } catch (error) {
+        if (error?.code === "SOURCE_CHANGED") {
+          return { status: 409, body: { ok: false, error: "source_changed" } };
+        }
+        return { status: 500, body: { ok: false, error: "source_write_failed" } };
+      }
+    }
+
+    activateInstance(inst);
+    inst.slides[index] = next;
+    inst.deckVersion += 1;
+    await applyDeckSlide(inst);
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        version: inst.version,
+        deckVersion: inst.deckVersion,
+        index,
+        block,
+        markdown: inst.markdown,
+        fileSaved: inst.sourceWriteback,
+      },
+    };
+  });
+}
 
 // Read and JSON-parse a small request body, defending the loopback server
 // against oversized or malformed payloads.
@@ -1721,37 +1881,25 @@ async function startServer(inst) {
       }
       const index = Number.isInteger(body.index) ? body.index : inst.index;
       const block = Number.isInteger(body.block) ? body.block : 0;
+      const deckVersion = Number.isInteger(body.deckVersion)
+        ? body.deckVersion
+        : inst.deckVersion;
       if (index < 0 || index >= inst.slides.length) {
         res.statusCode = 400;
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         res.end(JSON.stringify({ ok: false, error: "index_out_of_range" }));
         return;
       }
-      const next = replaceArchitectureBlock(inst.slides[index], block, body.source);
-      if (next === null) {
-        res.statusCode = 404;
-        res.setHeader("Content-Type", "application/json; charset=utf-8");
-        res.end(JSON.stringify({ ok: false, error: "block_not_found" }));
-        return;
-      }
-      activateInstance(inst);
-      inst.slides[index] = next;
-      // スライド一覧も本文を出すので deckVersion を上げて再取得させる。
-      inst.deckVersion += 1;
-      await applyDeckSlide(inst);
-      res.statusCode = 200;
+      const result = await applyArchitectureEdit(inst, {
+        index,
+        block,
+        source: body.source,
+        deckVersion,
+      });
+      res.statusCode = result.status;
       res.setHeader("Content-Type", "application/json; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
-      res.end(
-        JSON.stringify({
-          ok: true,
-          version: inst.version,
-          deckVersion: inst.deckVersion,
-          index,
-          block,
-          markdown: inst.markdown,
-        }),
-      );
+      res.end(JSON.stringify(result.body));
       return;
     }
     // Canvas の 📂 ボタン用。workspace 内の Markdown を一覧して返す。
@@ -1819,8 +1967,19 @@ async function startServer(inst) {
         return;
       }
       let text;
+      let sourceWritebackPath;
       try {
-        const info = await stat(abs);
+        const [canonicalRoot, canonicalSource] = await Promise.all([
+          realpath(root),
+          realpath(abs),
+        ]);
+        if (!isPathInside(canonicalRoot, canonicalSource)) {
+          res.statusCode = 400;
+          res.setHeader("Content-Type", "application/json; charset=utf-8");
+          res.end(JSON.stringify({ ok: false, error: "path_outside_workspace" }));
+          return;
+        }
+        const info = await stat(canonicalSource);
         if (!info.isFile()) throw new Error("not_a_file");
         if (info.size > MARKDOWN_MAX_BYTES) {
           res.statusCode = 413;
@@ -1828,7 +1987,8 @@ async function startServer(inst) {
           res.end(JSON.stringify({ ok: false, error: "file_too_large" }));
           return;
         }
-        text = await readFile(abs, "utf8");
+        text = await readFile(canonicalSource, "utf8");
+        sourceWritebackPath = relative(canonicalRoot, canonicalSource);
       } catch (_) {
         res.statusCode = 404;
         res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -1845,7 +2005,14 @@ async function startServer(inst) {
       const sourceName = relative(root, abs).split(sep).join("/");
       activateInstance(inst);
       try {
-        await applyDeck(inst, { slides, index: 0, sourceName });
+        await applyDeck(inst, {
+          slides,
+          index: 0,
+          sourceName,
+          sourceWriteback: true,
+          sourceWritebackPath,
+          sourceWritebackSnapshot: text,
+        });
       } catch (e) {
         res.statusCode = 400;
         res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -1965,6 +2132,9 @@ async function ensureInstance(ctx) {
       index: 0,
       mode: "deck",
       sourceName: "",
+      sourceWriteback: false,
+      sourceWritebackPath: "",
+      sourceWritebackSnapshot: "",
       clients: new Set(),
       assetsRoot: join(repoRoot, "assets"),
       workspaceRoot: repoRoot,
@@ -2009,6 +2179,17 @@ async function ensureInstance(ctx) {
         );
       }
       if (typeof saved.sourceName === "string") inst.sourceName = saved.sourceName;
+      if (typeof saved.sourceWriteback === "boolean") {
+        const validPath =
+          typeof saved.sourceWritebackPath === "string" && saved.sourceWritebackPath.length > 0;
+        const validSnapshot = typeof saved.sourceWritebackSnapshot === "string";
+        inst.sourceWriteback =
+          saved.sourceWriteback && Boolean(inst.sourceName) && validPath && validSnapshot;
+        inst.sourceWritebackPath = inst.sourceWriteback ? saved.sourceWritebackPath : "";
+        inst.sourceWritebackSnapshot = inst.sourceWriteback
+          ? saved.sourceWritebackSnapshot
+          : "";
+      }
       if (saved.mode === "adhoc" || saved.mode === "deck") inst.mode = saved.mode;
       if (isPresenterProfilePath(saved.presenterProfileDir)) {
         inst.presenterProfileDir = saved.presenterProfileDir;
@@ -2259,11 +2440,16 @@ const session = await joinSession({
               );
             }
             activateInstance(inst);
-            inst.markdown = markdown;
-            inst.mode = "adhoc";
-            inst.version += 1;
-            broadcast(inst);
-            schedulePersist(inst);
+            await serializeArchitectureEdit(inst, async () => {
+              inst.markdown = markdown;
+              inst.mode = "adhoc";
+              inst.sourceWriteback = false;
+              inst.sourceWritebackPath = "";
+              inst.sourceWritebackSnapshot = "";
+              inst.version += 1;
+              broadcast(inst);
+              schedulePersist(inst);
+            });
             return { ok: true, version: inst.version };
           },
         },
@@ -2335,7 +2521,7 @@ const session = await joinSession({
         {
           name: "edit_architecture",
           description:
-            "Architecture 図の編集モードを切り替える。有効にすると canvas 上の図をドラッグ／矢印キーで動かせるようになり、変更は元 Markdown の ```architecture ブロックへそのまま書き戻される。presenter 表示と PDF 出力では編集 UI は出ない。発表前には必ず enabled=false に戻すこと。",
+            "Architecture 図の編集モードを切り替える。有効にすると canvas 上の図をドラッグ／矢印キーで動かせる。Canvas の 📂 からインポートしたデッキは元 Markdown の ```architecture ブロックにも書き戻し、それ以外は canvas のデッキ状態へ保存する。presenter 表示と PDF 出力では編集 UI は出ない。発表前には必ず enabled=false に戻すこと。",
           inputSchema: {
             type: "object",
             properties: {
@@ -2380,24 +2566,29 @@ const session = await joinSession({
               );
             }
             activateInstance(inst);
-            await stopPresenter(inst);
-            inst.markdown = "";
-            inst.slides = [];
-            inst.index = 0;
-            inst.theme = DEFAULT_THEME;
-            inst.themeLocked = false;
-            inst.customThemeFile = "";
-            inst.customThemeCss = "";
-            inst.customThemeDir = "";
-            inst.customThemeMeta = null;
-            inst.customThemeAssets = new Set();
-            inst.sourceName = "";
-            inst.mode = "deck";
-            inst.architectureEdit = false;
-            inst.deckVersion += 1;
-            inst.version += 1;
-            broadcast(inst);
-            schedulePersist(inst);
+            await serializeArchitectureEdit(inst, async () => {
+              await stopPresenter(inst);
+              inst.markdown = "";
+              inst.slides = [];
+              inst.index = 0;
+              inst.theme = DEFAULT_THEME;
+              inst.themeLocked = false;
+              inst.customThemeFile = "";
+              inst.customThemeCss = "";
+              inst.customThemeDir = "";
+              inst.customThemeMeta = null;
+              inst.customThemeAssets = new Set();
+              inst.sourceName = "";
+              inst.sourceWriteback = false;
+              inst.sourceWritebackPath = "";
+              inst.sourceWritebackSnapshot = "";
+              inst.mode = "deck";
+              inst.architectureEdit = false;
+              inst.deckVersion += 1;
+              inst.version += 1;
+              broadcast(inst);
+              schedulePersist(inst);
+            });
             return { ok: true, version: inst.version };
           },
         },
