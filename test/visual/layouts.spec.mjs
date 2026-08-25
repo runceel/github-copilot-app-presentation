@@ -32,6 +32,20 @@ const SPECIAL_LAYOUTS = [
   },
 ];
 
+const CENTER_SLIDE = [
+  "---",
+  "layout: center",
+  "deck: Center layout",
+  "kicker: Center",
+  "page: 1",
+  "total: 1",
+  "---",
+  "",
+  "## 上下中央のタイトル",
+  "",
+  "- 短い本文",
+].join("\n");
+
 test("セクション区切りフィクスチャとスナップショット名が一致する", () => {
   expect(SLIDES).toHaveLength(SLIDE_NAMES.length);
   expect(STANDARD_SLIDES).toHaveLength(4);
@@ -138,6 +152,63 @@ test("通常スライドでは先頭の H1/H2 だけをタイトル領域へ移�
 
     await expect(page.locator(".deck.has-slide-title")).toHaveCount(0);
     await expect(page.locator(".deck > .body > h2")).toHaveCount(1);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("通常スライドの本文はタイトル直下から上寄せで始まる", async ({ page }) => {
+  const harness = await startHarness({ slides: STANDARD_SLIDES, theme: "dark" });
+  try {
+    await page.goto(`${harness.url}/`, { waitUntil: "load" });
+    await waitForSlideReady(page);
+
+    const metrics = await page.locator("#stage > .deck").evaluate((deck) => {
+      const body = deck.querySelector(":scope > .body");
+      const first = body.firstElementChild;
+      return {
+        justifyContent: getComputedStyle(body).justifyContent,
+        gapAboveContent: first.getBoundingClientRect().top - body.getBoundingClientRect().top,
+      };
+    });
+
+    expect(metrics.justifyContent).toBe("flex-start");
+    // 短い本文でも先頭要素が本文領域の上端に接している（中央へ落ちない）。
+    expect(metrics.gapAboveContent).toBeLessThan(1);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("layout: center は見出しと本文をまとめて上下中央に置く", async ({ page }) => {
+  const harness = await startHarness({ slides: [CENTER_SLIDE], theme: "dark" });
+  try {
+    await page.goto(`${harness.url}/`, { waitUntil: "load" });
+    await waitForSlideReady(page);
+
+    await expect(page.locator("#stage > .deck.center-slide.has-slide-title")).toHaveCount(1);
+    await expect(page.locator(".center-slide > header > h2.slide-title")).toHaveCount(1);
+
+    const metrics = await page.locator("#stage > .deck").evaluate((deck) => {
+      const header = deck.querySelector(":scope > header");
+      const body = deck.querySelector(":scope > .body");
+      const footer = deck.querySelector(":scope > footer");
+      const deckBox = deck.getBoundingClientRect();
+      return {
+        spaceAbove: header.getBoundingClientRect().top - deckBox.top,
+        spaceBelow: deckBox.bottom - body.getBoundingClientRect().bottom,
+        footerPosition: getComputedStyle(footer).position,
+        footerGap: deckBox.bottom - footer.getBoundingClientRect().bottom,
+        padding: parseFloat(getComputedStyle(deck).paddingBottom),
+      };
+    });
+
+    // 見出し＋本文のかたまりが上下中央に置かれる（上下の余白がほぼ等しい）。
+    expect(Math.abs(metrics.spaceAbove - metrics.spaceBelow)).toBeLessThan(1);
+    expect(metrics.spaceAbove).toBeGreaterThan(metrics.padding);
+    // フッターは中央寄せの基準をずらさないよう下端に固定する。
+    expect(metrics.footerPosition).toBe("absolute");
+    expect(Math.abs(metrics.footerGap - metrics.padding)).toBeLessThan(1);
   } finally {
     await harness.close();
   }

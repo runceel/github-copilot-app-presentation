@@ -101,7 +101,7 @@ total: 6
 | `page` | 現在ページ番号（1 始まり）。`total` と両方あるときだけフッター右に表示 |
 | `total` | 総ページ数 |
 | `title` | ブラウザータブのタイトル（省略時は `deck`） |
-| `layout` | `title` は表紙、`section` はセクション区切り、`backcover` は背表紙。`title` / `backcover` にはカスタムテーマの `theme.json` が反映される。通常スライドは省略 |
+| `layout` | `title` は表紙、`section` はセクション区切り、`backcover` は背表紙、`center` は見出し＋本文をまとめて上下中央に置くレイアウト。`title` / `backcover` にはカスタムテーマの `theme.json` が反映される。通常スライドは省略（見出しも本文も上寄せ） |
 | `size` | コンテンツサイズ。`auto`（既定）/`normal`/`large`/`xlarge`。`auto` は余白の多い通常スライドだけを canvas が安全な範囲で拡大する |
 | `theme` | （任意・上書き用）このスライドだけ配色テーマを変える。`dark`/`light`/`microsoft`/`custom`。明示的な canvas の `theme` がある場合はそちらが優先 |
 | `theme-file` | `custom` 用。CSS カスタムプロパティだけを定義したファイルを、元 Markdown と同じフォルダーを基準にした相対パスで指定する（例: `./themes/brand/theme.css`）。同じフォルダーの `theme.json` は自動読込 |
@@ -367,6 +367,7 @@ canvas に直接渡すスライド断片では、同じ値を front matter の `
   見出しは左寄せ・縦中央になり、テーマ色へ追従する専用背景が付く。画像・アイコンは
   追加しない。
 - 元 Markdown のスライドに**明示の `layout` がある場合は上書きしない**。
+- **通常スライドは見出しも本文も上寄せ**が既定。文が短いスライドなどで**見出しごと上下中央**に置きたいときだけ `layout: center` を付ける。
 - デッキの締めは、**テーマに関わらず背表紙（`layout: backcover`）が拡張機能によって末尾へ自動追加**される。agent が書く必要はない。結び／お礼／Q&A／連絡先などのスライドは**通常スライドとして**そのまま書けばよく、`layout: closing` は使わない（廃止済み）。
 
 ### 自然言語の文章をスライド化する

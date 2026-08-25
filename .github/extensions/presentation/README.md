@@ -61,7 +61,7 @@ Extension 単体をユーザースコープへ導入した場合も同じ仕様�
 | `deck` / `kicker` | フッターのデッキ名 / 見出し上のラベル |
 | `page` / `total` | 1 始まりの現在ページ / 総ページ数 |
 | `title` | ブラウザータブのタイトル |
-| `layout` | 表紙は `title`、セクション区切りは `section`、背表紙は `backcover`。通常スライドは省略 |
+| `layout` | 表紙は `title`、セクション区切りは `section`、背表紙は `backcover`、見出しと本文をまとめて上下中央に置くなら `center`。通常スライド（省略時）は見出しも本文も上寄せ |
 | `size` | `auto`（既定）/ `normal` / `large` / `xlarge` |
 | `theme` | スライド単位の上書き。通常はデッキの `theme` を使う |
 | `logo` / `copyright` | `backcover` のメタデータ既定値を上書きする表示内容 |
