@@ -105,6 +105,8 @@ export async function readGuide(topic = "overview") {
       return [
         section(readme, "## 仕組み"),
         "",
+        "利用者は canvas の 📂 ボタンから workspace の Markdown を直接読み込める（AI を介さない機械的な分割。自然言語の要約は従来どおり AI 側の役割）。",
+        "",
         "詳細は `slide-format` / `themes` / `custom-themes` / `theme-schema` / `architecture-dsl` / `architecture-schema` を指定して取得する。",
       ].join("\n");
     case "slide-format":

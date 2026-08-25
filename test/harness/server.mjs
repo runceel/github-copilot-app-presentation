@@ -18,6 +18,8 @@
 //   POST /navigate              → ページ送り（index / delta）
 //   POST /edit                  → Architecture 図の書き戻し（編集モード時のみ）
 //   POST /present, /export      → 未対応を返すだけのスタブ
+//   GET  /markdown-files        → workspace 内の Markdown 一覧（インポート用）
+//   POST /import                → Markdown を読み込み、分割してデッキを差し替える
 //   GET  /vendor/mermaid.min.js → 分割チャンクから復元（ファイルとしては存在しない）
 //   GET  /renderer/*, /vendor/* → 拡張ディレクトリからの静的配信
 //   GET  /assets/*              → リポジトリ直下 assets/
@@ -29,6 +31,11 @@ import { fileURLToPath } from "node:url";
 
 import { reconstructAsset } from "../../.github/extensions/presentation/scripts/vendor-assets.mjs";
 import { replaceArchitectureBlock } from "../../.github/extensions/presentation/scripts/markdown-blocks.mjs";
+import {
+  isMarkdownPath,
+  listMarkdownFiles,
+} from "../../.github/extensions/presentation/scripts/markdown-files.mjs";
+import { buildDeckSlides } from "../../.github/extensions/presentation/markdown-deck.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "..", "..");
@@ -120,6 +127,7 @@ export async function startHarness({
   index = 0,
   printToken = "test-print-token",
   architectureEdit = false,
+  markdownRoot = "",
 } = {}) {
   if (!Array.isArray(slides) || slides.length === 0) {
     throw new Error("startHarness requires a non-empty slides array");
@@ -141,6 +149,8 @@ export async function startHarness({
     // Architecture 図の編集モード。本番の extension.mjs では canvas アクションで
     // 切り替わるが、ハーネスでは起動時のオプションで固定する。
     architectureEdit: Boolean(architectureEdit),
+    // インポートされた Markdown の相対パス（未インポートなら空）。
+    sourceName: "",
   };
   // renderer が POST してきた印刷結果。テスト側が "ready" を確認するために保持する。
   const printReports = [];
@@ -369,6 +379,78 @@ export async function startHarness({
       return;
     }
 
+    // Markdown インポート（canvas の 📂 ボタン）。走査と分割は本番と同じ共有
+    // モジュールを使い、ここではデッキの差し替えだけを行う。
+    if (pathname === "/markdown-files") {
+      if (req.method !== "GET") {
+        res.setHeader("Allow", "GET");
+        sendJson(res, 405, { ok: false, error: "method_not_allowed" });
+        return;
+      }
+      if (!markdownRoot) {
+        sendJson(res, 200, { ok: true, files: [], truncated: false, current: "" });
+        return;
+      }
+      const listed = await listMarkdownFiles(markdownRoot);
+      sendJson(res, 200, { ok: true, ...listed, current: state.sourceName });
+      return;
+    }
+
+    if (pathname === "/import") {
+      if (req.method !== "POST") {
+        res.setHeader("Allow", "POST");
+        sendJson(res, 405, { ok: false, error: "method_not_allowed" });
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        sendJson(res, error?.message === "payload_too_large" ? 413 : 400, {
+          ok: false,
+          error: "bad_request",
+        });
+        return;
+      }
+      const rel = typeof body.path === "string" ? body.path.trim() : "";
+      const abs = markdownRoot && rel ? safeJoin(markdownRoot, rel) : null;
+      if (!abs) {
+        sendJson(res, 400, { ok: false, error: "path_outside_workspace" });
+        return;
+      }
+      if (!isMarkdownPath(abs)) {
+        sendJson(res, 400, { ok: false, error: "not_markdown" });
+        return;
+      }
+      let text;
+      try {
+        text = await readFile(abs, "utf8");
+      } catch (_) {
+        sendJson(res, 404, { ok: false, error: "file_not_found" });
+        return;
+      }
+      const imported = buildDeckSlides(text);
+      if (!imported.length) {
+        sendJson(res, 400, { ok: false, error: "empty_markdown" });
+        return;
+      }
+      state.slides = imported;
+      state.index = 0;
+      state.sourceName = rel;
+      state.deckVersion += 1;
+      state.version += 1;
+      broadcast();
+      sendJson(res, 200, {
+        ok: true,
+        version: state.version,
+        index: state.index,
+        total: state.slides.length,
+        theme: state.theme,
+        sourceName: state.sourceName,
+      });
+      return;
+    }
+
     // presenter 起動と PDF 書き出しは SDK / 外部ブラウザ側の責務なのでスタブに留める。
     if (pathname === "/present" || pathname === "/export") {
       if (req.method !== "POST") {
@@ -439,6 +521,14 @@ export async function startHarness({
     /** サーバー側の編集モード。URL パラメーター経由の有効化を検証するために公開する。 */
     get architectureEdit() {
       return state.architectureEdit;
+    },
+    /** インポート済み Markdown の相対パス（未インポートなら空）。 */
+    get sourceName() {
+      return state.sourceName;
+    },
+    /** 現在のスライド枚数（インポートで増減する）。 */
+    get total() {
+      return state.slides.length;
     },
     /** 現在のスライド本文（書き戻しの検証用）。 */
     slideAt(i) {
