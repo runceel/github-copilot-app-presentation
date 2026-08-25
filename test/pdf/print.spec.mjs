@@ -34,6 +34,9 @@ const MIXED_SLIDE = readFileSync(
 const SECTION_DECK = splitFixtureDeck(
   readFileSync(join(REPO_ROOT, "test", "fixtures", "layout-visual.md"), "utf8"),
 );
+const STANDARD_TITLE_DECK = splitFixtureDeck(
+  readFileSync(join(REPO_ROOT, "test", "fixtures", "standard-title.md"), "utf8"),
+);
 // 背表紙の手前に mermaid + architecture 混在スライドを差し込んだデッキ。
 const MIXED_DECK = [...ARCHITECTURE_DECK.slice(0, -1), MIXED_SLIDE, ...ARCHITECTURE_DECK.slice(-1)];
 
@@ -162,6 +165,47 @@ test("セクション区切りも背景付きの 16:9 ページとして出力�
 
     const { pageCount, mediaBoxes } = inspectPdf(pdf);
     expect(pageCount, "セクション区切りも 1 スライド = 1 ページ").toBe(SECTION_DECK.length);
+    assertSixteenByNine(mediaBoxes);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("通常スライドのタイトルは印刷でも上部に固定される", async ({ page }) => {
+  const harness = await startHarness({ slides: STANDARD_TITLE_DECK, theme: "microsoft" });
+  try {
+    const { pdf } = await renderPrintDeck(page, harness);
+    await page.emulateMedia({ media: "print" });
+    const layouts = await page.locator("#stage > .deck").evaluateAll((decks) =>
+      decks.map((deck) => {
+        const title = deck.querySelector(":scope > header > .slide-title");
+        const body = deck.querySelector(":scope > .body");
+        const deckBox = deck.getBoundingClientRect();
+        const titleBox = title?.getBoundingClientRect();
+        const bodyBox = body.getBoundingClientRect();
+        return {
+          hasFixedTitle: deck.classList.contains("has-slide-title"),
+          titleTag: title?.tagName ?? "",
+          titleTop: titleBox ? titleBox.top - deckBox.top : null,
+          titleBottom: titleBox ? titleBox.bottom - deckBox.top : null,
+          bodyTop: bodyBox.top - deckBox.top,
+          bodyHeadingCount: body.querySelectorAll(":scope > h1, :scope > h2").length,
+        };
+      }),
+    );
+
+    expect(layouts.slice(0, 3).map((layout) => layout.hasFixedTitle)).toEqual([true, true, true]);
+    expect(layouts.slice(0, 3).map((layout) => layout.titleTag)).toEqual(["H2", "H2", "H1"]);
+    expect(layouts.slice(0, 3).map((layout) => layout.bodyHeadingCount)).toEqual([0, 0, 0]);
+    expect(Math.abs(layouts[1].titleTop - layouts[0].titleTop)).toBeLessThan(0.5);
+    for (const layout of layouts.slice(0, 3)) {
+      expect(layout.titleBottom).toBeLessThanOrEqual(layout.bodyTop);
+    }
+    expect(layouts[3].hasFixedTitle).toBe(false);
+    expect(layouts[3].bodyHeadingCount).toBe(1);
+
+    const { pageCount, mediaBoxes } = inspectPdf(pdf);
+    expect(pageCount).toBe(STANDARD_TITLE_DECK.length);
     assertSixteenByNine(mediaBoxes);
   } finally {
     await harness.close();

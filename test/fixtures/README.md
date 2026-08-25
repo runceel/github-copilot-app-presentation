@@ -34,6 +34,7 @@ total: 2
 | --- | --- |
 | `architecture-visual.md` | ビジュアル回帰用。ピクセル比較を安定させるため architecture DSL のみで構成し、mermaid は含めない |
 | `layout-visual.md` | `layout: section` の H1/H2、任意の kicker／フッター、テーマ別背景、PDF 出力の回帰用 |
+| `standard-title.md` | 通常スライド先頭の H1/H2 を上部タイトル領域へ固定する DOM・座標・PDF 回帰用 |
 | `print-mixed.md` | PDF 回帰用。mermaid と architecture DSL を 1 枚に混在させたスライド断片（区切りなしの単一断片） |
 
 PDF 回帰スイートは `architecture-visual.md` の背表紙の手前に `print-mixed.md` を差し込んだ

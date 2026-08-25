@@ -325,6 +325,15 @@ function runMermaid(scope, theme, token, revealWhenDone = true) {
 }
 
 // --- slide rendering -------------------------------------------------------
+function moveLeadingSlideTitle(header, bodyEl, specialLayout) {
+  if (specialLayout) return null;
+  const title = bodyEl.firstElementChild;
+  if (!title || (title.tagName !== "H1" && title.tagName !== "H2")) return null;
+  title.classList.add("slide-title");
+  header.appendChild(title);
+  return title;
+}
+
 function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
   const md = nonEmpty(markdown) ? markdown : PLACEHOLDER;
   const { meta, body: rawBody } = splitFrontMatter(md);
@@ -394,6 +403,12 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
   // <br> tags the title slide relies on.
   bodyEl.innerHTML = window.DOMPurify.sanitize(window.marked.parse(body));
   applyEmojiShortcodes(bodyEl);
+  const slideTitle = moveLeadingSlideTitle(
+    header,
+    bodyEl,
+    titleSlide || sectionSlide || backcoverSlide,
+  );
+  if (slideTitle) deck.classList.add("has-slide-title");
 
   // marked emits ```mermaid fences as <pre><code class="language-mermaid">.
   // Convert them to the <pre class="mermaid"> shape mermaid.run expects.
