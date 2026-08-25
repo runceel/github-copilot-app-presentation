@@ -147,6 +147,10 @@ h1{font-size:var(--slide-h1-size);line-height:1.08;margin:.1em 0 .25em;
 h2{font-size:var(--slide-h2-size);line-height:1.14;margin:.1em 0 .45em;
    font-weight:600;letter-spacing:-.005em;color:var(--fg);}
 h3{font-size:var(--slide-h3-size);margin:.25em 0 .3em;font-weight:600;color:var(--accent-strong);}
+/* Standard slides reserve the header for their leading H1/H2, while the body
+   keeps its independent centered layout below. */
+.deck.has-slide-title>header{display:flex;flex-direction:column;align-items:flex-start;}
+.deck.has-slide-title .slide-title{flex:0 0 auto;width:100%;margin-top:0;}
 .body{flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;justify-content:safe center;
       font-size:var(--slide-body-size);line-height:1.55;gap:.5em;min-height:0;overflow:hidden;color:var(--body);}
 /* `overflow:auto` would show a scrollbar for a sub-pixel overflow, so scrolling
