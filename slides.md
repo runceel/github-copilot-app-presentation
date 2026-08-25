@@ -1,6 +1,8 @@
 ---
 title: presentation canvas サンプル
 theme: dark
+deck: presentation canvas サンプル
+layout: title
 ---
 
 # presentation canvas
