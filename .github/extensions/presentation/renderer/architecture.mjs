@@ -91,6 +91,7 @@ const ID_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
 const SHAPES = new Set(["rect", "rounded-rect", "ellipse"]);
 const ROUTINGS = new Set(["straight", "orthogonal", "polyline"]);
 const PORTS = new Set(["auto", "top", "right", "bottom", "left"]);
+const LABEL_LAYERS = new Set(["front", "behind"]);
 const LAYOUTS = new Set(["row", "column", "grid", "layered"]);
 const LAYOUT_DIRECTIONS = new Set(["down", "right"]);
 const IMAGE_FITS = new Set(["contain", "cover", "stretch"]);
@@ -266,6 +267,7 @@ const ELEMENT_KEYS = Object.freeze({
     "fromPort",
     "toPort",
     "label",
+    "labelLayer",
     "ariaLabel",
     "routing",
     "points",
@@ -863,6 +865,12 @@ function flattenElements(
         fromPort: enumValue(element.fromPort, `${elementPath}.fromPort`, PORTS, "auto"),
         toPort: enumValue(element.toPort, `${elementPath}.toPort`, PORTS, "auto"),
         label: textValue(element.label, `${elementPath}.label`, "", 200),
+        labelLayer: enumValue(
+          element.labelLayer,
+          `${elementPath}.labelLayer`,
+          LABEL_LAYERS,
+          "front",
+        ),
         ariaLabel: textValue(element.ariaLabel, `${elementPath}.ariaLabel`, "", 300),
         routing,
         points: points.map((point, index) =>
@@ -3695,6 +3703,7 @@ function renderConnector(
     "data-architecture-connector": `${element.from}-${element.to}`,
     "data-architecture-type": "connector",
     "data-architecture-order": element.order,
+    "data-architecture-label-layer": element.labelLayer,
     role: "group",
     "aria-label": label,
   });
@@ -3711,11 +3720,19 @@ function renderConnector(
       "marker-end": element.arrow ? `url(#${markerId})` : "",
     }),
   );
+  let frontLabel = null;
   if (element.label) {
     const fittedLabel = connectorLabelMetrics(element, canvas);
     const position = connectorLabelAnchor(element, points, fittedLabel, canvas);
     const { width, height } = fittedLabel;
-    group.appendChild(
+    const labelGroup = svgElement(documentRef, "g", {
+      "data-architecture-connector-label": `${element.from}-${element.to}`,
+      "data-architecture-label-layer": element.labelLayer,
+      "pointer-events": "none",
+      "aria-hidden": "true",
+      ...(element.labelLayer === "front" ? { opacity: element.style.opacity } : {}),
+    });
+    labelGroup.appendChild(
       svgElement(documentRef, "rect", {
         x: position.x - width / 2,
         y: position.y - height / 2,
@@ -3735,14 +3752,15 @@ function renderConnector(
       "font-weight": 600,
       "text-anchor": "middle",
       "dominant-baseline": "middle",
-      "pointer-events": "none",
       // 視覚専用。幅に収まらないと省略されるので、正は親の aria-label 側。
       "aria-hidden": "true",
     });
     text.textContent = fittedLabel.text;
-    group.appendChild(text);
+    labelGroup.appendChild(text);
+    if (element.labelLayer === "front") frontLabel = labelGroup;
+    else group.appendChild(labelGroup);
   }
-  return group;
+  return { group, frontLabel };
 }
 
 export function architectureSemanticSnapshot(model) {
@@ -3864,6 +3882,7 @@ export function renderArchitectureDiagram(
 
   // コネクターの読み上げで端点を可視ラベルで呼ぶための表。要素列を 1 回だけ走る。
   const endpointNames = endpointDisplayNames(model.elements);
+  const frontLabels = [];
 
   model.elements.forEach((element, index) => {
     if (element.type === "group") {
@@ -3875,18 +3894,19 @@ export function renderArchitectureDiagram(
         renderImage(documentRef, element, `architecture-image-clip-${renderId}-${index}`),
       );
     } else {
-      svg.appendChild(
-        renderConnector(
-          documentRef,
-          element,
-          connectorRoutes.get(element),
-          `architecture-arrow-${renderId}-${index}`,
-          endpointNames,
-          model.canvas,
-        ),
+      const rendered = renderConnector(
+        documentRef,
+        element,
+        connectorRoutes.get(element),
+        `architecture-arrow-${renderId}-${index}`,
+        endpointNames,
+        model.canvas,
       );
+      svg.appendChild(rendered.group);
+      if (rendered.frontLabel) frontLabels.push(rendered.frontLabel);
     }
   });
+  frontLabels.forEach((label) => svg.appendChild(label));
   wrapper.appendChild(svg);
   appendRoutingWarning(documentRef, wrapper, routingDiagnostics);
   return wrapper;
@@ -3960,6 +3980,7 @@ export {
   ASSET_PATH_PATTERN,
   ID_PATTERN,
   IMAGE_FITS,
+  LABEL_LAYERS,
   LAYOUT_DIRECTIONS,
   LAYOUTS,
   LITERAL_COLORS,

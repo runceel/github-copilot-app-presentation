@@ -189,8 +189,8 @@ flowchart LR
     {
       "type": "node",
       "id": "shape-rect",
-      "x": 90,
-      "y": 170,
+      "x": 760,
+      "y": 240,
       "width": 300,
       "height": 140,
       "text": "Rect",
@@ -200,8 +200,8 @@ flowchart LR
     {
       "type": "node",
       "id": "shape-rounded",
-      "x": 90,
-      "y": 380,
+      "x": 760,
+      "y": 550,
       "width": 300,
       "height": 140,
       "text": "Rounded",
@@ -231,13 +231,13 @@ flowchart LR
       "style": { "fill": "surface", "stroke": "accent" }
     },
     { "type": "connector", "from": "shape-rect", "to": "shape-target", "routing": "straight", "label": "straight" },
-    { "type": "connector", "from": "shape-rounded", "to": "shape-target", "routing": "orthogonal", "label": "orthogonal" },
+    { "type": "connector", "from": "shape-rounded", "to": "shape-target", "routing": "orthogonal", "label": "orthogonal", "labelLayer": "behind" },
     {
       "type": "connector",
       "from": "shape-ellipse",
       "to": "shape-target",
       "routing": "polyline",
-      "points": [{ "x": 720, "y": 660 }, { "x": 900, "y": 660 }],
+      "points": [{ "x": 600, "y": 800 }, { "x": 1500, "y": 800 }, { "x": 1500, "y": 620 }],
       "label": "polyline"
     }
   ]

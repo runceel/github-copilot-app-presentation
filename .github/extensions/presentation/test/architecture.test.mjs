@@ -247,6 +247,7 @@ test("parses nested groups, theme tokens, connectors, and stable z-order", () =>
   assert.equal(api.style.stroke, "var(--accent)");
   assert.equal(model.elements[0].type, "group");
   assert.equal(model.elements[1].type, "connector");
+  assert.equal(model.elements[1].labelLayer, "front");
   assert.deepEqual(
     model.elements.filter((element) => element.type !== "connector").map((element) => element.id),
     ["cloud", "api", "db"],
@@ -1594,15 +1595,95 @@ test("fits connector labels inside a bounded Unicode-aware background", () => {
       }),
     );
     const wrapper = renderArchitectureDiagram(model, new FakeDocument());
+    const labelGroup = descendants(wrapper).find(
+      (node) => node.attributes.get("data-architecture-connector-label") === "left-right",
+    );
+    const background = labelGroup.children.find((node) => node.tagName === "rect");
+    const text = labelGroup.children.find((node) => node.tagName === "text");
+    assert.equal(text.textContent.endsWith("…"), true);
+    assert.ok(Number(background.attributes.get("width")) <= 560);
     const connector = descendants(wrapper).find(
       (node) => node.attributes.get("data-architecture-connector") === "left-right",
     );
-    const background = connector.children.find((node) => node.tagName === "rect");
-    const text = connector.children.find((node) => node.tagName === "text");
-    assert.equal(text.textContent.endsWith("…"), true);
-    assert.ok(Number(background.attributes.get("width")) <= 560);
     assert.equal(connector.attributes.get("aria-label"), `left to right: ${label}`);
   }
+});
+
+test("connector labels default in front of boxes and can retain the connector z-order", () => {
+  const render = (labelLayer) => {
+    const connector = {
+      type: "connector",
+      from: "left",
+      to: "right",
+      label: "calls",
+      routing: "straight",
+      ...(labelLayer ? { labelLayer } : {}),
+    };
+    const model = parseArchitecture(
+      JSON.stringify({
+        version: 1,
+        elements: [
+          { type: "node", id: "left", x: 100, y: 100, width: 200, height: 100 },
+          { type: "node", id: "right", x: 700, y: 100, width: 200, height: 100 },
+          connector,
+        ],
+      }),
+    );
+    const svg = renderArchitectureDiagram(model, new FakeDocument()).children.find(
+      (node) => node.tagName === "svg",
+    );
+    const connectorGroup = svg.children.find(
+      (node) => node.attributes.get("data-architecture-connector") === "left-right",
+    );
+    const rightBox = svg.children.find(
+      (node) => node.attributes.get("data-architecture-id") === "right",
+    );
+    const labelGroup = descendants(svg).find(
+      (node) => node.attributes.get("data-architecture-connector-label") === "left-right",
+    );
+    return { model, svg, connectorGroup, rightBox, labelGroup };
+  };
+
+  const front = render();
+  assert.equal(
+    front.model.elements.find((element) => element.type === "connector").labelLayer,
+    "front",
+  );
+  assert.ok(front.svg.children.indexOf(front.labelGroup) > front.svg.children.indexOf(front.rightBox));
+  assert.equal(front.connectorGroup.children.includes(front.labelGroup), false);
+
+  const behind = render("behind");
+  assert.equal(
+    behind.model.elements.find((element) => element.type === "connector").labelLayer,
+    "behind",
+  );
+  assert.equal(behind.connectorGroup.children.includes(behind.labelGroup), true);
+  assert.ok(
+    behind.svg.children.indexOf(behind.connectorGroup) <
+      behind.svg.children.indexOf(behind.rightBox),
+  );
+});
+
+test("rejects unsupported connector label layers", () => {
+  assert.throws(
+    () =>
+      parseArchitecture(
+        JSON.stringify({
+          elements: [
+            { type: "node", id: "left", x: 0, y: 0, width: 100, height: 100 },
+            { type: "node", id: "right", x: 300, y: 0, width: 100, height: 100 },
+            {
+              type: "connector",
+              from: "left",
+              to: "right",
+              label: "calls",
+              labelLayer: "middle",
+            },
+          ],
+        }),
+      ),
+    /elements\[2\]\.labelLayer: must be one of: front, behind/,
+  );
 });
 
 test("connector accessible names use the visible labels of both endpoints", () => {

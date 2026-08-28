@@ -22,7 +22,7 @@
 //   POST /import                → Markdown を読み込み、分割してデッキを差し替える
 //   GET  /vendor/mermaid.min.js → 分割チャンクから復元（ファイルとしては存在しない）
 //   GET  /renderer/*, /vendor/* → 拡張ディレクトリからの静的配信
-//   GET  /assets/*              → リポジトリ直下 assets/
+//   GET  /assets/*              → Markdown 隣接 assets/、次にリポジトリ直下 assets/
 
 import { createServer } from "node:http";
 import { readFile, writeFile } from "node:fs/promises";
@@ -40,6 +40,7 @@ import {
 } from "../../.github/extensions/presentation/scripts/markdown-files.mjs";
 import { buildDeckSlides } from "../../.github/extensions/presentation/markdown-deck.mjs";
 import { createMarkdownWatcher } from "../../.github/extensions/presentation/scripts/markdown-watcher.mjs";
+import { resolveAssetFile } from "../../.github/extensions/presentation/scripts/asset-paths.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "..", "..");
@@ -668,12 +669,27 @@ export async function startHarness({
     }
 
     if (pathname.startsWith("/assets/")) {
-      const abs = safeJoin(join(REPO_ROOT, "assets"), pathname.slice("/assets".length));
-      if (!abs) {
-        sendText(res, 403, "Forbidden");
-        return;
+      try {
+        const sourcePath = state.sourceName ? safeJoin(markdownRoot, state.sourceName) : "";
+        const abs = await resolveAssetFile(
+          REPO_ROOT,
+          sourcePath || "",
+          pathname.slice("/assets/".length),
+        );
+        if (!abs) {
+          sendText(res, 404, "Not found");
+          return;
+        }
+        await sendFile(res, abs);
+      } catch (error) {
+        const forbidden = [
+          "invalid_asset_path",
+          "asset_source_outside_workspace",
+          "asset_root_outside_workspace",
+          "asset_outside_workspace",
+        ].includes(error?.code);
+        sendText(res, forbidden ? 403 : 404, forbidden ? "Forbidden" : "Not found");
       }
-      await sendFile(res, abs);
       return;
     }
 

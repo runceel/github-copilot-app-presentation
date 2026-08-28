@@ -11,6 +11,10 @@ import { createArchitectureDocument } from "/renderer/architecture-document.mjs"
 const COLORS = [...Object.keys(THEME_TOKENS), "black", "white", "transparent", "none"];
 const PORTS = ["auto", "top", "right", "bottom", "left"];
 const ROUTING = ["straight", "orthogonal", "polyline"];
+const LABEL_LAYERS = [
+  { value: "front", label: "箱の手前" },
+  { value: "behind", label: "箱の後ろ" },
+];
 const SHAPES = ["rect", "rounded-rect", "ellipse"];
 const IMAGE_FITS = ["contain", "cover", "stretch"];
 const ASSET_MAX_BYTES = 10 * 1024 * 1024;
@@ -1155,6 +1159,12 @@ function renderInspector() {
       options: PORTS,
     });
     addField(general, { label: "ラベル", path: "label", value: entry.element.label });
+    addField(general, {
+      label: "ラベルの重なり",
+      path: "labelLayer",
+      value: entry.element.labelLayer || "front",
+      options: LABEL_LAYERS,
+    });
     addField(general, {
       label: "経路",
       path: "routing",
