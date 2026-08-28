@@ -73,6 +73,7 @@ let lastMermaidTheme = null;
 // 編集モードは「presenter でも印刷でもない通常表示」でだけ有効になる。
 // 印刷は init の早期 return でここへ到達しないので、実質の分岐は presenterMode。
 let architectureEditMode = false;
+let architectureDetailedEdit = false;
 let presenterMode = false;
 // 直近に描画したスライドの Markdown。編集モードの切り替えで描き直すために持つ。
 let lastMarkdown = "";
@@ -274,13 +275,21 @@ function applyEmojiShortcodes(root) {
 // --- syntax highlighting ----------------------------------------------------
 // Highlight fenced code blocks after marked + DOMPurify have produced a safe
 // DOM. Mermaid fences are converted separately and must not be highlighted.
+function hasCodeLanguage(code, language) {
+  const expected = `language-${language}`.toLowerCase();
+  return [...code.classList].some((name) => name.toLowerCase() === expected);
+}
+
+function codeBlocksForLanguage(root, language) {
+  return [...root.querySelectorAll("pre code")].filter((code) =>
+    hasCodeLanguage(code, language),
+  );
+}
+
 function applySyntaxHighlighting(root) {
   if (!window.hljs) return;
   root.querySelectorAll("pre code").forEach((code) => {
-    if (
-      code.classList.contains("language-mermaid") ||
-      code.classList.contains("language-architecture")
-    ) {
+    if (hasCodeLanguage(code, "mermaid") || hasCodeLanguage(code, "architecture")) {
       return;
     }
     try {
@@ -416,7 +425,7 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
 
   // marked emits ```mermaid fences as <pre><code class="language-mermaid">.
   // Convert them to the <pre class="mermaid"> shape mermaid.run expects.
-  bodyEl.querySelectorAll("code.language-mermaid").forEach((code) => {
+  codeBlocksForLanguage(bodyEl, "mermaid").forEach((code) => {
     const target = code.closest("pre") || code;
     const graph = document.createElement("pre");
     graph.className = "mermaid";
@@ -425,7 +434,7 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
   });
   // Architecture fences contain a constrained JSON DSL. The renderer builds its
   // SVG with createElementNS/textContent instead of injecting generated markup.
-  bodyEl.querySelectorAll("code.language-architecture").forEach((code, blockIndex) => {
+  codeBlocksForLanguage(bodyEl, "architecture").forEach((code, blockIndex) => {
     const target = code.closest("pre") || code;
     const source = code.textContent;
     const slideIndex = navIndex;
@@ -442,6 +451,8 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
     const editor = attachArchitectureEditor(host, {
       source,
       documentRef: document,
+      canOpenDetail: architectureDetailedEdit,
+      onOpenDetail: () => openDetailedArchitectureEditor(slideIndex, blockIndex),
       // 保存結果を editor へ返す（返し忘れると失敗が「成功」に見えてしまう）。
       onCommit: (next) => saveArchitectureBlock(slideIndex, blockIndex, next),
     });
@@ -845,6 +856,32 @@ async function saveArchitectureBlock(index, block, source) {
   return { ok: true, fileSaved: data.fileSaved === true };
 }
 
+async function openDetailedArchitectureEditor(index, block) {
+  let response;
+  try {
+    response = await fetch("./architecture-editor/open", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ index, block }),
+    });
+  } catch (_) {
+    return { ok: false, message: "サーバーへ接続できませんでした。" };
+  }
+  const result = await response.json().catch(() => ({}));
+  if (response.ok && result.ok === true) return result;
+  if (result.error === "source_not_available") {
+    return {
+      ok: false,
+      message:
+        "詳細編集には元 Markdown との対応が必要です。canvas のファイル選択から Markdown を読み込んでください。",
+    };
+  }
+  return {
+    ok: false,
+    message: result.message || "専用 Architecture Editor を開けませんでした。",
+  };
+}
+
 async function fetchState() {
   const res = await fetch("./state", { cache: "no-store" });
   if (!res.ok) return;
@@ -859,8 +896,18 @@ async function fetchState() {
   if (typeof data.presenterRunning === "boolean") {
     updatePresenterButton(data.presenterRunning);
   }
+  const detailedEditChanged =
+    typeof data.architectureDetailedEdit === "boolean" &&
+    data.architectureDetailedEdit !== architectureDetailedEdit;
+  if (typeof data.architectureDetailedEdit === "boolean") {
+    architectureDetailedEdit = data.architectureDetailedEdit;
+  }
   // 編集モードの切り替えは版番号を伴わないので、バージョンガードより前に見る。
-  if (typeof data.architectureEdit === "boolean" && setArchitectureEditMode(data.architectureEdit)) {
+  if (
+    (typeof data.architectureEdit === "boolean" &&
+      setArchitectureEditMode(data.architectureEdit)) ||
+    (architectureEditMode && detailedEditChanged)
+  ) {
     renderSlide(lastMarkdown);
     updateNav();
   }

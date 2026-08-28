@@ -103,10 +103,39 @@ AI がその代わりに使うものではありません）。
 | `open_presenter` | 表示中のデッキを、canvas と同期された外部全画面ウィンドウで開く。Edge / Chrome / Chromium の app mode を使い、ページ位置・キーボード・Surface Pen 操作を共有する。Surface Pen の末尾ボタン 2 回押しでも起動 / 終了できる。 |
 | `close_presenter` | `open_presenter` で起動した外部プレゼン画面を閉じる。 |
 | `export_pdf` | 表示中のデッキを16:9 PDFへ書き出すAI用action。任意の `outputPath` はworkspaceからの相対 `.pdf` パス、省略時は `presentation.pdf`。Canvas のプリンターアイコンは `sourceName` から `<元ファイル名>.pdf` を自動保存する。任意の `theme`（`dark`/`light`/`microsoft`/`custom`）はPDFだけに適用し、canvas表示は変えない。1スライド1ページで、背景・画像・コード強調・Mermaidを含む。`show_slide` による現在ページの一時差し替えも反映する。 |
+| `edit_architecture` | presentation 上の Architecture 図を位置調整する軽量モード。node のドラッグ／キーボード移動、layout 解除、Undo/Redo を提供し、従来どおり操作単位で保存する。 |
 | `reset` | スライドとデッキをクリアして待機表示に戻す。 |
 
 > `load_deck` / `goto_slide` は結果に `{ ok, version, index, total }` を返します（`goto_slide` は `changed` も返し、表示が実際に変わったかを示します）。`index` は現在表示中の 0 始まりインデックス、`total` は総スライド数です。
 > `export_pdf` は `{ ok, path, total, theme, bytes }` を返します。PDFを書き出す前に、元Markdownが更新されている場合は最新の全スライドを `load_deck` で再登録してください。Canvas のプリンターアイコンは、元 Markdown のファイル名を `sourceName` に渡しておくと `<元ファイル名>.pdf` を workspace に保存します。
+
+### Architecture 図の本格編集
+
+既存の `✎` / `edit_architecture` は位置の微調整用として維持します。node / group /
+connector の追加・削除、リサイズ、親子関係、layout、style、ports、routing などを編集する
+場合は、別の `architecture-editor` canvas を使います。
+
+- 利用者は presentation canvas の 📂 から Markdown を読み込み、`✎` 内の **詳細編集**で開けます。
+- agent は `open_canvas` を `canvasId: "architecture-editor"`、
+  `input: { sourcePath, blockIndex, theme? }` で呼べます。`sourcePath` は workspace 相対、
+  `blockIndex` は Markdown 全体で 0 始まりです。
+- 変更は draft に保持され、専用 canvas の **保存**または `save` action まで
+  Markdown へ書き込みません。
+- 作図面の要素・余白と要素ツリーでは右クリックメニューを利用できます。要素では追加、接続、
+  複製、削除、前面／背面、余白では追加、Undo/Redo、保存を表示します。group では
+  `レイアウト` サブメニューから `なし` / `row` / `column` / `grid` / `layered` を選択でき、
+  子要素から親 group のレイアウトを解除する操作は表示しません。作図面の余白から追加した
+  node / group は右クリック位置を中心に配置します。
+- キーボードでは要素へフォーカスして `Shift+F10` または Context Menu キーでメニューを開き、
+  矢印キー、Enter / Space、Escape で操作できます。`ArrowRight` でレイアウトサブメニューを
+  開き、`ArrowLeft` で親メニューへ戻ります。
+- 外部変更との競合時は上書きしません。元ファイルからやり直す場合だけ `reload` action に
+  `{ discard: true }` を渡します。
+- 専用 canvas は既存の `architecture` コードブロックだけを編集し、新しいブロックは作りません。
+- `open` / `load_deck` で組み立てた source-backed でない presentation では、
+  安全な書き戻し先がないため **詳細編集**を無効化します。
+
+Architecture DSL v1 の文法と既存位置調整モードの stable な保存契約は変更しません。
 
 ## スライド断片のフォーマット
 

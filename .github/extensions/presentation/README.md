@@ -33,7 +33,7 @@ canvas iframe（renderer/）
 - 配色は **dark（既定）/ light / microsoft / custom**。`open` の `input` または `load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。`microsoft` は組み込みの配色プリセット、`custom` は `themeFile` または front matter の `theme-file` で指定した CSS カスタムプロパティ専用ファイルです。テーマ指定は **明示的な依頼（canvas の theme） > Markdown front matter > dark** の順です。テーマファイルは元 Markdown と同じフォルダーを基準にした相対パスで、workspace 外や任意セレクターは拒否します。CSS と同じフォルダーに `theme.json` があれば、表紙背景・表紙/背表紙ロゴ・著作権表示を自動的に読み込みます。**どのテーマでもデッキ末尾に背表紙（`layout: backcover`）が自動追加**されます（既に背表紙があれば追加しません）。ロゴと著作権表示はメタデータまたは front matter で明示したときだけ表示されます。
 - カスタムテーマの詳細は [`docs/custom-theme-authoring.md`](docs/custom-theme-authoring.md) を参照してください。生成 AI からは `presentation_guide` の `custom-themes` / `theme-schema` トピックで同じ情報を取得できます。`schema/theme-v1.json` は標準カスタムプロパティ、`schema/theme-metadata-v1.schema.json` は `theme.json` の機械可読スキーマです。
 - コンテンツサイズは **auto（既定）/ normal / large / xlarge** の4段階。`auto` はコード・表・画像・Mermaidを含まない通常スライドを計測し、余白が大きい場合だけ安全な範囲で拡大します。
-- ナビゲーション UI（操作バー・✎ 編集モード・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。操作バーの ✎ を押すと `edit_architecture` と同じ編集モードを切り替えられます。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。余白クリックは通常の canvas/presenter 表示でのみ有効で、PDF 印刷モードでは登録されません。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
+- ナビゲーション UI（操作バー・✎ 編集モード・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。操作バーの ✎ を押すと `edit_architecture` と同じ位置調整モードを切り替えられます。📂 から読み込んだ Markdown の図では、位置調整ツールバーの **詳細編集**から専用の `architecture-editor` canvas を開けます。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。余白クリックは通常の canvas/presenter 表示でのみ有効で、PDF 印刷モードでは登録されません。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
 - **PDF Export は Canvas の操作バーにあるプリンターアイコンからも実行できます。** 元 Markdown のファイル名を `open` / `load_deck` の `sourceName` に渡すと、`<元ファイル名>.pdf` として workspace に保存します。AI から `export_pdf` action を呼ぶ場合は従来どおり任意の `outputPath` を指定できます。現在のデッキを hidden print mode で全ページ描画し、headless Edge/Chromeで背景・画像・コード強調・Mermaidを含む16:9 PDFへ変換します。
 - **外部プレゼン画面**は canvas の ⛶ ボタン、`open_presenter` action、または **Surface Pen の末尾ボタン 2 回押し**で起動します。Edge / Chrome / Chromium を専用の一時プロファイルで app mode + fullscreen 起動し、同じ `/state`・`/navigate`・SSE を使うため、canvas・キーボード・Surface Pen のページ位置が同期します。外部ウィンドウを閉じるには **もう一度ペンを 2 回押し**、`Alt+F4`、または AI から `close_presenter` を使います。canvas を閉じた場合も自動終了します。
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
@@ -594,9 +594,57 @@ Architecture 図はレンダリング結果の上で直接動かせます。Canv
 | Undo | ツールバーの `元に戻す` | Ctrl+Z |
 | Redo | ツールバーの `やり直す` | Ctrl+Shift+Z / Ctrl+Y |
 | 選択解除 | 図の外をクリック | Escape |
+| 本格編集 | ツールバーの `詳細編集` | — |
 
 移動のたびに図全体を再描画するので、**connector は毎回引き直されます**。
 結果はツールバーの `role="status"` / `aria-live="polite"` な領域で読み上げます。
+
+#### 専用 Architecture Editor
+
+`architecture-editor` は、Markdown 内の**既存** `architecture` コードブロックを本格編集する
+別 canvas です。位置調整モードは素早い微調整のために残し、要素の追加・削除やプロパティ変更は
+専用 canvas で行います。Markdown へ新しいコードブロックを挿入する機能はありません。
+
+- node / group / connector の追加、削除、複製、並び順、親 group を編集できます。
+- ドラッグ、リサイズハンドル、グリッドスナップ、ズーム、パンを利用できます。図が作図領域を
+  超える場合は横／縦スクロールで全体へ到達でき、中央ボタンまたは Space+ドラッグでも移動できます。
+- 作図面の要素・余白と要素ツリーを右クリックすると、対象に応じて追加、コネクター接続、
+  複製、削除、前面／背面、Undo/Redo、保存を選べます。group の `レイアウト`
+  サブメニューでは `なし` / `row` / `column` / `grid` / `layered` を選択でき、
+  現在値をチェック表示します。子要素から親 group のレイアウトを解除する操作はありません。
+  作図面の余白から node / group を追加した場合は、右クリック位置を中心に配置します。
+- 要素または要素ツリー項目へフォーカスして `Shift+F10` または Context Menu キーを押しても
+  同じメニューを開けます。矢印キーで項目を移動し、`ArrowRight` でサブメニューを開き、
+  `ArrowLeft` で親メニューへ戻ります。Enter / Space で実行、Escape で閉じます。
+- geometry、layout、style、icon、ports、routing、polyline points、canvas metadata など
+  Architecture DSL v1 の編集可能なフィールドを型別インスペクターで変更できます。group の
+  レイアウト種類は右側プロパティからも同じ規則で変更できます。
+- 変更はメモリ上の draft に留まり、**明示保存**（**保存**または `save` action）したときだけ
+  元 Markdown の対象コードブロックへ反映されます。
+- open 後に Markdown が外部変更された場合は上書きせず競合を表示します。`reload` action の
+  `{ "discard": true }` で draft を明示破棄してから再編集してください。
+- 保存後は、同じ Markdown を表示している presentation canvas も現在ページとテーマを保って
+  再読み込みされます。
+
+presentation canvas からは、📂 で読み込んだ source-backed なデッキだけが `詳細編集` を
+利用できます。`open` / `load_deck` へ直接渡したデッキは元 Markdown と安全に対応付けられない
+ため、ボタンを無効化します。エージェントから直接開く場合の入力は次のとおりです。
+
+```json
+{
+  "canvasId": "architecture-editor",
+  "instanceId": "architecture-editor-main",
+  "input": {
+    "sourcePath": "slides.md",
+    "blockIndex": 0,
+    "theme": "dark"
+  }
+}
+```
+
+`sourcePath` は workspace 内の `.md` / `.markdown` 相対パス、`blockIndex` は Markdown 全体で
+0 から数えた Architecture ブロック番号です。workspace 外、symlink 経由、サイズ超過、
+存在しないブロック、不正な DSL は fail closed で拒否します。
 
 #### 保存の成否は必ず表示されます
 
@@ -696,6 +744,10 @@ size: xlarge
 | `edit_architecture` | `{ enabled: boolean }` | Architecture 図の編集モードを切り替える。有効にすると canvas 上で node をドラッグ／キーボード操作できる。📂 インポートしたデッキは元 Markdown の ```architecture フェンスにも書き戻し、それ以外は canvas 状態へ保存する。presenter と印刷では編集 UI を出さない。編集モード自体はデッキと一緒には永続化せず、`reset` で解除する。戻り値 `{ ok, enabled, version }`。 |
 | `reset` | なし | スライドとデッキをクリアして待機プレースホルダーに戻す。編集モードも解除する。 |
 
+`architecture-editor` は別 canvas です。`open_canvas` の input は
+`{ sourcePath: string, blockIndex: number, theme?: "dark" | "light" | "microsoft" }`。
+action は `save`（入力なし）と、`reload`（`{ discard?: boolean }`）です。
+
 ### canvas が内部で使う HTTP エンドポイント（renderer 専用）
 
 | エンドポイント | 用途 |
@@ -709,6 +761,7 @@ size: xlarge
 | `POST /export` | canvas のプリンターアイコンから、`sourceName` に基づくPDF保存を開始する。同一 origin の POST のみ受け付ける。 |
 | `POST /edit` | 編集モードの canvas が、書き換えた ```architecture フェンスをデッキへ書き戻す。body は `{ index, block, source }`。編集モードが無効なら `409 edit_mode_disabled` で拒否する。 |
 | `POST /edit-mode` | 編集モードの有効・無効を切り替える。body は `{ enabled }`。`?architectureEdit=1` で開いた renderer もここを叩き、サーバー状態を唯一の真実にする。同一 origin の POST のみ受け付ける。 |
+| `POST /architecture-editor/open` | source-backed なデッキの slide/block index を Markdown 全体の block index へ変換し、専用 `architecture-editor` canvas を開く。 |
 | `GET /events` | SSE。`version` 変化を低遅延で通知する nudge。 |
 | `GET /markdown-files` | 📂 のオーバーレイ用に、workspace 内の `*.md` / `*.markdown` の相対パス一覧を返す。`.git` / `node_modules` / `.` 始まりは除外し、件数と深さに上限を設ける。 |
 | `POST /import` | 選んだ Markdown を読み込み、スライドに分割してデッキを差し替える。body は `{ path }`（workspace 相対）。workspace 外・拡張子違い・サイズ超過は拒否する。同一 origin の POST のみ受け付ける。 |
@@ -718,6 +771,11 @@ size: xlarge
 ```
 .github/extensions/presentation/
   extension.mjs            # canvas 宣言・ループバックサーバー・アクション
+  architecture-canvas.mjs  # 専用 Architecture Editor の状態・検証・明示保存・競合検知
+  architecture-editor/
+    index.html              # 本格作図 canvas のシェル
+    editor.css              # 作図面・ツリー・インスペクターのスタイル
+    editor.js               # 作図操作・draft・明示保存 UI
   copilot-extension.json   # gist 共有用マニフェスト
   markdown-deck.mjs        # 生 Markdown → スライド断片配列の分割（📂 インポート用）
   scripts/
@@ -731,7 +789,8 @@ size: xlarge
     renderer.js            # フロントマター解析 / marked / mermaid / architecture / SSE / 操作 UI
     architecture.mjs       # JSON DSL の検証と安全な SVG DOM 生成
     architecture-edit.mjs  # 編集の中核（DOM 非依存: 移動・layout 解除・Undo/Redo・直列化）
-    architecture-editor.mjs # 編集 UI（ツールバー・ドラッグ・キーボード・読み上げ）
+    architecture-editor.mjs # 位置調整 UI（ツールバー・ドラッグ・キーボード・詳細編集への導線）
+    architecture-document.mjs # 本格編集の command/session API
   schema/
     architecture-v1.schema.json # Architecture DSL v1 の JSON Schema（draft 2020-12）
     README.md              # スキーマの使い方・バージョニング / 移行ポリシー

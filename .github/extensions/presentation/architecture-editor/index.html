@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Architecture Editor</title>
+  <link rel="stylesheet" href="/renderer/slides.css">
+  <link rel="stylesheet" href="/editor/editor.css">
+</head>
+<body>
+  <header class="editor-header">
+    <div class="editor-title">
+      <strong>Architecture Editor</strong>
+      <span id="sourceLabel"></span>
+      <span id="dirtyBadge" class="dirty-badge" hidden>未保存</span>
+    </div>
+    <div class="editor-actions" role="toolbar" aria-label="Architecture 編集操作">
+      <button type="button" data-action="undo" title="元に戻す (Ctrl+Z)">↶</button>
+      <button type="button" data-action="redo" title="やり直す (Ctrl+Y)">↷</button>
+      <span class="toolbar-separator" aria-hidden="true"></span>
+      <button type="button" data-action="add-node">ノード</button>
+      <button type="button" data-action="add-group">グループ</button>
+      <button type="button" data-action="add-connector">コネクター</button>
+      <button type="button" data-action="duplicate" title="複製 (Ctrl+D)">複製</button>
+      <button type="button" data-action="delete" title="削除 (Delete)">削除</button>
+      <button type="button" data-action="release-layout">レイアウト解除</button>
+      <span class="toolbar-separator" aria-hidden="true"></span>
+      <button type="button" data-action="order-back" title="宣言順を前へ">背面</button>
+      <button type="button" data-action="order-front" title="宣言順を後へ">前面</button>
+      <span class="toolbar-separator" aria-hidden="true"></span>
+      <button type="button" data-action="zoom-out" aria-label="縮小">−</button>
+      <button type="button" data-action="zoom-fit">全体</button>
+      <button type="button" data-action="zoom-in" aria-label="拡大">＋</button>
+      <label class="snap-toggle"><input id="snapToggle" type="checkbox" checked> グリッド</label>
+      <button type="button" class="save-button" data-action="save" title="Markdown に保存 (Ctrl+S)">保存</button>
+    </div>
+  </header>
+
+  <main class="editor-layout">
+    <aside class="editor-sidebar element-panel" aria-label="要素">
+      <h2>要素</h2>
+      <div id="elementTree" class="element-tree" role="tree"></div>
+    </aside>
+
+    <section id="viewport" class="editor-viewport" aria-label="作図面">
+      <div id="canvasSurface" class="canvas-surface"></div>
+    </section>
+
+    <aside class="editor-sidebar inspector-panel" aria-label="プロパティ">
+      <h2>プロパティ</h2>
+      <form id="inspector" class="inspector" autocomplete="off"></form>
+    </aside>
+  </main>
+
+  <footer class="editor-footer">
+    <span id="status" role="status" aria-live="polite">読み込み中…</span>
+    <span id="zoomStatus">100%</span>
+  </footer>
+
+  <div id="contextMenu" class="context-menu" role="menu" aria-label="編集操作" tabindex="-1" hidden></div>
+
+  <script type="module" src="/editor/editor.js"></script>
+</body>
+</html>

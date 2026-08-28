@@ -36,6 +36,9 @@ test("readGuide returns every document-backed topic", async () => {
   assert.match(await readGuide("slide-format"), /layout: center/);
   assert.doesNotMatch(await readGuide("slide-format"), /### テーマの選び方/);
   assert.match(await readGuide("custom-ehemes"), /カスタムテーマ作成ガイド/);
+  assert.match(await readGuide("overview"), /architecture-editor/);
+  assert.match(await readGuide("architecture-dsl"), /専用 Architecture Editor/);
+  assert.match(await readGuide("architecture-dsl"), /明示保存/);
 });
 
 test("presentation hook primes each session at most once", () => {
