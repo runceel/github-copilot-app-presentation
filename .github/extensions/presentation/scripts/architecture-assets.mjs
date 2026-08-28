@@ -1,10 +1,14 @@
 import { open, mkdir, readdir, realpath, stat, unlink } from "node:fs/promises";
-import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { extname, join, relative, resolve, sep } from "node:path";
 
 import {
   ASSET_EXTENSIONS,
   ASSET_PATH_PATTERN,
 } from "../renderer/architecture.mjs";
+import {
+  assetRootCandidates,
+  isPathInside,
+} from "./asset-paths.mjs";
 
 export const ARCHITECTURE_ASSET_MAX_BYTES = 10 * 1024 * 1024;
 export const ARCHITECTURE_ASSET_LIST_MAX = 1_000;
@@ -17,29 +21,27 @@ const CONTENT_TYPES = Object.freeze({
   jpeg: new Set(["image/jpeg"]),
 });
 
-function isPathInside(root, candidate) {
-  const rel = relative(resolve(root), resolve(candidate));
-  return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
-}
-
 function fail(code, message) {
   const error = new Error(message);
   error.code = code;
   throw error;
 }
 
-async function canonicalAssetRoot(workspaceRoot, { create = false } = {}) {
+async function canonicalAssetRoot(
+  workspaceRoot,
+  { create = false, requestedAssets = "" } = {},
+) {
   let canonicalWorkspace;
   try {
     canonicalWorkspace = await realpath(resolve(workspaceRoot));
   } catch (_) {
     fail("workspace_not_found", "The workspace root is unavailable.");
   }
-  const requestedAssets = join(canonicalWorkspace, "assets");
-  if (create) await mkdir(requestedAssets, { recursive: true });
+  const assetsPath = requestedAssets || join(canonicalWorkspace, "assets");
+  if (create) await mkdir(assetsPath, { recursive: true });
   let canonicalAssets;
   try {
-    canonicalAssets = await realpath(requestedAssets);
+    canonicalAssets = await realpath(assetsPath);
   } catch (error) {
     if (!create && error?.code === "ENOENT") {
       return { workspace: canonicalWorkspace, assets: null };
@@ -130,12 +132,11 @@ export function normalizeArchitectureAssetName(filename) {
   return { stem, extension };
 }
 
-export async function listArchitectureAssets(workspaceRoot) {
-  const root = await canonicalAssetRoot(workspaceRoot);
-  if (!root.assets) return [];
+export async function listArchitectureAssets(workspaceRoot, sourcePath = "") {
   const assets = [];
+  const seen = new Set();
 
-  const walk = async (directory, relativeDirectory = "") => {
+  const walk = async (root, directory, relativeDirectory = "") => {
     if (assets.length >= ARCHITECTURE_ASSET_LIST_MAX) return;
     let entries = await readdir(directory, { withFileTypes: true });
     entries = entries.sort((left, right) => left.name.localeCompare(right.name, "en"));
@@ -147,7 +148,7 @@ export async function listArchitectureAssets(workspaceRoot) {
         : entry.name;
       const candidate = join(directory, entry.name);
       if (entry.isDirectory()) {
-        await walk(candidate, relativePath);
+        await walk(root, candidate, relativePath);
         continue;
       }
       if (!entry.isFile() || !supportedExtension(entry.name)) continue;
@@ -164,11 +165,17 @@ export async function listArchitectureAssets(workspaceRoot) {
       }
       const info = await stat(canonicalFile);
       if (!info.isFile() || info.size > ARCHITECTURE_ASSET_MAX_BYTES) continue;
+      const assetKey = process.platform === "win32" ? assetPath.toLowerCase() : assetPath;
+      if (seen.has(assetKey)) continue;
+      seen.add(assetKey);
       assets.push({ path: assetPath, size: info.size });
     }
   };
 
-  await walk(root.assets);
+  for (const requestedAssets of assetRootCandidates(workspaceRoot, sourcePath)) {
+    const root = await canonicalAssetRoot(workspaceRoot, { requestedAssets });
+    if (root.assets) await walk(root, root.assets);
+  }
   return assets;
 }
 

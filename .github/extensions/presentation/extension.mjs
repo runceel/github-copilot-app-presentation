@@ -8,7 +8,8 @@
 // slide updates.) Each open canvas instance gets its own loopback HTTP server
 // that serves a tiny iframe shell (renderer/) plus the vendored markdown/diagram
 // libraries (vendor/), exposes the current slide at /state, pushes "changed"
-// nudges over SSE (/events), and serves repo-root images at /assets/*. All slide
+// nudges over SSE (/events), and serves deck-local or repo-root images at
+// /assets/*. All slide
 // rendering happens client-side in renderer/renderer.js. On Windows, this file
 // also owns one optional native Surface Pen tail-button listener.
 
@@ -58,6 +59,7 @@ import {
 import { serializeMarkdownSave } from "./scripts/markdown-save-coordinator.mjs";
 import { atomicReplaceMarkdown } from "./scripts/atomic-markdown-replace.mjs";
 import { createMarkdownWatcher } from "./scripts/markdown-watcher.mjs";
+import { resolveAssetFile } from "./scripts/asset-paths.mjs";
 import { buildDeckSlides } from "./markdown-deck.mjs";
 import {
   createPresentationHooks,
@@ -137,7 +139,7 @@ function dataFileFor(key) {
   return join(DATA_DIR, key.replace(/[^a-zA-Z0-9_.-]/g, "_") + ".json");
 }
 
-// instances: key -> { server, url, version, markdown, slides, index, clients:Set, assetsRoot, dataFile }
+// instances: key -> { server, url, version, markdown, slides, index, clients:Set, dataFile }
 const instances = new Map();
 let activeInstanceKey = null;
 let penListenerProcess = null;
@@ -1027,8 +1029,8 @@ function stopPenListener() {
   }
 }
 
-// Resolve the repository root so /assets maps to the repo-root `assets/` folder
-// (sibling of slides.md), robust across project / user / gist installs.
+// Resolve the repository root used as the workspace boundary and the fallback
+// assets location, robust across project / user / gist installs.
 function resolveRepoRoot(workingDirectory) {
   if (workingDirectory) {
     try {
@@ -2473,18 +2475,28 @@ async function startServer(inst) {
       return;
     }
     if (pathname.startsWith("/assets/")) {
-      if (!inst.assetsRoot) {
-        res.statusCode = 404;
-        res.end("No assets");
-        return;
+      try {
+        const abs = await resolveAssetFile(
+          inst.workspaceRoot,
+          inst.sourceName,
+          pathname.slice("/assets/".length),
+        );
+        if (!abs) {
+          res.statusCode = 404;
+          res.end("Asset not found");
+          return;
+        }
+        await sendFile(res, abs, { cache: true });
+      } catch (error) {
+        const forbidden = [
+          "invalid_asset_path",
+          "asset_source_outside_workspace",
+          "asset_root_outside_workspace",
+          "asset_outside_workspace",
+        ].includes(error?.code);
+        res.statusCode = forbidden ? 403 : 404;
+        res.end(forbidden ? "Forbidden" : "Asset not found");
       }
-      const abs = safeJoin(inst.assetsRoot, pathname.slice("/assets".length));
-      if (!abs) {
-        res.statusCode = 403;
-        res.end("Forbidden");
-        return;
-      }
-      await sendFile(res, abs, { cache: true });
       return;
     }
     res.statusCode = 404;
@@ -2523,7 +2535,6 @@ async function ensureInstance(ctx) {
       sourceWatcher: null,
       sourceWatcherToken: 0,
       clients: new Set(),
-      assetsRoot: join(repoRoot, "assets"),
       workspaceRoot: repoRoot,
       dataFile: dataFileFor(key),
       theme: DEFAULT_THEME,
@@ -2687,7 +2698,7 @@ const session = await joinSession({
           sourceName: {
             type: "string",
             description:
-              "元 Markdown ファイル名。Canvas の PDF ボタンはこの名前に .pdf を付けて保存する。",
+              "元 Markdown の workspace 相対パス。Markdown 隣接 assets/ と相対 theme-file の基準になり、Canvas の PDF ボタンはこのファイル名に .pdf を付けて保存する。",
           },
         },
         additionalProperties: false,
@@ -2725,7 +2736,7 @@ const session = await joinSession({
               sourceName: {
                 type: "string",
                 description:
-                  "元 Markdown ファイル名。Canvas の PDF ボタンはこの名前に .pdf を付けて保存する。",
+                  "元 Markdown の workspace 相対パス。Markdown 隣接 assets/ と相対 theme-file の基準になり、Canvas の PDF ボタンはこのファイル名に .pdf を付けて保存する。",
               },
             },
             required: ["slides"],

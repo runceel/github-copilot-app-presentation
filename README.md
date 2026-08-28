@@ -74,7 +74,8 @@ front matter（Slidev 形式）も使えます。
 > `slides.md` を Microsoft っぽいテーマでプレゼンしてください。
 
 ルートの `slides.md` が presentation canvas を試すためのサンプルです。ローカル画像は
-`assets/` に置き、Markdown から `/assets/...` で参照します。Mermaid は
+元 Markdown と同じ場所またはリポジトリ直下の `assets/` に置き、Markdown から
+`/assets/...` で参照します。同名の場合は Markdown と同じ場所の画像が優先されます。Mermaid は
 ` ```mermaid ` のコードフェンスで記述できます。登壇用のプレゼン資料は
 [presentation-materials](https://github.com/runceel/presentation-materials) に分離しています。
 

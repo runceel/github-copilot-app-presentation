@@ -35,6 +35,7 @@ import {
   importArchitectureAsset,
   listArchitectureAssets,
 } from "./scripts/architecture-assets.mjs";
+import { resolveAssetFile } from "./scripts/asset-paths.mjs";
 
 const MAX_DRAFT_BYTES = 256 * 1024;
 const THEMES = new Set(["dark", "light", "microsoft"]);
@@ -169,6 +170,15 @@ function assetErrorStatus(error) {
     return 415;
   }
   if (error?.code === "asset_root_outside_workspace") return 403;
+  if (
+    [
+      "invalid_asset_path",
+      "asset_source_outside_workspace",
+      "asset_outside_workspace",
+    ].includes(error?.code)
+  ) {
+    return 403;
+  }
   if (error?.code === "asset_write_failed" || error?.code === "asset_root_unavailable") return 500;
   return 400;
 }
@@ -494,7 +504,7 @@ export function createArchitectureEditorManager({
           return;
         }
         try {
-          const assets = await listArchitectureAssets(inst.workspaceRoot);
+          const assets = await listArchitectureAssets(inst.workspaceRoot, inst.sourcePath);
           sendJson(res, 200, { ok: true, assets });
         } catch (error) {
           sendJson(res, assetErrorStatus(error), {
@@ -677,31 +687,21 @@ export function createArchitectureEditorManager({
         return;
       }
       if (pathname.startsWith("/assets/")) {
-        const asset = safeJoin(join(inst.workspaceRoot, "assets"), pathname.slice("/assets/".length));
-        if (!asset) {
-          res.statusCode = 400;
-          res.end("Invalid asset path");
-          return;
-        }
         try {
-          const [canonicalAssets, canonicalAsset] = await Promise.all([
-            realpath(join(inst.workspaceRoot, "assets")),
-            realpath(asset),
-          ]);
-          const canonicalWorkspace = await realpath(inst.workspaceRoot);
-          if (
-            !isPathInside(canonicalWorkspace, canonicalAssets) ||
-            !isPathInside(canonicalWorkspace, canonicalAsset) ||
-            !isPathInside(canonicalAssets, canonicalAsset)
-          ) {
-            res.statusCode = 403;
-            res.end("Forbidden");
+          const asset = await resolveAssetFile(
+            inst.workspaceRoot,
+            inst.sourcePath,
+            pathname.slice("/assets/".length),
+          );
+          if (!asset) {
+            res.statusCode = 404;
+            res.end("Not found");
             return;
           }
-          await sendFile(res, canonicalAsset, true);
-        } catch (_) {
-          res.statusCode = 404;
-          res.end("Not found");
+          await sendFile(res, asset, true);
+        } catch (error) {
+          res.statusCode = assetErrorStatus(error);
+          res.end(res.statusCode === 403 ? "Forbidden" : "Not found");
         }
         return;
       }

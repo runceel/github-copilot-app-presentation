@@ -36,7 +36,9 @@ canvas iframe（renderer/）
 - ナビゲーション UI（操作バー・✎ 編集モード・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。操作バーの ✎ を押すと `edit_architecture` と同じ位置調整モードを切り替えられます。📂 から読み込んだ Markdown の図では、位置調整ツールバーの **詳細編集**から専用の `architecture-editor` canvas を開けます。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。余白クリックは通常の canvas/presenter 表示でのみ有効で、PDF 印刷モードでは登録されません。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
 - **PDF Export は Canvas の操作バーにあるプリンターアイコンからも実行できます。** 元 Markdown のファイル名を `open` / `load_deck` の `sourceName` に渡すと、`<元ファイル名>.pdf` として workspace に保存します。AI から `export_pdf` action を呼ぶ場合は従来どおり任意の `outputPath` を指定できます。現在のデッキを hidden print mode で全ページ描画し、headless Edge/Chromeで背景・画像・コード強調・Mermaidを含む16:9 PDFへ変換します。
 - **外部プレゼン画面**は canvas の ⛶ ボタン、`open_presenter` action、または **Surface Pen の末尾ボタン 2 回押し**で起動します。Edge / Chrome / Chromium を専用の一時プロファイルで移動・リサイズ可能な 1280x720 の app mode ウィンドウとして起動し、同じ `/state`・`/navigate`・SSE を使うため、canvas・キーボード・Surface Pen のページ位置が同期します。必要ならウィンドウを対象モニターへ移動し、ブラウザーや OS の標準操作（Windows では `F11`）で全画面化します。外部ウィンドウを閉じるには **もう一度ペンを 2 回押し**、`Alt+F4`、または AI から `close_presenter` を使います。canvas を閉じた場合も自動終了します。
-- ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
+- ローカル画像は元 Markdown と同じ場所の `assets/`、リポジトリ直下の `assets/` の順で
+  `/assets/...` を探索します。同名のリポジトリ共通画像をデッキ固有画像で上書きできます。
+  Markdown の場所は `open` / `load_deck` の `sourceName` から決まります。
 - コードフェンスに `csharp` / `json` / `diff` などの言語名を付けると、highlight.js がシンタックスハイライトします。
 
 ## Markdown インポート（📂）
@@ -93,7 +95,8 @@ layout: section    ← このページだけ章扉
 ```
 
 読み込んだファイル名は `sourceName` として保持されるので、PDF Export の
-`<元ファイル名>.pdf` や、相対パス指定の画像・`theme-file` もそのまま解決できます。
+`<元ファイル名>.pdf`、Markdown 隣接 `assets/`、相対指定の `theme-file` もそのまま
+解決できます。
 workspace 外のファイルは選べません（OS のファイルダイアログは使いません）。
 
 ## AI 向け作成ガイド
@@ -126,6 +129,12 @@ Extension 単体をユーザースコープへ導入した場合も同じ仕様�
 先頭スライドは `layout: title` の表紙として作ります。デッキ末尾の
 `layout: backcover` は Extension が自動追加します。本文では見出し、リスト、表、画像、
 コード、`mermaid`、`architecture` を利用できます。
+
+ローカル画像は `![代替テキスト](/assets/foo.png)` と書きます。`open` / `load_deck` には
+元 Markdown の workspace 相対パスを `sourceName` として渡してください。`/assets/...` は
+元 Markdown と同じ場所の `assets/` を先に、リポジトリ直下の `assets/` を次に探索します。
+Architecture DSL の `icon` / `image.src` は先頭スラッシュなしの `assets/foo.svg` と書き、
+同じ探索順を使います。
 
 通常スライドでは、本文先頭の H1/H2 を上部のタイトル領域へ固定します。本文量が変わっても
 タイトル位置は変わりません。先頭以外の見出しは本文に残り、`title` / `section` /
@@ -243,7 +252,8 @@ canvas、外部 presenter、PDF のすべてで同じ比率に縮尺されます
 ````
 
 - `node` は `rect` / `rounded-rect` / `ellipse`、複数行 `text`、一意な `id` を持てます。
-- `icon` は組み込みアイコン名か、リポジトリ直下 `assets/` に置いた画像へのパスです。
+- `icon` は組み込みアイコン名か、Markdown 隣接またはリポジトリ直下の `assets/` に置いた
+  画像へのパスです。
   詳細は後述の「アイコン」を参照してください。
 - `image` は `assets/` の画像を独立要素として配置します。`fit` は `contain`（既定）/
   `cover` / `stretch`、読み上げ名は `ariaLabel` で指定します。node と同様に group の
@@ -379,8 +389,8 @@ Chromium 系の起動オプションに直接依存しているため、他ブ�
 
 ### アイコン
 
-`node` の `icon` には **組み込みアイコン名** か、**リポジトリ直下 `assets/` に置いた
-画像へのパス** のどちらかを書けます。
+`node` の `icon` には **組み込みアイコン名** か、**Markdown 隣接またはリポジトリ直下の
+`assets/` に置いた画像へのパス** のどちらかを書けます。
 
 #### 組み込みアイコン
 
@@ -412,9 +422,11 @@ Chromium 系の起動オプションに直接依存しているため、他ブ�
 
 #### `assets/` のアイコンを使う
 
-リポジトリ直下の `assets/` フォルダーに画像を置き、`assets/` から始まる相対パスで
-参照します。拡張機能はこれを同一 origin の `/assets/...` として配信するので、
-canvas・外部プレゼン画面・PDF 出力のいずれでも同じように解決されます。
+元 Markdown と同じ場所またはリポジトリ直下の `assets/` フォルダーに画像を置き、
+`assets/` から始まる相対パスで参照します。元 Markdown と同じ場所を先に探索するため、
+同名のリポジトリ共通画像をデッキ単位で上書きできます。拡張機能はこれを同一 origin の
+`/assets/...` として配信するので、canvas・外部プレゼン画面・PDF 出力のいずれでも
+同じように解決されます。
 
 ````markdown
 ```architecture
@@ -684,8 +696,8 @@ Architecture 図はレンダリング結果の上で直接動かせます。Canv
 - geometry、layout、style、icon、ports、routing、polyline points、canvas metadata など
   Architecture DSL v1 の編集可能なフィールドを型別インスペクターで変更できます。group の
   レイアウト種類は右側プロパティからも同じ規則で変更できます。
-- toolbar または余白／group の右クリックメニューから **画像**を選ぶと、workspace の
-  `assets/` を検索して standalone image を追加できます。node inspector の
+- toolbar または余白／group の右クリックメニューから **画像**を選ぶと、Markdown 隣接と
+  workspace 直下の `assets/` をこの順で検索して standalone image を追加できます。node inspector の
   **assets/ から画像を選択**も同じ picker を使います。PC からの取り込みは SVG / PNG /
   WebP / JPG / JPEG、1 ファイル 10 MB までで、workspace 直下 `assets/` へコピーします。
   同名は上書きせず `name-2.ext` のように採番します。

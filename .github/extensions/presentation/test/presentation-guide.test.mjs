@@ -34,9 +34,14 @@ test("readGuide returns every document-backed topic", async () => {
   assert.match(await readGuide("slide-format"), /layout: section/);
   assert.match(await readGuide("slide-format"), /上部のタイトル領域/);
   assert.match(await readGuide("slide-format"), /layout: center/);
+  assert.match(await readGuide("slide-format"), /Markdown と同じ場所の `assets\/`/);
+  assert.match(await readGuide("slide-format"), /`sourceName`/);
+  assert.match(await readGuide("slide-format"), /リポジトリ直下の `assets\/`/);
   assert.doesNotMatch(await readGuide("slide-format"), /### テーマの選び方/);
   assert.match(await readGuide("custom-ehemes"), /カスタムテーマ作成ガイド/);
   assert.match(await readGuide("overview"), /architecture-editor/);
+  assert.match(await readGuide("overview"), /Markdown と同じ場所の `assets\/`/);
+  assert.match(await readGuide("overview"), /`sourceName`/);
   assert.match(await readGuide("architecture-dsl"), /専用 Architecture Editor/);
   assert.match(await readGuide("architecture-dsl"), /明示保存/);
 });

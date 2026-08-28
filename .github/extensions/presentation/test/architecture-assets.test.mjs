@@ -131,6 +131,31 @@ test("returns an empty library when assets is absent", async () => {
   });
 });
 
+test("lists Markdown-adjacent assets before workspace assets and removes shadowed paths", async () => {
+  await withWorkspace(async (workspace) => {
+    const source = join(workspace, "decks", "slides.md");
+    const localAssets = join(workspace, "decks", "assets");
+    const sharedAssets = join(workspace, "assets");
+    await mkdir(localAssets, { recursive: true });
+    await mkdir(sharedAssets, { recursive: true });
+    await writeFile(source, "# Deck");
+    await writeFile(join(localAssets, "local.svg"), SVG);
+    await writeFile(join(localAssets, "shared.svg"), Buffer.concat([SVG, Buffer.from("local")]));
+    await writeFile(join(sharedAssets, "shared.svg"), Buffer.concat([SVG, Buffer.from("root")]));
+    await writeFile(join(sharedAssets, "workspace.svg"), SVG);
+
+    const listed = await listArchitectureAssets(workspace, source);
+    assert.deepEqual(
+      listed.map((asset) => asset.path),
+      ["assets/local.svg", "assets/shared.svg", "assets/workspace.svg"],
+    );
+    assert.equal(
+      listed.find((asset) => asset.path === "assets/shared.svg").size,
+      SVG.length + Buffer.byteLength("local"),
+    );
+  });
+});
+
 test("rejects an assets junction that leaves the workspace", async (context) => {
   await withWorkspace(async (workspace) => {
     const outside = await mkdtemp(join(tmpdir(), "presentation-assets-outside-"));

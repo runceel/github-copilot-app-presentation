@@ -96,7 +96,7 @@ AI がその代わりに使うものではありません）。
 
 ## 主なアクション
 
-> **プレゼンの開始は、`open_canvas`（`canvasId: "presentation"`）の `input` に `slides`（必要なら `index` / `theme` / `sourceName`）を渡してデッキごと開く**のが基本です。`sourceName` には元 Markdown ファイル名を渡してください。Canvas のプリンターアイコンから `<元ファイル名>.pdf` を保存できます。こうすると canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。下表のアクションは、開始後の操作・更新に使います。
+> **プレゼンの開始は、`open_canvas`（`canvasId: "presentation"`）の `input` に `slides`（必要なら `index` / `theme` / `sourceName`）を渡してデッキごと開く**のが基本です。`sourceName` には元 Markdown の workspace 相対パスを渡してください。Markdown 隣接 `assets/` と相対 `theme-file` の基準になり、Canvas のプリンターアイコンから `<元ファイル名>.pdf` を保存できます。こうすると canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。下表のアクションは、開始後の操作・更新に使います。
 
 | アクション | 用途 |
 | --- | --- |
@@ -134,8 +134,9 @@ connector の追加・削除、リサイズ、親子関係、layout、style、po
   開き、`ArrowLeft` で親メニューへ戻ります。
 - toolbar または余白／group の右クリックメニューの **画像**から standalone image を
   追加できます。node の `icon` も inspector の **assets/ から画像を選択**で同じ picker を
-  使います。picker は既存 `assets/` の検索と、PC から SVG / PNG / WebP / JPG / JPEG
-  （10 MB 以下）を `assets/` へ取り込む操作を提供します。同名は `name-2.ext` のように
+  使います。picker は Markdown 隣接、リポジトリ直下の順で既存 `assets/` を検索します。
+  PC から SVG / PNG / WebP / JPG / JPEG（10 MB 以下）を取り込む場合は、従来どおり
+  リポジトリ直下の `assets/` へ保存します。同名は `name-2.ext` のように
   採番し、diagram の undo/redo や image 削除では asset ファイルを削除しません。
 - 外部変更との競合時は上書きしません。元ファイルからやり直す場合だけ `reload` action に
   `{ discard: true }` を渡します。
@@ -242,10 +243,12 @@ group の `layout` は `row` / `column` / `grid` / `layered`（`layered` は `di
 `down` 既定 / `right`）、node の内蔵 `icon` は `cloud` / `database` / `api` / `user` /
 `server` / `analytics` / `browser` / `mobile` / `network` / `queue` / `shield` の 11 種、
 connector の port は `auto` 既定 / `top` / `right` / `bottom` / `left` を使えます。
-外部 URL や data URI は指定しません。内蔵アイコン以外を使いたいときは、リポジトリ直下の
-`assets/` に画像を置いて `icon: "assets/foo.svg"` で参照します（**先頭スラッシュなし**。
+外部 URL や data URI は指定しません。内蔵アイコン以外を使いたいときは、元 Markdown と
+同じ場所またはリポジトリ直下の `assets/` に画像を置いて `icon: "assets/foo.svg"` で
+参照します（**先頭スラッシュなし**）。Markdown 隣接側が優先されるため、共通画像を
+デッキ単位で上書きできます。
 Markdown 画像の `/assets/...` とは書式が違うので注意。`.svg` / `.png` / `.webp` /
-`.jpg` / `.jpeg` のみ、`..` と非 ASCII のファイル名は拒否されます）。
+`.jpg` / `.jpeg` のみ、`..` と非 ASCII のファイル名は拒否されます。
 独立画像は
 `{ "type": "image", "id": "map", "src": "assets/map.svg", "fit": "contain",
 "ariaLabel": "全体構成", "x": 80, "y": 80, "width": 720, "height": 420 }`
@@ -263,7 +266,7 @@ DSL の機械可読な JSON Schema は
 
 ### 画像
 - **リモート URL**: `![代替テキスト](https://example.com/foo.png)` をそのまま書けます。
-- **ローカル画像**: リポジトリ直下の **`assets/`** フォルダーに画像を置き、`![代替テキスト](/assets/foo.png)` で参照します（サブフォルダー・SVG・日本語ファイル名も可。`/assets/...` の絶対パスで参照すること）。
+- **ローカル画像**: 元 Markdown と同じ場所またはリポジトリ直下の **`assets/`** フォルダーに画像を置き、`![代替テキスト](/assets/foo.png)` で参照します。Markdown 隣接側を先に探索するため、同名の共通画像をデッキ単位で上書きできます（サブフォルダー・SVG・日本語ファイル名も可。`/assets/...` の絶対パスで参照すること）。
 
 ## プレゼン開始の手順
 
@@ -292,7 +295,7 @@ DSL の機械可読な JSON Schema は
 
 - `canvasId`: `"presentation"`
 - `instanceId`: `"presentation"`
-- `input`: `{ "slides": ["<スライド1>", "<スライド2>", ...], "index": 0, "theme": "dark" }`（`index` は省略可・既定 0、`theme` は省略可・既定 `dark`。手順 3 で決めたテーマを渡す）
+- `input`: `{ "slides": ["<スライド1>", "<スライド2>", ...], "index": 0, "theme": "dark", "sourceName": "path/to/slides.md" }`（`index` は省略可・既定 0、`theme` は省略可・既定 `dark`。手順 3 で決めたテーマを渡す。`sourceName` は元 Markdown の workspace 相対パス。Markdown 隣接 `assets/` と相対 `theme-file` の解決に必須）
 
 URL の指定は不要で、拡張機能が表示先を用意します。外部サーバーの起動や生存確認は不要です。これでデッキが登録され、最初のスライドが canvas に表示されます。**以降のページ送りは canvas 内の操作で完結する**ので、agent は通常それ以上の操作をしません（次の手順 5 を参照）。
 
@@ -492,5 +495,5 @@ total: 8
 - canvas のボタンやキーが効かないとき: まず canvas をクリックして iframe にフォーカスを当てる（キーボード操作はフォーカスが必要）。ボタンが無効化されているのは先頭/末尾スライドにいるため（仕様）。それでもダメなら canvas を開き直す。
 - 「デッキ未登録」エラー（`goto_slide` が `no_deck` を返す）のとき: 先に `open` の `input`（または `load_deck`）でスライド配列を登録する。
 - 拡張機能が見つからない／アクションが無いとき: `.github/extensions/presentation/` が存在するか確認し、必要なら拡張機能を再読み込みする。canvas 一覧に `presentation` が出ていれば利用可能。
-- 画像が出ないとき: ローカル画像はリポジトリ直下の `assets/` に置き、`/assets/...` の絶対パスで参照しているか確認する。
+- 画像が出ないとき: ローカル画像は元 Markdown と同じ場所またはリポジトリ直下の `assets/` に置き、`/assets/...` の絶対パスで参照しているか、`open` / `load_deck` の `sourceName` に元 Markdown の workspace 相対パスを渡したか確認する。
 - Mermaid 図が出ないとき: 記法の誤りがあってもスライドは空白にならず、他の本文はそのまま表示される。記法を見直して再送する。

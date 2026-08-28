@@ -77,6 +77,31 @@ test.describe("Markdown インポート", () => {
     }
   });
 
+  test("Markdown 隣接 assets を優先し、workspace assets へフォールバックする", async ({
+    page,
+  }) => {
+    const harness = await openCanvas(page);
+    try {
+      await page.locator("#navImport").click();
+      await page
+        .locator("#importList .overview-link", { hasText: "asset-scope/deck.md" })
+        .click();
+      await expect.poll(() => harness.sourceName).toBe("asset-scope/deck.md");
+
+      const local = await page.request.get(`${harness.url}/assets/sample.svg`);
+      expect(local.ok()).toBe(true);
+      expect(await local.text()).toContain('data-source="deck-local"');
+
+      const fallback = await page.request.get(
+        `${harness.url}/assets/architecture-image-sample.svg`,
+      );
+      expect(fallback.ok()).toBe(true);
+      expect(await fallback.text()).toContain("<svg");
+    } finally {
+      await harness.close();
+    }
+  });
+
   test("presenter では読み込みボタンが表示されない", async ({ page }) => {
     const harness = await openCanvas(page, "?present=1");
     try {
