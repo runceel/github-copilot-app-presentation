@@ -996,7 +996,7 @@ function updatePresenterButton(running, message = "") {
   if (!button) return;
   button.dataset.state = running ? "active" : "";
   button.title =
-    message || (running ? "外部プレゼン画面は起動中です" : "外部画面で全画面表示");
+    message || (running ? "外部プレゼン画面は起動中です" : "外部ウィンドウで表示 (F11 で全画面)");
 }
 
 async function exportPdfFromCanvas() {

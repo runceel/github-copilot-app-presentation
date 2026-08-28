@@ -23,7 +23,7 @@ canvas iframe（renderer/）
   │ ```mermaid を図に変換 → mermaid.run
   │ ```architecture の検証済み JSON DSL を安全な SVG DOM に変換
   │ ◀ ▶ ボタン・✎ 編集・余白の左/右クリック・矢印キー・☰ 一覧で操作（canvas 内で完結）
-  │ ⛶ ボタンで同期された外部全画面ウィンドウを起動
+  │ ⛶ ボタンで同期された外部ウィンドウを起動（必要なら F11 等で全画面化）
   ▼
 テーマ付きスライドを表示（更新は自動反映）
 ```
@@ -35,7 +35,7 @@ canvas iframe（renderer/）
 - コンテンツサイズは **auto（既定）/ normal / large / xlarge** の4段階。`auto` はコード・表・画像・Mermaidを含まない通常スライドを計測し、余白が大きい場合だけ安全な範囲で拡大します。
 - ナビゲーション UI（操作バー・✎ 編集モード・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。操作バーの ✎ を押すと `edit_architecture` と同じ位置調整モードを切り替えられます。📂 から読み込んだ Markdown の図では、位置調整ツールバーの **詳細編集**から専用の `architecture-editor` canvas を開けます。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。余白クリックは通常の canvas/presenter 表示でのみ有効で、PDF 印刷モードでは登録されません。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
 - **PDF Export は Canvas の操作バーにあるプリンターアイコンからも実行できます。** 元 Markdown のファイル名を `open` / `load_deck` の `sourceName` に渡すと、`<元ファイル名>.pdf` として workspace に保存します。AI から `export_pdf` action を呼ぶ場合は従来どおり任意の `outputPath` を指定できます。現在のデッキを hidden print mode で全ページ描画し、headless Edge/Chromeで背景・画像・コード強調・Mermaidを含む16:9 PDFへ変換します。
-- **外部プレゼン画面**は canvas の ⛶ ボタン、`open_presenter` action、または **Surface Pen の末尾ボタン 2 回押し**で起動します。Edge / Chrome / Chromium を専用の一時プロファイルで app mode + fullscreen 起動し、同じ `/state`・`/navigate`・SSE を使うため、canvas・キーボード・Surface Pen のページ位置が同期します。外部ウィンドウを閉じるには **もう一度ペンを 2 回押し**、`Alt+F4`、または AI から `close_presenter` を使います。canvas を閉じた場合も自動終了します。
+- **外部プレゼン画面**は canvas の ⛶ ボタン、`open_presenter` action、または **Surface Pen の末尾ボタン 2 回押し**で起動します。Edge / Chrome / Chromium を専用の一時プロファイルで移動・リサイズ可能な 1280x720 の app mode ウィンドウとして起動し、同じ `/state`・`/navigate`・SSE を使うため、canvas・キーボード・Surface Pen のページ位置が同期します。必要ならウィンドウを対象モニターへ移動し、ブラウザーや OS の標準操作（Windows では `F11`）で全画面化します。外部ウィンドウを閉じるには **もう一度ペンを 2 回押し**、`Alt+F4`、または AI から `close_presenter` を使います。canvas を閉じた場合も自動終了します。
 - ローカル画像はリポジトリ直下の `assets/` を `/assets/...` で配信します。
 - コードフェンスに `csharp` / `json` / `diff` などの言語名を付けると、highlight.js がシンタックスハイライトします。
 
@@ -787,7 +787,7 @@ size: xlarge
 | `load_deck` | `{ slides: string[], index?: number, theme?: "dark"｜"light"｜"microsoft"｜"custom" }` | 登録済みデッキを差し替える / 再ロードする（発表途中の内容・テーマ変更用）。`index`（既定 0）のスライドを表示し、`theme` でデッキ全体の配色（既定 `dark`）を指定。各要素はフロントマター＋本文 Markdown。テーマに関わらず末尾に背表紙を自動追加する（再ロードしても増殖しない）。戻り値 `{ ok, version, index, total, theme, validationFeedback? }`。front matter の欠落や Architecture DSL エラーがあっても表示は続行し、修正指針を `validationFeedback` に返す。`open` でも同じ検証を行い、警告ログにも記録する。 |
 | `goto_slide` | `{ index: number }` | 登録済みデッキ内で表示スライドを 0 始まりインデックスで切り替える。範囲外は端に丸める。通常のページ送りは canvas 内で行われるため不要だが、チャットからの指定に使う。戻り値 `{ ok, changed, version, index, total }`。 |
 | `show_slide` | `{ markdown: string }` | 現在のスライドを1枚だけ差し替える（単発表示・その場限りの差し替え用）。フロントマター（`deck`/`kicker`/`page`/`total`/`title`/`layout`/`size`/`theme`）＋本文 Markdown。`theme` 省略時は現在のデッキテーマを引き継ぐ。 |
-| `open_presenter` | なし | 同期された外部プレゼン画面を Edge / Chrome / Chromium の app mode + fullscreen で起動する。既に起動中なら新しいウィンドウは増やさない。Surface Pen の末尾ボタン 2 回押しでも同じトグルができる。戻り値 `{ ok, started, alreadyRunning, browser?, pid? }`。 |
+| `open_presenter` | なし | 同期された外部プレゼン画面を Edge / Chrome / Chromium の移動・リサイズ可能な 1280x720 app mode ウィンドウで起動する。全画面化はブラウザーや OS の標準操作（Windows では `F11`）で行う。既に起動中なら新しいウィンドウは増やさない。Surface Pen の末尾ボタン 2 回押しでも同じトグルができる。戻り値 `{ ok, started, alreadyRunning, browser?, pid? }`。 |
 | `close_presenter` | なし | 外部プレゼン画面を終了し、専用の一時ブラウザープロファイルを削除する。Surface Pen の末尾ボタン 2 回押しでも終了できる。戻り値 `{ ok, stopped }`。 |
 | `export_pdf` | `{ outputPath?: string, theme?: "dark"｜"light"｜"microsoft"｜"custom" }` | 表示中のデッキを1スライド1ページの16:9 PDFへ書き出すAI用action。相対パスはworkspace基準、省略時は `presentation.pdf`。Canvas のプリンターアイコンは `sourceName` から `<元ファイル名>.pdf` を自動保存する。`theme` はPDFだけに適用し、canvasの表示テーマは変えない（PDF側にも背表紙を補う）。workspace外と `.pdf` 以外は拒否する。`show_slide` による現在ページの一時差し替えも反映する。戻り値 `{ ok, path, total, theme, bytes }`。Microsoft Edge / Google Chrome / Chromiumのいずれかが必要。 |
 | `edit_architecture` | `{ enabled: boolean }` | Architecture 図の編集モードを切り替える。有効にすると canvas 上で node をドラッグ／キーボード操作できる。📂 インポートしたデッキは元 Markdown の ```architecture フェンスにも書き戻し、それ以外は canvas 状態へ保存する。presenter と印刷では編集 UI を出さない。編集モード自体はデッキと一緒には永続化せず、`reset` で解除する。戻り値 `{ ok, enabled, version }`。 |
