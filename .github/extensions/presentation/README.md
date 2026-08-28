@@ -47,6 +47,18 @@ canvas iframe（renderer/）
 デッキを差し替えます。「スライド未読込」のプレースホルダー状態からも実行できます。
 presenter と PDF 印刷モードでは導線を出しません。
 
+読み込み時に表示更新モードを選べます。
+
+- **読み込み時点を保持（既定）**: 読み込んだ時点のデッキを固定し、以後のファイル保存には
+  追従しません。従来と同じ挙動です。
+- **保存時に自動更新**: 対象 Markdown の保存を監視し、現在ページを可能な範囲で保ったまま
+  デッキと front matter のテーマを再読み込みします。
+
+source-backed なデッキを表示している間は、操作バーの更新ボタンでいつでも切り替えられます。
+固定表示から自動更新へ切り替えた時点でファイルの最新版を読み込み、自動更新から固定表示へ
+戻すとその時点の表示を保持します。監視中にファイルが空、削除、読込不能になった場合は
+最後の正常なデッキを保持し、ボタンをエラー表示にします。次の正常な保存で自動復旧します。
+
 分割は **Slidev / Marp と同じ書式**の機械的な処理です（自然言語の段落を要約して
 スライド化するのは従来どおり AI 側の役割です）。
 
@@ -164,6 +176,18 @@ layout: section
 `architecture` コードフェンスは、プレゼン資料で位置・サイズ・重なりを再現しやすい
 JSON DSL を SVG として描画します。`canvas` は論理座標で、表示時は `viewBox` により
 canvas、外部 presenter、PDF のすべてで同じ比率に縮尺されます。
+
+本文が空のコードフェンスも、要素が 0 個の空の図として有効です。専用 Architecture Editor
+から最初の要素を追加して保存すると、フェンス本文は canonical な
+`{ "version": 1, "elements": [] }` 形式を基にした JSON へ置き換わります。
+
+````markdown
+```architecture
+```
+````
+
+これは Markdown 上の省略記法です。JSON として DSL を記述する場合は、JSON Schema の契約どおり
+`elements` が必要です。空でない不正な JSON は従来どおりエラーになります。
 
 > **Architecture DSL v1 は安定版（stable）です。** 後述の
 > [編集モード](#編集モード位置調整)も v1 の一部で、実験的な別機能ではありません。
@@ -801,7 +825,7 @@ action は `save`（入力なし）と、`reload`（`{ discard?: boolean }`）�
 
 | エンドポイント | 用途 |
 | --- | --- |
-| `GET /state` | 現在のスライド（`markdown`）・`index`・`total`・`theme`・`mode`・`architectureEdit`・`version`/`deckVersion` を返す（ポーリング用に軽量）。 |
+| `GET /state` | 現在のスライド（`markdown`）・`index`・`total`・`theme`・`mode`・`architectureEdit`・source-backed / 監視状態・`version`/`deckVersion` を返す（ポーリング用に軽量）。 |
 | `GET /deck` | デッキ全体（`slides`）と `deckVersion` を返す。一覧（☰）のタイトル生成用に、`deckVersion` が変わったときだけ取得する。 |
 | `GET /export-data` | ランダムtokenに対応するPDF Export用デッキスナップショットをprint modeへ返す。 |
 | `POST /export-status` | print modeが全ページの描画完了またはエラーを `export_pdf` actionへ通知する。 |
@@ -813,7 +837,8 @@ action は `save`（入力なし）と、`reload`（`{ discard?: boolean }`）�
 | `POST /architecture-editor/open` | source-backed なデッキの slide/block index を Markdown 全体の block index へ変換し、専用 `architecture-editor` canvas を開く。 |
 | `GET /events` | SSE。`version` 変化を低遅延で通知する nudge。 |
 | `GET /markdown-files` | 📂 のオーバーレイ用に、workspace 内の `*.md` / `*.markdown` の相対パス一覧を返す。`.git` / `node_modules` / `.` 始まりは除外し、件数と深さに上限を設ける。 |
-| `POST /import` | 選んだ Markdown を読み込み、スライドに分割してデッキを差し替える。body は `{ path }`（workspace 相対）。workspace 外・拡張子違い・サイズ超過は拒否する。同一 origin の POST のみ受け付ける。 |
+| `POST /import` | 選んだ Markdown を読み込み、スライドに分割してデッキを差し替える。body は `{ path, sourceMode?: "snapshot"｜"live" }`（workspace 相対、既定 `snapshot`）。workspace 外・拡張子違い・サイズ超過は拒否する。同一 origin の POST のみ受け付ける。 |
+| `POST /source-mode` | source-backed なデッキの表示更新を切り替える。body は `{ mode: "snapshot"｜"live" }`。`live` へ切り替えた時点で最新版を読み込む。 |
 
 ## ファイル構成
 
@@ -830,6 +855,7 @@ action は `save`（入力なし）と、`reload`（`{ discard?: boolean }`）�
   scripts/
     markdown-blocks.mjs    # ```architecture フェンスの走査と差し替え（extension とテストで共有）
     markdown-files.mjs     # workspace の Markdown 走査（extension とテストで共有）
+    markdown-watcher.mjs   # source-backed Markdown の保存監視と debounce
   windows/
     pen-button-listener.ps1 # Surface Pen の Win+F20 / Win+F19 / Win+F18 を Node へ中継
   renderer/

@@ -253,6 +253,17 @@ test("parses nested groups, theme tokens, connectors, and stable z-order", () =>
   );
 });
 
+test("treats an empty fenced body as an empty architecture diagram", () => {
+  const model = parseArchitecture(" \n\t");
+  assert.equal(model.version, 1);
+  assert.deepEqual(model.canvas, { width: 1600, height: 900 });
+  assert.deepEqual(model.elements, []);
+
+  const wrapper = renderArchitectureBlock("", new FakeDocument());
+  assert.equal(wrapper.className, "architecture-diagram");
+  assert.equal(descendants(wrapper).some((element) => element.tagName === "svg"), true);
+});
+
 test("rejects malformed JSON, unknown references, unsafe colors, and unsupported fields", () => {
   assert.throws(() => parseArchitecture("{"), ArchitectureError);
   assert.throws(

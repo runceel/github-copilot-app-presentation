@@ -1,5 +1,6 @@
 import {
   ID_PATTERN,
+  normalizeArchitectureSource,
   parseArchitecture,
 } from "./architecture.mjs";
 import {
@@ -29,10 +30,11 @@ function round(value) {
 }
 
 function snapshot(source) {
+  const normalized = normalizeArchitectureSource(source);
   return {
-    source,
-    raw: JSON.parse(source),
-    model: parseArchitecture(source),
+    source: normalized,
+    raw: JSON.parse(normalized),
+    model: parseArchitecture(normalized),
   };
 }
 

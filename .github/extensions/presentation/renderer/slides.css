@@ -360,6 +360,7 @@ footer .page{color:var(--accent-strong);font-weight:600;background:var(--accent-
      font-size:clamp(13px,1.9vh,17px);line-height:1;cursor:pointer;
      color:var(--fg);background:transparent;border:1px solid transparent;
      border-radius:999px;transition:background .15s ease,color .15s ease;}
+.nav-btn[hidden]{display:none;}
 .nav-btn:hover:not(:disabled){background:var(--accent-soft);color:var(--accent-strong);}
 .nav-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 .nav-btn:disabled{opacity:.32;cursor:default;}
@@ -373,6 +374,7 @@ body.presenter-mode .nav:hover,body.presenter-mode .nav:focus-within{opacity:1;}
 body.presenter-mode #navPresent{display:none;}
 body.presenter-mode #navExport{display:none;}
 body.presenter-mode #navImport{display:none;}
+body.presenter-mode #navSourceMode{display:none;}
 /* デッキ未読込のときは、読み込みボタンだけを残して導線にする。 */
 .nav.nav-empty > :not(#navImport){display:none;}
 
@@ -409,6 +411,12 @@ body.presenter-mode #navImport{display:none;}
 .overview-item.current .overview-label{color:var(--fg);font-weight:600;}
 
 /* ===== Markdown import overlay ===== */
+.import-mode{display:flex;align-items:center;gap:1em;margin:.8em 1em 0;padding:.7em;
+     color:var(--body);background:var(--code);border:1px solid var(--border);border-radius:8px;}
+.import-mode legend{padding:0 .3em;font-size:.82em;font-weight:700;color:var(--muted);}
+.import-mode label{display:inline-flex;align-items:center;gap:.35em;font-size:.9em;cursor:pointer;}
+.import-mode input{accent-color:var(--accent);}
+.import-mode input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
 .import-filter{flex:0 0 auto;margin:.7em 1em 0;padding:.5em .7em;
      font:inherit;font-size:.95em;color:var(--fg);
      background:var(--code);border:1px solid var(--border);border-radius:8px;}

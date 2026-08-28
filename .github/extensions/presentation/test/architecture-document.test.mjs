@@ -47,6 +47,17 @@ function raw(document) {
   return JSON.parse(document.source);
 }
 
+test("空のブロックから canonical な編集可能ドキュメントを作る", () => {
+  const document = createArchitectureDocument("\n");
+  assert.deepEqual(raw(document), { version: 1, elements: [] });
+  assert.deepEqual(document.model.elements, []);
+
+  const added = document.addNode({ text: "First node" });
+  assert.equal(added.ok, true);
+  assert.equal(raw(document).elements[0].text, "First node");
+  assert.doesNotThrow(() => parseArchitecture(document.source));
+});
+
 test("root、要素プロパティ、rename は connector 参照を保って更新する", () => {
   const document = createArchitectureDocument(source);
   assert.equal(document.setRoot("title", "Updated").ok, true);

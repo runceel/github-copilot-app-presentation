@@ -21,7 +21,7 @@
 //    「動かせるふりをして無視する」のではなく、判定して理由を返し、
 //    利用者が明示的に layout を解除できる導線（releaseLayout）を用意する。
 
-import { parseArchitecture } from "./architecture.mjs";
+import { normalizeArchitectureSource, parseArchitecture } from "./architecture.mjs";
 
 /** 通常の移動量（canvas 座標系）。 */
 export const EDIT_STEP = 10;
@@ -167,7 +167,8 @@ export function createArchitectureEditSession(source, options = {}) {
   let cursor = 0;
 
   function snapshot(text) {
-    return { source: text, model: parseArchitecture(text) };
+    const normalized = normalizeArchitectureSource(text);
+    return { source: normalized, model: parseArchitecture(normalized) };
   }
 
   function current() {

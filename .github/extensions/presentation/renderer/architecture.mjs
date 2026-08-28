@@ -1,6 +1,7 @@
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DEFAULT_CANVAS = Object.freeze({ width: 1600, height: 900 });
 const DSL_VERSION = 1;
+const EMPTY_ARCHITECTURE_SOURCE = '{\n  "version": 1,\n  "elements": []\n}\n';
 const MAX_SOURCE_LENGTH = 64 * 1024;
 const MAX_ELEMENTS = 200;
 const MAX_CONNECTORS = 100;
@@ -1157,6 +1158,10 @@ function totalTextLength(model) {
   );
 }
 
+export function normalizeArchitectureSource(source) {
+  return typeof source === "string" && source.trim() === "" ? EMPTY_ARCHITECTURE_SOURCE : source;
+}
+
 export function parseArchitecture(source) {
   if (typeof source !== "string") {
     fail("diagram", "must be JSON text", "pass the fenced block contents as a string");
@@ -1168,9 +1173,10 @@ export function parseArchitecture(source) {
       "split the diagram across multiple slides",
     );
   }
+  const normalizedSource = normalizeArchitectureSource(source);
   let raw;
   try {
-    raw = JSON.parse(source);
+    raw = JSON.parse(normalizedSource);
   } catch (error) {
     const detail = error?.message ? ` (${error.message})` : "";
     fail(
