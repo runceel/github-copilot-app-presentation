@@ -47,11 +47,16 @@ function viewBoxScale(svg) {
  *   - source: 編集対象の DSL 全文
  *   - documentRef: DOM document
  *   - onCommit: 確定した DSL 全文を受け取るコールバック（永続化に使う）
+ *   - canOpenDetail: 元 Markdown と対応付けられるとき true
+ *   - onOpenDetail: 専用 Architecture Editor canvas を開くコールバック
  * @returns {{destroy():void, getSource():string}|null} 図が不正なら null
  */
 export function attachArchitectureEditor(container, options = {}) {
   const documentRef = options.documentRef ?? globalThis.document;
   const onCommit = typeof options.onCommit === "function" ? options.onCommit : null;
+  const onOpenDetail =
+    typeof options.onOpenDetail === "function" ? options.onOpenDetail : null;
+  const canOpenDetail = Boolean(options.canOpenDetail && onOpenDetail);
   let session;
   try {
     session = createArchitectureEditSession(options.source);
@@ -71,6 +76,11 @@ export function attachArchitectureEditor(container, options = {}) {
   const undoButton = createButton("元に戻す (Ctrl+Z)", "undo");
   const redoButton = createButton("やり直す (Ctrl+Y)", "redo");
   const releaseButton = createButton("レイアウト解除 (L)", "release");
+  const detailButton = createButton("詳細編集", "detail");
+  detailButton.disabled = !canOpenDetail;
+  detailButton.title = canOpenDetail
+    ? "専用 Architecture Editor で開く"
+    : "Markdown を canvas のファイル選択から読み込むと利用できます";
   const status = documentRef.createElement("span");
   status.className = "architecture-editor-status";
   status.setAttribute("role", "status");
@@ -86,7 +96,7 @@ export function attachArchitectureEditor(container, options = {}) {
   saveState.setAttribute("aria-live", "polite");
   saveState.setAttribute("data-architecture-save-state", "idle");
 
-  toolbar.append(undoButton, redoButton, releaseButton, status, saveState);
+  toolbar.append(undoButton, redoButton, releaseButton, detailButton, status, saveState);
 
   const surface = documentRef.createElement("div");
   surface.className = "architecture-editor-surface";
@@ -386,6 +396,35 @@ export function attachArchitectureEditor(container, options = {}) {
   undoButton.addEventListener("click", () => applyResult(session.undo()));
   redoButton.addEventListener("click", () => applyResult(session.redo()));
   releaseButton.addEventListener("click", () => releaseSelected());
+  detailButton.addEventListener("click", async () => {
+    if (!canOpenDetail) {
+      announce(
+        "詳細編集には元 Markdown との対応が必要です。canvas のファイル選択から Markdown を読み込んでください。",
+        "source-not-available",
+      );
+      return;
+    }
+    detailButton.disabled = true;
+    announce("専用 Architecture Editor を開いています…", "opening-detail");
+    try {
+      const result = await onOpenDetail();
+      if (result?.ok === true) {
+        announce("専用 Architecture Editor を開きました。", "detail-opened");
+      } else {
+        announce(
+          result?.message || "専用 Architecture Editor を開けませんでした。",
+          "detail-open-failed",
+        );
+      }
+    } catch (error) {
+      announce(
+        error?.message || "専用 Architecture Editor を開けませんでした。",
+        "detail-open-failed",
+      );
+    } finally {
+      detailButton.disabled = !canOpenDetail;
+    }
+  });
 
   const ownerDocument = container.ownerDocument ?? documentRef;
   ownerDocument.addEventListener("pointermove", onPointerMove);

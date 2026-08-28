@@ -106,6 +106,7 @@ export async function readGuide(topic = "overview") {
         section(readme, "## 仕組み"),
         "",
         "利用者は canvas の 📂 ボタンから workspace の Markdown を直接読み込める（AI を介さない機械的な分割。自然言語の要約は従来どおり AI 側の役割）。",
+        "既存 Architecture 図の位置調整は presentation の ✎、要素追加・削除を含む本格編集は sourcePath と blockIndex を指定して architecture-editor canvas で行う。本格編集は明示保存でのみ元 Markdown へ反映する。",
         "",
         "詳細は `slide-format` / `themes` / `custom-themes` / `theme-schema` / `architecture-dsl` / `architecture-schema` を指定して取得する。",
       ].join("\n");

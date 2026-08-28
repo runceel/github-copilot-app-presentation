@@ -43,8 +43,10 @@ import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createInterface } from "node:readline";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
+import { createArchitectureEditorManager } from "./architecture-canvas.mjs";
 import { reconstructAsset } from "./scripts/vendor-assets.mjs";
 import {
+  importedArchitectureBlockIndex,
   replaceArchitectureBlock,
   replaceImportedArchitectureBlock,
 } from "./scripts/markdown-blocks.mjs";
@@ -53,6 +55,8 @@ import {
   listMarkdownFiles,
   MARKDOWN_MAX_BYTES,
 } from "./scripts/markdown-files.mjs";
+import { serializeMarkdownSave } from "./scripts/markdown-save-coordinator.mjs";
+import { atomicReplaceMarkdown } from "./scripts/atomic-markdown-replace.mjs";
 import { buildDeckSlides } from "./markdown-deck.mjs";
 import {
   createPresentationHooks,
@@ -1383,28 +1387,38 @@ function serializeArchitectureEdit(inst, operation) {
   });
 }
 
-async function atomicReplaceImportedSource(sourcePath, markdown, expectedMarkdown, mode) {
-  const temporaryPath = join(
-    dirname(sourcePath),
-    `.${basename(sourcePath)}.${randomUUID()}.tmp`,
-  );
-  let handle = null;
-  try {
-    handle = await open(temporaryPath, "wx", mode);
-    await handle.writeFile(markdown, "utf8");
-    await handle.sync();
-    await handle.close();
-    handle = null;
-    if ((await readFile(sourcePath, "utf8")) !== expectedMarkdown) {
-      const error = new Error("source_changed");
-      error.code = "SOURCE_CHANGED";
-      throw error;
-    }
-    await rename(temporaryPath, sourcePath);
-  } finally {
-    await handle?.close().catch(() => {});
-    await rm(temporaryPath, { force: true }).catch(() => {});
+async function resolveImportedSourceTarget(canonicalRoot, candidate) {
+  const canonicalSource = await realpath(candidate);
+  if (
+    !isPathInside(canonicalRoot, canonicalSource) ||
+    resolve(canonicalSource) !== resolve(candidate)
+  ) {
+    const error = new Error("source_file_unavailable");
+    error.code = "SOURCE_FILE_UNAVAILABLE";
+    throw error;
   }
+  const info = await stat(canonicalSource);
+  if (!info.isFile()) {
+    const error = new Error("source_file_not_found");
+    error.code = "SOURCE_FILE_NOT_FOUND";
+    throw error;
+  }
+  if (info.size > MARKDOWN_MAX_BYTES) {
+    const error = new Error("source_file_too_large");
+    error.code = "SOURCE_FILE_TOO_LARGE";
+    throw error;
+  }
+  return { path: canonicalSource, mode: info.mode };
+}
+
+function importedSourceError(error) {
+  if (error?.code === "SOURCE_FILE_TOO_LARGE") {
+    return { status: 413, body: { ok: false, error: "source_file_too_large" } };
+  }
+  if (error?.code === "SOURCE_FILE_UNAVAILABLE") {
+    return { status: 409, body: { ok: false, error: "source_file_unavailable" } };
+  }
+  return { status: 404, body: { ok: false, error: "source_file_not_found" } };
 }
 
 async function applyArchitectureEdit(inst, { index, block, source, deckVersion }) {
@@ -1429,60 +1443,66 @@ async function applyArchitectureEdit(inst, { index, block, source, deckVersion }
         return { status: 409, body: { ok: false, error: "source_file_unavailable" } };
       }
 
-      let sourcePath;
-      let sourceMarkdown;
-      let sourceMode;
-      try {
-        const canonicalSource = await realpath(candidate);
-        if (
-          !isPathInside(canonicalRoot, canonicalSource) ||
-          resolve(canonicalSource) !== resolve(candidate)
-        ) {
-          return { status: 409, body: { ok: false, error: "source_file_unavailable" } };
+      const fileResult = await serializeMarkdownSave(candidate, async () => {
+        let target;
+        let sourceMarkdown;
+        try {
+          target = await resolveImportedSourceTarget(canonicalRoot, candidate);
+          sourceMarkdown = await readFile(target.path, "utf8");
+        } catch (error) {
+          return { ok: false, response: importedSourceError(error) };
         }
-        const info = await stat(canonicalSource);
-        if (!info.isFile()) {
-          return { status: 404, body: { ok: false, error: "source_file_not_found" } };
-        }
-        if (info.size > MARKDOWN_MAX_BYTES) {
-          return { status: 413, body: { ok: false, error: "source_file_too_large" } };
-        }
-        sourcePath = canonicalSource;
-        sourceMode = info.mode;
-        sourceMarkdown = await readFile(sourcePath, "utf8");
-      } catch (_) {
-        return { status: 404, body: { ok: false, error: "source_file_not_found" } };
-      }
 
-      const fileEdit = replaceImportedArchitectureBlock(
-        sourceMarkdown,
-        inst.slides,
-        index,
-        block,
-        source,
-        inst.sourceWritebackSnapshot,
-      );
-      if (!fileEdit.ok) {
-        return {
-          status: fileEdit.reason === "block_not_found" ? 404 : 409,
-          body: { ok: false, error: fileEdit.reason },
-        };
-      }
-
-      try {
-        await atomicReplaceImportedSource(
-          sourcePath,
-          fileEdit.markdown,
+        const fileEdit = replaceImportedArchitectureBlock(
           sourceMarkdown,
-          sourceMode,
+          inst.slides,
+          index,
+          block,
+          source,
+          inst.sourceWritebackSnapshot,
         );
-        inst.sourceWritebackSnapshot = fileEdit.markdown;
-      } catch (error) {
-        if (error?.code === "SOURCE_CHANGED") {
-          return { status: 409, body: { ok: false, error: "source_changed" } };
+        if (!fileEdit.ok) {
+          return {
+            ok: false,
+            response: {
+              status: fileEdit.reason === "block_not_found" ? 404 : 409,
+              body: { ok: false, error: fileEdit.reason },
+            },
+          };
         }
-        return { status: 500, body: { ok: false, error: "source_write_failed" } };
-      }
+
+        try {
+          await atomicReplaceMarkdown({
+            path: target.path,
+            markdown: fileEdit.markdown,
+            expectedMarkdown: sourceMarkdown,
+            mode: target.mode,
+            revalidate: async () => {
+              try {
+                const verified = await resolveImportedSourceTarget(canonicalRoot, candidate);
+                if (resolve(verified.path) === resolve(target.path)) return;
+              } catch (_) {
+                // Report all target replacement/removal cases as a write conflict.
+              }
+              const error = new Error("source_changed");
+              error.code = "SOURCE_CHANGED";
+              throw error;
+            },
+          });
+          return { ok: true, markdown: fileEdit.markdown };
+        } catch (error) {
+          return {
+            ok: false,
+            response:
+              error?.code === "SOURCE_CHANGED" ||
+              error?.code === "SOURCE_FILE_UNAVAILABLE"
+                ? { status: 409, body: { ok: false, error: "source_changed" } }
+                : { status: 500, body: { ok: false, error: "source_write_failed" } },
+          };
+        }
+      });
+      if (!fileResult.ok) return fileResult.response;
+      inst.sourceWritebackSnapshot = fileResult.markdown;
     }
 
     activateInstance(inst);
@@ -1502,6 +1522,34 @@ async function applyArchitectureEdit(inst, { index, block, source, deckVersion }
       },
     };
   });
+}
+
+async function synchronizeImportedPresentations({ workspaceRoot, sourcePath, markdown }) {
+  const canonicalWorkspace = resolve(workspaceRoot);
+  const canonicalSource = resolve(canonicalWorkspace, sourcePath);
+  try {
+    if ((await readFile(canonicalSource, "utf8")) !== markdown) return;
+  } catch (_) {
+    return;
+  }
+  const updates = [];
+  for (const inst of instances.values()) {
+    if (!inst.sourceWriteback || !inst.sourceWritebackPath) continue;
+    if (resolve(inst.workspaceRoot) !== canonicalWorkspace) continue;
+    if (resolve(inst.workspaceRoot, inst.sourceWritebackPath) !== canonicalSource) continue;
+    updates.push(
+      serializeArchitectureEdit(inst, async () => {
+        const slides = buildDeckSlides(markdown);
+        if (!slides.length) return;
+        inst.sourceWritebackSnapshot = markdown;
+        inst.slides = ensureBackCover(slides);
+        inst.index = clampIndex(inst.index, inst.slides.length);
+        inst.deckVersion += 1;
+        await applyDeckSlide(inst);
+      }),
+    );
+  }
+  await Promise.all(updates);
 }
 
 // Read and JSON-parse a small request body, defending the loopback server
@@ -1586,6 +1634,7 @@ async function startServer(inst) {
           mode: inst.mode,
           presenterRunning: isProcessRunning(inst.presenterProcess),
           architectureEdit: Boolean(inst.architectureEdit),
+          architectureDetailedEdit: architectureEditorManager.canOpenFromPresentation(inst),
         }),
       );
       return;
@@ -1830,6 +1879,78 @@ async function startServer(inst) {
         JSON.stringify({ ok: true, changed, architectureEdit: inst.architectureEdit }),
       );
       return;
+    }
+    if (pathname === "/architecture-editor/open") {
+     if (req.method !== "POST") {
+       res.statusCode = 405;
+       res.setHeader("Allow", "POST");
+       res.setHeader("Content-Type", "application/json; charset=utf-8");
+       res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+       return;
+     }
+     const origin = req.headers.origin;
+     if (origin && origin !== new URL(inst.url).origin) {
+       res.statusCode = 403;
+       res.setHeader("Content-Type", "application/json; charset=utf-8");
+       res.end(JSON.stringify({ ok: false, error: "origin_not_allowed" }));
+       return;
+     }
+     let body;
+     try {
+       body = await readJsonBody(req);
+     } catch (error) {
+       res.statusCode = error?.message === "payload_too_large" ? 413 : 400;
+       res.setHeader("Content-Type", "application/json; charset=utf-8");
+       res.end(JSON.stringify({ ok: false, error: error?.message || "bad_request" }));
+       return;
+     }
+     const slideIndex = Number.isInteger(body.index) ? body.index : inst.index;
+     const blockIndex = Number.isInteger(body.block) ? body.block : 0;
+     if (
+       slideIndex < 0 ||
+       slideIndex >= inst.slides.length ||
+       blockIndex < 0 ||
+       importedArchitectureBlockIndex(inst.slides, slideIndex, blockIndex) === null
+     ) {
+       res.statusCode = 404;
+       res.setHeader("Content-Type", "application/json; charset=utf-8");
+       res.end(JSON.stringify({ ok: false, error: "block_not_found" }));
+       return;
+     }
+     if (!architectureEditorManager.canOpenFromPresentation(inst)) {
+       res.statusCode = 409;
+       res.setHeader("Content-Type", "application/json; charset=utf-8");
+       res.end(JSON.stringify({ ok: false, error: "source_not_available" }));
+       return;
+     }
+     try {
+       const opened = await architectureEditorManager.openFromPresentation(
+         inst,
+         slideIndex,
+         blockIndex,
+       );
+       res.statusCode = 200;
+       res.setHeader("Content-Type", "application/json; charset=utf-8");
+       res.setHeader("Cache-Control", "no-store");
+       res.end(
+         JSON.stringify({
+           ok: true,
+           instanceId: opened.instanceId,
+           canvasId: opened.canvasId,
+         }),
+       );
+     } catch (error) {
+       res.statusCode = error?.code === "source_not_available" ? 409 : 500;
+       res.setHeader("Content-Type", "application/json; charset=utf-8");
+       res.end(
+         JSON.stringify({
+           ok: false,
+           error: error?.code || "editor_open_failed",
+           message: error?.message || "Architecture Editor could not be opened.",
+         }),
+       );
+     }
+     return;
     }
     // Architecture 図の編集結果を元スライドへ書き戻す。差分ではなく DSL 全体を
     // 受け取り、対象スライドの n 番目の ```architecture フェンスを差し替える。
@@ -2220,6 +2341,12 @@ async function ensureInstance(ctx) {
   startPenListener();
   return inst;
 }
+
+const architectureEditorManager = createArchitectureEditorManager({
+  extensionDirectory: EXT_DIR,
+  onMarkdownSaved: synchronizeImportedPresentations,
+  logger: (message, level) => log(message, level),
+});
 
 const session = await joinSession({
   tools: [
@@ -2671,8 +2798,10 @@ const session = await joinSession({
         }
       },
     }),
+    architectureEditorManager.canvas,
   ],
 });
 
+architectureEditorManager.attachSession(session);
 logger = (message, opts) => session.log(message, opts);
 process.once("exit", stopPenListener);

@@ -24,6 +24,28 @@ const SLIDES = splitFixtureDeck(readFileSync(FIXTURE, "utf8"));
 const EDITOR = ".architecture-editor-toolbar";
 const NODE = (id) => `[data-architecture-id="${id}"]`;
 
+const MIXED_CASE_ARCHITECTURE_SLIDE = [
+  "---",
+  "layout: title",
+  "---",
+  "```Architecture",
+  JSON.stringify({
+    version: 1,
+    elements: [
+      {
+        type: "node",
+        id: "mixed-case",
+        x: 80,
+        y: 80,
+        width: 240,
+        height: 120,
+        text: "Mixed case",
+      },
+    ],
+  }),
+  "```",
+].join("\n");
+
 /** 編集モードのハーネスを起動して描画完了まで待つ。 */
 async function openEditor(page, options = {}) {
   const harness = await startHarness({ slides: SLIDES, architectureEdit: true, ...options });
@@ -47,6 +69,21 @@ function nodeBox(page, id) {
     return { x: Math.round(rect.x), y: Math.round(rect.y) };
   });
 }
+
+test("Architecture フェンス名は大文字小文字を区別せず編集対象になる", async ({ page }) => {
+  const harness = await startHarness({
+    slides: [MIXED_CASE_ARCHITECTURE_SLIDE],
+    architectureEdit: true,
+  });
+  try {
+    await page.goto(`${harness.url}/`, { waitUntil: "load" });
+    await waitForSlideReady(page);
+    await expect(page.locator(EDITOR)).toHaveCount(1);
+    await expect(page.locator(NODE("mixed-case"))).toHaveCount(1);
+  } finally {
+    await harness.close();
+  }
+});
 
 test.describe("編集モード", () => {
   test("ドラッグでノードが動き、connector が引き直される", async ({ page }) => {

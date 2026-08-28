@@ -375,6 +375,16 @@ test("スライド内のブロック番号をインポート元 Markdown 全体�
   assert.equal(importedArchitectureBlockIndex(slides, 9, 0), null);
 });
 
+test("Architecture フェンスは renderer と同じく大文字小文字を区別せず数える", () => {
+  const slides = [
+    ["```Architecture", '{"version":1,"elements":[]}', "```"].join("\n"),
+    ["```ARCHITECTURE", '{"version":1,"elements":[]}', "```"].join("\n"),
+  ];
+
+  assert.equal(findArchitectureBlocks(slides[0]).length, 1);
+  assert.equal(importedArchitectureBlockIndex(slides, 1, 0), 1);
+});
+
 test("インポート元は期待するフェンスだけを書き換え、外部変更は拒否する", () => {
   const markdown = [
     "## 1",
