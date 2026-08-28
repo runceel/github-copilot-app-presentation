@@ -60,6 +60,8 @@ const GROUP_SOURCE = `${JSON.stringify(
   null,
   2,
 )}\n`;
+const ASSET_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>';
 
 test("専用 Architecture Editor に WCAG 違反がない", async ({ page }) => {
   const harness = await startArchitectureEditorHarness({ source: SOURCE });
@@ -110,6 +112,39 @@ test("レイアウトサブメニューを開いた状態でも WCAG 違反が�
     expect(
       result.violations.map((violation) => `${violation.id}: ${violation.help}`),
     ).toEqual([]);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("画像 picker は keyboard 選択と focus 復帰を行い WCAG 違反がない", async ({ page }) => {
+  const harness = await startArchitectureEditorHarness({
+    source: SOURCE,
+    assets: { "assets/accessible.svg": ASSET_SVG },
+  });
+  try {
+    await page.goto(harness.url, { waitUntil: "load" });
+    const trigger = page.getByRole("button", { name: "画像", exact: true });
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: "画像を追加" });
+    await expect(dialog).toBeVisible();
+    await expect(page.locator("#assetSearch")).toBeFocused();
+
+    const result = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .analyze();
+    expect(
+      result.violations.map((violation) => `${violation.id}: ${violation.help}`),
+    ).toEqual([]);
+
+    const option = dialog.getByRole("option", { name: "assets/accessible.svg" });
+    await option.focus();
+    await page.keyboard.press("Enter");
+    await dialog.getByRole("button", { name: "選択", exact: true }).press("Enter");
+    await expect(dialog).toBeHidden();
+    await expect(trigger).toBeFocused();
+    await expect(page.locator('[data-ref="accessible"].tree-item')).toBeVisible();
   } finally {
     await harness.close();
   }

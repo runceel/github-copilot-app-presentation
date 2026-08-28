@@ -20,6 +20,7 @@
       <span class="toolbar-separator" aria-hidden="true"></span>
       <button type="button" data-action="add-node">ノード</button>
       <button type="button" data-action="add-group">グループ</button>
+      <button type="button" data-action="add-image">画像</button>
       <button type="button" data-action="add-connector">コネクター</button>
       <button type="button" data-action="duplicate" title="複製 (Ctrl+D)">複製</button>
       <button type="button" data-action="delete" title="削除 (Delete)">削除</button>
@@ -58,6 +59,39 @@
   </footer>
 
   <div id="contextMenu" class="context-menu" role="menu" aria-label="編集操作" tabindex="-1" hidden></div>
+
+  <dialog id="assetDialog" class="asset-dialog" aria-labelledby="assetDialogTitle">
+    <div class="asset-dialog-header">
+      <div>
+        <h2 id="assetDialogTitle">画像を選択</h2>
+        <p>workspace の assets/ にある画像を選択するか、PC から取り込みます。</p>
+      </div>
+      <button id="assetDialogClose" type="button" aria-label="画像選択を閉じる">×</button>
+    </div>
+    <div class="asset-dialog-tools">
+      <label for="assetSearch">画像を検索</label>
+      <input id="assetSearch" type="search" placeholder="ファイル名またはパス">
+      <button id="assetImportButton" type="button">PC から取り込み</button>
+      <input id="assetFileInput" type="file" accept=".svg,.png,.webp,.jpg,.jpeg,image/svg+xml,image/png,image/webp,image/jpeg" hidden>
+    </div>
+    <div class="asset-dialog-body">
+      <div id="assetList" class="asset-list" role="listbox" aria-label="利用できる画像"></div>
+      <div class="asset-preview">
+        <div class="asset-preview-frame">
+          <div id="assetPreviewImageHost"></div>
+          <span id="assetPreviewEmpty">画像を選択してください</span>
+        </div>
+        <p id="assetPreviewPath"></p>
+      </div>
+    </div>
+    <div class="asset-dialog-footer">
+      <span id="assetDialogStatus" role="status" aria-live="polite"></span>
+      <div>
+        <button id="assetCancelButton" type="button">キャンセル</button>
+        <button id="assetChooseButton" class="save-button" type="button" disabled>選択</button>
+      </div>
+    </div>
+  </dialog>
 
   <script type="module" src="/editor/editor.js"></script>
 </body>

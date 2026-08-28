@@ -125,10 +125,15 @@ connector の追加・削除、リサイズ、親子関係、layout、style、po
   複製、削除、前面／背面、余白では追加、Undo/Redo、保存を表示します。group では
   `レイアウト` サブメニューから `なし` / `row` / `column` / `grid` / `layered` を選択でき、
   子要素から親 group のレイアウトを解除する操作は表示しません。作図面の余白から追加した
-  node / group は右クリック位置を中心に配置します。
+  node / group / image は右クリック位置を中心に配置します。
 - キーボードでは要素へフォーカスして `Shift+F10` または Context Menu キーでメニューを開き、
   矢印キー、Enter / Space、Escape で操作できます。`ArrowRight` でレイアウトサブメニューを
   開き、`ArrowLeft` で親メニューへ戻ります。
+- toolbar または余白／group の右クリックメニューの **画像**から standalone image を
+  追加できます。node の `icon` も inspector の **assets/ から画像を選択**で同じ picker を
+  使います。picker は既存 `assets/` の検索と、PC から SVG / PNG / WebP / JPG / JPEG
+  （10 MB 以下）を `assets/` へ取り込む操作を提供します。同名は `name-2.ext` のように
+  採番し、diagram の undo/redo や image 削除では asset ファイルを削除しません。
 - 外部変更との競合時は上書きしません。元ファイルからやり直す場合だけ `reload` action に
   `{ discard: true }` を渡します。
 - 専用 canvas は既存の `architecture` コードブロックだけを編集し、新しいブロックは作りません。
@@ -223,7 +228,7 @@ flowchart LR
 ### 図: Architecture JSON DSL
 ` ```architecture ` は、ノードの座標・サイズ・コンテナ・重なりを固定して再現したい
 プレゼン資料向けの構成図です。`version: 1`、`canvas`、`elements`、`node`、
-`group`、`connector` の詳細と完全な例は
+`group`、`image`、`connector` の詳細と完全な例は
 `.github/extensions/presentation/README.md` を参照してください。
 **DSL v1 は安定版（stable）で、v1 として受理された文書は以後も v1 として受理されます。**
 ピクセル単位の描画結果は保証対象外なので、重要な資料では PDF 出力を事前確認してください。
@@ -231,10 +236,15 @@ group の `layout` は `row` / `column` / `grid` / `layered`（`layered` は `di
 `down` 既定 / `right`）、node の内蔵 `icon` は `cloud` / `database` / `api` / `user` /
 `server` / `analytics` / `browser` / `mobile` / `network` / `queue` / `shield` の 11 種、
 connector の port は `auto` 既定 / `top` / `right` / `bottom` / `left` を使えます。
-外部 URL や任意 SVG は指定しません。内蔵アイコン以外を使いたいときは、リポジトリ直下の
+外部 URL や data URI は指定しません。内蔵アイコン以外を使いたいときは、リポジトリ直下の
 `assets/` に画像を置いて `icon: "assets/foo.svg"` で参照します（**先頭スラッシュなし**。
 Markdown 画像の `/assets/...` とは書式が違うので注意。`.svg` / `.png` / `.webp` /
 `.jpg` / `.jpeg` のみ、`..` と非 ASCII のファイル名は拒否されます）。
+独立画像は
+`{ "type": "image", "id": "map", "src": "assets/map.svg", "fit": "contain",
+"ariaLabel": "全体構成", "x": 80, "y": 80, "width": 720, "height": 420 }`
+の形で置きます。`fit` は `contain`（既定）/ `cover` / `stretch`。image は group layout、
+z-order、connector endpoint、orthogonal routing の obstacle に参加します。
 同じ port から分岐する connector は自動 lane で分離され、orthogonal routing は
 node と既存 connector の重なりを避ける候補を優先します。複雑な経路だけは
 `routing: "polyline"` と `points` で明示します。

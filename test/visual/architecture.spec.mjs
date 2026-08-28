@@ -37,10 +37,14 @@ const SLIDE_NAMES = [
 const ICON_FIXTURE = join(REPO_ROOT, "test", "fixtures", "architecture-icons.md");
 const ICON_SLIDES = splitFixtureDeck(readFileSync(ICON_FIXTURE, "utf8"));
 const ICON_SLIDE_NAMES = ["01-icon-catalog"];
+const IMAGE_FIXTURE = join(REPO_ROOT, "test", "fixtures", "architecture-images.md");
+const IMAGE_SLIDES = splitFixtureDeck(readFileSync(IMAGE_FIXTURE, "utf8"));
+const IMAGE_SLIDE_NAMES = ["01-image-fit-modes"];
 
 test("フィクスチャのスライド数がスナップショット名と一致する", () => {
   expect(SLIDES).toHaveLength(SLIDE_NAMES.length);
   expect(ICON_SLIDES).toHaveLength(ICON_SLIDE_NAMES.length);
+  expect(IMAGE_SLIDES).toHaveLength(IMAGE_SLIDE_NAMES.length);
 });
 
 /** 1 デッキ分のテーマ x スライドのスクリーンショット比較を登録する。 */
@@ -84,3 +88,4 @@ function registerDeck(slides, names, prefix = "") {
 // なぜ許容 0px なのかの実測根拠は playwright.config.mjs のコメントを参照。
 registerDeck(SLIDES, SLIDE_NAMES);
 registerDeck(ICON_SLIDES, ICON_SLIDE_NAMES, "icons");
+registerDeck(IMAGE_SLIDES, IMAGE_SLIDE_NAMES, "images");

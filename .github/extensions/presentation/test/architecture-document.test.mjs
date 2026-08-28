@@ -130,6 +130,79 @@ test("node/group の座標指定は固定配置へ反映され、layout 管理�
   assert.doesNotThrow(() => parseArchitecture(document.source));
 });
 
+test("image は追加・編集・配置・connector・undo/redo に統合される", () => {
+  const document = createArchitectureDocument(source);
+  const rootImage = document.addImage({
+    src: "assets/hero.png",
+    x: 320,
+    y: 300,
+    fit: "cover",
+  });
+  const layoutImage = document.addImage({
+    parentId: "zone",
+    src: "assets/logo.svg",
+  });
+  assert.equal(rootImage.ok, true);
+  assert.equal(layoutImage.ok, true);
+
+  let result = raw(document);
+  const image = result.elements.find((element) => element.id === rootImage.id);
+  assert.deepEqual(image, {
+    type: "image",
+    id: rootImage.id,
+    src: "assets/hero.png",
+    fit: "cover",
+    ariaLabel: "hero.png",
+    x: 320,
+    y: 300,
+    width: 340,
+    height: 220,
+  });
+  const zone = result.elements.find((element) => element.id === "zone");
+  const managedImage = zone.children.find((element) => element.id === layoutImage.id);
+  assert.equal(managedImage.x, undefined);
+  assert.equal(managedImage.width, undefined);
+
+  assert.equal(document.addConnector({ from: rootImage.id, to: "client" }).ok, true);
+  assert.equal(document.renameElement(rootImage.id, "hero-image").ok, true);
+  assert.equal(document.setElement("hero-image", "fit", "stretch").ok, true);
+  assert.equal(document.setElement("hero-image", "src", "assets/hero-wide.webp").ok, true);
+  assert.equal(document.move("hero-image", 20, -10).ok, true);
+  assert.equal(
+    document.resize("hero-image", { x: 350, y: 310, width: 500, height: 260 }).ok,
+    true,
+  );
+  const copy = document.duplicate("hero-image");
+  assert.equal(copy.ok, true);
+  assert.notEqual(copy.id, "hero-image");
+  result = raw(document);
+  assert.ok(
+    result.elements.some(
+      (element) =>
+        element.type === "connector" &&
+        element.from === "hero-image" &&
+        element.to === "client",
+    ),
+  );
+  assert.equal(
+    result.elements.find((element) => element.id === "hero-image").fit,
+    "stretch",
+  );
+
+  assert.equal(document.remove("hero-image").ok, true);
+  assert.equal(
+    raw(document).elements.some(
+      (element) => element.type === "connector" && element.from === "hero-image",
+    ),
+    false,
+  );
+  assert.equal(document.undo().ok, true);
+  assert.ok(document.model.elements.some((element) => element.id === "hero-image"));
+  assert.equal(document.redo().ok, true);
+  assert.equal(document.model.elements.some((element) => element.id === "hero-image"), false);
+  assert.doesNotThrow(() => parseArchitecture(document.source));
+});
+
 test("group 削除は子孫を参照する connector も cascade delete する", () => {
   const document = createArchitectureDocument(source);
   assert.equal(document.remove("zone").ok, true);

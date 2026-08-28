@@ -12,6 +12,8 @@ const COLORS = [...Object.keys(THEME_TOKENS), "black", "white", "transparent", "
 const PORTS = ["auto", "top", "right", "bottom", "left"];
 const ROUTING = ["straight", "orthogonal", "polyline"];
 const SHAPES = ["rect", "rounded-rect", "ellipse"];
+const IMAGE_FITS = ["contain", "cover", "stretch"];
+const ASSET_MAX_BYTES = 10 * 1024 * 1024;
 const SNAP_SIZE = 10;
 const SVG_NS = "http://www.w3.org/2000/svg";
 const SHARED_LAYOUT_KEYS = ["gap", "rowGap", "columnGap", "padding"];
@@ -26,6 +28,19 @@ const status = document.getElementById("status");
 const zoomStatus = document.getElementById("zoomStatus");
 const snapToggle = document.getElementById("snapToggle");
 const contextMenu = document.getElementById("contextMenu");
+const assetDialog = document.getElementById("assetDialog");
+const assetDialogTitle = document.getElementById("assetDialogTitle");
+const assetDialogClose = document.getElementById("assetDialogClose");
+const assetSearch = document.getElementById("assetSearch");
+const assetImportButton = document.getElementById("assetImportButton");
+const assetFileInput = document.getElementById("assetFileInput");
+const assetList = document.getElementById("assetList");
+const assetPreviewImageHost = document.getElementById("assetPreviewImageHost");
+const assetPreviewEmpty = document.getElementById("assetPreviewEmpty");
+const assetPreviewPath = document.getElementById("assetPreviewPath");
+const assetDialogStatus = document.getElementById("assetDialogStatus");
+const assetCancelButton = document.getElementById("assetCancelButton");
+const assetChooseButton = document.getElementById("assetChooseButton");
 
 let architecture = null;
 let selectedRef = null;
@@ -42,6 +57,11 @@ let spacePressed = false;
 let connectorTool = null;
 let serverVersion = -1;
 let contextMenuState = null;
+let assetPickerState = null;
+let availableAssets = [];
+let selectedAssetPath = "";
+let assetUploadPending = false;
+let assetLibraryRequest = 0;
 
 function announce(message, kind = "info") {
   status.textContent = message;
@@ -151,13 +171,17 @@ function applyResult(result, { select = undefined, quiet = false } = {}) {
 function iconFor(type) {
   if (type === "node") return "▣";
   if (type === "group") return "▤";
+  if (type === "image") return "▧";
   return "→";
 }
 
 function labelFor(entry) {
   const item = entry.element;
   if (item.type === "connector") return `${item.from} → ${item.to}`;
-  return item.id + (item.text ? ` — ${String(item.text).split("\n")[0]}` : item.title ? ` — ${item.title}` : "");
+  const detail = item.text
+    ? String(item.text).split("\n")[0]
+    : item.title || (item.type === "image" ? item.src : "");
+  return item.id + (detail ? ` — ${detail}` : "");
 }
 
 function contextMenuReturnTarget(state) {
@@ -227,6 +251,7 @@ function menuItemsFor({ ref, point }) {
     return [
       { label: `ノード${suffix}`, action: "add-node" },
       { label: `グループ${suffix}`, action: "add-group" },
+      { label: `画像${suffix}`, action: "add-image" },
       { separator: true },
       { label: "元に戻す", action: "undo", shortcut: "Ctrl+Z", disabled: !architecture.canUndo },
       { label: "やり直す", action: "redo", shortcut: "Ctrl+Y", disabled: !architecture.canRedo },
@@ -241,6 +266,7 @@ function menuItemsFor({ ref, point }) {
     items.push(
       { label: `子ノード${suffix}`, action: "add-node" },
       { label: `子グループ${suffix}`, action: "add-group" },
+      { label: `子画像${suffix}`, action: "add-image" },
       { separator: true },
       {
         label: "レイアウト",
@@ -271,6 +297,7 @@ function activateContextMenuItem(button) {
   const actionContext = {
     ref: contextMenuState.ref,
     point: contextMenuState.point,
+    returnFocus: contextMenuReturnTarget(contextMenuState),
   };
   if (action === "set-layout") actionContext.layoutType = button.dataset.layoutType || "";
   closeContextMenu();
@@ -466,6 +493,190 @@ function openBlankContextMenu(options) {
   connectorTool = null;
   renderAll();
   openContextMenu({ ...options, point });
+}
+
+function setAssetDialogStatus(message, kind = "info") {
+  assetDialogStatus.textContent = message;
+  assetDialogStatus.dataset.kind = kind;
+}
+
+function selectAsset(path) {
+  selectedAssetPath = path || "";
+  assetChooseButton.disabled = !selectedAssetPath || assetUploadPending;
+  assetList.querySelectorAll(".asset-option").forEach((option) => {
+    option.setAttribute(
+      "aria-selected",
+      option.dataset.path === selectedAssetPath ? "true" : "false",
+    );
+  });
+  assetPreviewImageHost.replaceChildren();
+  assetPreviewEmpty.hidden = Boolean(selectedAssetPath);
+  assetPreviewPath.textContent = selectedAssetPath;
+  if (selectedAssetPath) {
+    const image = document.createElement("img");
+    image.src = `/${selectedAssetPath}`;
+    image.alt = "";
+    assetPreviewImageHost.appendChild(image);
+  }
+}
+
+function renderAssetLibrary() {
+  const query = assetSearch.value.trim().toLocaleLowerCase();
+  const matches = availableAssets.filter((asset) =>
+    asset.path.toLocaleLowerCase().includes(query),
+  );
+  assetList.replaceChildren();
+  if (!matches.length) {
+    const empty = document.createElement("p");
+    empty.className = "asset-list-empty";
+    empty.textContent = query
+      ? "検索に一致する画像はありません。"
+      : "assets/ に利用できる画像はありません。";
+    assetList.appendChild(empty);
+  }
+  for (const asset of matches) {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "asset-option";
+    option.dataset.path = asset.path;
+    option.setAttribute("role", "option");
+    option.setAttribute("aria-selected", asset.path === selectedAssetPath ? "true" : "false");
+    option.title = asset.path;
+    const image = document.createElement("img");
+    image.src = `/${asset.path}`;
+    image.alt = "";
+    const label = document.createElement("span");
+    label.textContent = asset.path;
+    option.append(image, label);
+    option.addEventListener("click", () => selectAsset(asset.path));
+    option.addEventListener("dblclick", () => {
+      selectAsset(asset.path);
+      confirmAssetSelection();
+    });
+    assetList.appendChild(option);
+  }
+  setAssetDialogStatus(`${matches.length} 件の画像`);
+}
+
+async function loadAssetLibrary(preferredPath = "", request = assetLibraryRequest) {
+  setAssetDialogStatus("画像を読み込み中…");
+  assetChooseButton.disabled = true;
+  try {
+    const response = await fetch("/asset-library");
+    const result = await response.json().catch(() => ({}));
+    if (request !== assetLibraryRequest || !assetDialog.open) return false;
+    if (!response.ok || result.ok !== true || !Array.isArray(result.assets)) {
+      throw new Error(result.message || "画像の一覧を取得できませんでした。");
+    }
+    availableAssets = result.assets;
+    selectedAssetPath =
+      preferredPath && availableAssets.some((asset) => asset.path === preferredPath)
+        ? preferredPath
+        : "";
+    renderAssetLibrary();
+    selectAsset(selectedAssetPath);
+    return true;
+  } catch (error) {
+    if (request !== assetLibraryRequest || !assetDialog.open) return false;
+    availableAssets = [];
+    selectedAssetPath = "";
+    renderAssetLibrary();
+    setAssetDialogStatus(error.message, "error");
+    return false;
+  }
+}
+
+function restoreAssetPickerFocus(state) {
+  if (state?.returnFocus?.isConnected) {
+    state.returnFocus.focus();
+    return;
+  }
+  if (selectedRef) {
+    tree.querySelector(`.tree-item[data-ref="${CSS.escape(selectedRef)}"]`)?.focus();
+  }
+}
+
+function closeAssetPicker() {
+  if (assetDialog.open) assetDialog.close();
+}
+
+function openAssetPicker(state) {
+  assetPickerState = {
+    ...state,
+    returnFocus: state.returnFocus || document.activeElement,
+  };
+  assetDialogTitle.textContent =
+    state.mode === "add-image"
+      ? "画像を追加"
+      : state.mode === "node-icon"
+        ? "ノードの画像を選択"
+        : "画像を差し替え";
+  assetSearch.value = "";
+  availableAssets = [];
+  selectedAssetPath = "";
+  selectAsset("");
+  assetDialog.showModal();
+  const request = ++assetLibraryRequest;
+  void loadAssetLibrary(state.currentPath || "", request).then((loaded) => {
+    if (loaded && assetDialog.open && request === assetLibraryRequest) assetSearch.focus();
+  });
+}
+
+function confirmAssetSelection() {
+  if (!assetPickerState || !selectedAssetPath || assetUploadPending) return;
+  const state = assetPickerState;
+  let result;
+  if (state.mode === "add-image") {
+    result = architecture.addImage({
+      parentId: state.parentId,
+      src: selectedAssetPath,
+      ...addPosition(state.point, state.parentId, 340, 220),
+    });
+  } else if (state.mode === "node-icon") {
+    result = architecture.setElement(state.ref, "icon", selectedAssetPath);
+  } else {
+    result = architecture.setElement(state.ref, "src", selectedAssetPath);
+  }
+  if (applyResult(result)) closeAssetPicker();
+}
+
+function setAssetUploadPending(value) {
+  assetUploadPending = value;
+  assetImportButton.disabled = value;
+  assetSearch.disabled = value;
+  assetChooseButton.disabled = value || !selectedAssetPath;
+  assetList.querySelectorAll("button").forEach((button) => {
+    button.disabled = value;
+  });
+}
+
+async function uploadAsset(file) {
+  if (!file) return;
+  if (file.size > ASSET_MAX_BYTES) {
+    setAssetDialogStatus("画像は 10 MB 以下にしてください。", "error");
+    return;
+  }
+  setAssetUploadPending(true);
+  setAssetDialogStatus(`${file.name} を取り込み中…`);
+  try {
+    const response = await fetch(`/asset-upload?name=${encodeURIComponent(file.name)}`, {
+      method: "POST",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.ok !== true || !result.asset?.path) {
+      throw new Error(result.message || "画像を取り込めませんでした。");
+    }
+    const request = ++assetLibraryRequest;
+    const loaded = await loadAssetLibrary(result.asset.path, request);
+    if (loaded) setAssetDialogStatus(`${result.asset.path} として取り込みました。`);
+  } catch (error) {
+    setAssetDialogStatus(error.message, "error");
+  } finally {
+    setAssetUploadPending(false);
+    assetFileInput.value = "";
+  }
 }
 
 function renderTree() {
@@ -683,6 +894,18 @@ function addField(container, {
   return input;
 }
 
+function addInspectorAction(container, label, onClick) {
+  const row = document.createElement("div");
+  row.className = "inspector-action-row";
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = label;
+  button.addEventListener("click", onClick);
+  row.appendChild(button);
+  container.appendChild(row);
+  return button;
+}
+
 function addStyleFields(container) {
   for (const [label, path] of [
     ["塗り", "style.fill"],
@@ -806,6 +1029,34 @@ function renderInspector() {
       path: "icon",
       value: entry.element.icon,
       suggestions: [...ICONS],
+    });
+    addInspectorAction(general, "assets/ から画像を選択", (event) => {
+      openAssetPicker({
+        mode: "node-icon",
+        ref: selectedRef,
+        currentPath: entry.element.icon,
+        returnFocus: event.currentTarget,
+      });
+    });
+  } else if (entry.element.type === "image") {
+    addField(general, {
+      label: "画像",
+      path: "src",
+      value: entry.element.src,
+    });
+    addInspectorAction(general, "画像を差し替え", (event) => {
+      openAssetPicker({
+        mode: "image-src",
+        ref: selectedRef,
+        currentPath: entry.element.src,
+        returnFocus: event.currentTarget,
+      });
+    });
+    addField(general, {
+      label: "表示方法",
+      path: "fit",
+      value: entry.element.fit || "contain",
+      options: IMAGE_FITS,
     });
   } else if (entry.element.type === "group") {
     addField(general, { label: "タイトル", path: "title", value: entry.element.title });
@@ -1217,6 +1468,14 @@ function invokeAction(action, context = {}) {
       parentId,
       ...addPosition(context.point, parentId, 520, 320),
     }));
+  } else if (action === "add-image") {
+    const parentId = entryFor(ref)?.element.type === "group" ? ref : null;
+    openAssetPicker({
+      mode: "add-image",
+      parentId,
+      point: context.point,
+      returnFocus: context.returnFocus || document.activeElement,
+    });
   } else if (action === "add-connector") {
     connectorTool = { from: null };
     announce("コネクターの始点を選択してください。");
@@ -1261,6 +1520,27 @@ function wireControls() {
   document.addEventListener("pointermove", updateDrag);
   document.addEventListener("pointerup", finishDrag);
   document.addEventListener("pointercancel", finishDrag);
+  assetSearch.addEventListener("input", renderAssetLibrary);
+  assetImportButton.addEventListener("click", () => assetFileInput.click());
+  assetFileInput.addEventListener("change", () => {
+    void uploadAsset(assetFileInput.files?.[0]);
+  });
+  assetChooseButton.addEventListener("click", confirmAssetSelection);
+  assetCancelButton.addEventListener("click", closeAssetPicker);
+  assetDialogClose.addEventListener("click", closeAssetPicker);
+  assetDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    closeAssetPicker();
+  });
+  assetDialog.addEventListener("close", () => {
+    assetLibraryRequest += 1;
+    const previous = assetPickerState;
+    assetPickerState = null;
+    availableAssets = [];
+    selectedAssetPath = "";
+    assetPreviewImageHost.replaceChildren();
+    restoreAssetPickerFocus(previous);
+  });
   document.addEventListener("pointerdown", (event) => {
     if (!contextMenu.hidden && !contextMenu.contains(event.target)) closeContextMenu();
   }, true);
@@ -1357,6 +1637,7 @@ function wireControls() {
     { passive: false },
   );
   window.addEventListener("keydown", (event) => {
+    if (assetDialog.open) return;
     const editable = ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName);
     if (event.code === "Space" && !editable) spacePressed = true;
     const modifier = event.ctrlKey || event.metaKey;

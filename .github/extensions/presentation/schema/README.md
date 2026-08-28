@@ -46,6 +46,36 @@
 }
 ```
 
+### 3. カスタム画像
+
+`node.icon` と standalone `image.src` は共通の `assetPath` 定義を使います。参照は
+`assets/` から始まる workspace 相対パスに限定され、SVG / PNG / WebP / JPG / JPEG のみ
+受理します。外部 URL、data URI、絶対パス、`..`、非 ASCII のパスは拒否します。
+
+```json
+{
+  "$schema": "../architecture-v1.schema.json",
+  "version": 1,
+  "elements": [
+    {
+      "type": "image",
+      "id": "system-map",
+      "src": "assets/system-map.svg",
+      "fit": "contain",
+      "ariaLabel": "システム全体図",
+      "x": 80,
+      "y": 80,
+      "width": 720,
+      "height": 420
+    }
+  ]
+}
+```
+
+`fit` は `contain`（既定）/ `cover` / `stretch` です。layout 管理下では他の flow 要素と
+同様に `x` / `y` を書きません。asset の存在、MIME、signature、10 MB の取り込み上限は
+JSON Schema ではなく Architecture Editor の asset API が検証します。
+
 ## スキーマとパーサーの責務分担
 
 **スキーマ = 形状（shape）検証、`parseArchitecture` = 意味（semantic）検証**です。
@@ -61,7 +91,7 @@
 | source 64 KiB | パース前の文字列長 |
 | `layout` の収まり判定（`children do not fit`） | 子のサイズと group の内寸から動的に決まる |
 | `layout` 配下の子 `width` / `height` の上限 | 上限が `cellWidth` / `cellHeight` に依存する |
-| `icon` が指す `assets/` のファイルが実在するか | パーサーはファイルシステムを見ない（欠落時は空のアイコン領域が描かれる） |
+| `node.icon` / `image.src` が指す `assets/` のファイルが実在するか | パーサーはファイルシステムを見ない（欠落時は空の画像領域が描かれる） |
 
 スキーマが通っても、`parseArchitecture` が落ちることはあります。**図が描けるかどうかの
 最終的な判定は常にパーサー**です。
@@ -91,8 +121,9 @@ JSON Schema の `pattern` にはフラグの概念が無いため、スキーマ
 等価性は「同じ入力に同じ判定を返すか」で検証しています
 （`literal colour pattern is behaviourally equivalent to LITERAL_COLORS`）。
 
-`icon` のアセットパスでは同じ罠を**回避する側**の設計を選びました。
-`ICON_ASSET_PATTERN` は `/i` フラグを**使わず**、許可拡張子を
+画像のアセットパスでは同じ罠を**回避する側**の設計を選びました。
+`ASSET_PATH_PATTERN`（既存互換の `ICON_ASSET_PATTERN` alias も同値）は `/i` フラグを
+**使わず**、許可拡張子を
 `[Ss][Vv][Gg]` のように機械的に大小展開して組み立てています。そのため
 `.source` をそのまま `pattern` へ写せます（`/` は `RegExp.prototype.source` が
 必ず `\/` へ正規化するので、比較の前に両辺を `new RegExp(...)` に通しています）。

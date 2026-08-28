@@ -30,6 +30,11 @@ import {
 } from "./scripts/markdown-files.mjs";
 import { serializeMarkdownSave } from "./scripts/markdown-save-coordinator.mjs";
 import { atomicReplaceMarkdown } from "./scripts/atomic-markdown-replace.mjs";
+import {
+  ARCHITECTURE_ASSET_MAX_BYTES,
+  importArchitectureAsset,
+  listArchitectureAssets,
+} from "./scripts/architecture-assets.mjs";
 
 const MAX_DRAFT_BYTES = 256 * 1024;
 const THEMES = new Set(["dark", "light", "microsoft"]);
@@ -119,6 +124,53 @@ function readJsonBody(req, limit = MAX_DRAFT_BYTES) {
     });
     req.on("error", (error) => settle(rejectBody, error));
   });
+}
+
+function readBinaryBody(req, limit = ARCHITECTURE_ASSET_MAX_BYTES) {
+  return new Promise((resolveBody, rejectBody) => {
+    const declared = Number(req.headers["content-length"]);
+    if (Number.isFinite(declared) && declared > limit) {
+      rejectBody(new Error("asset_too_large"));
+      return;
+    }
+    const chunks = [];
+    let size = 0;
+    let settled = false;
+    const settle = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      callback(value);
+    };
+    req.on("data", (chunk) => {
+      if (settled) return;
+      size += chunk.length;
+      if (size > limit) {
+        settle(rejectBody, new Error("asset_too_large"));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (!settled) settle(resolveBody, Buffer.concat(chunks));
+    });
+    req.on("error", (error) => settle(rejectBody, error));
+  });
+}
+
+function assetErrorStatus(error) {
+  if (error?.code === "asset_too_large" || error?.message === "asset_too_large") return 413;
+  if (
+    [
+      "asset_content_type_mismatch",
+      "asset_signature_mismatch",
+      "unsupported_asset_type",
+    ].includes(error?.code)
+  ) {
+    return 415;
+  }
+  if (error?.code === "asset_root_outside_workspace") return 403;
+  if (error?.code === "asset_write_failed" || error?.code === "asset_root_unavailable") return 500;
+  return 400;
 }
 
 async function resolveMarkdownTarget(workspaceRoot, sourcePath) {
@@ -435,6 +487,52 @@ export function createArchitectureEditorManager({
         });
         return;
       }
+      if (pathname === "/asset-library") {
+        if (req.method !== "GET") {
+          res.setHeader("Allow", "GET");
+          sendJson(res, 405, { ok: false, error: "method_not_allowed" });
+          return;
+        }
+        try {
+          const assets = await listArchitectureAssets(inst.workspaceRoot);
+          sendJson(res, 200, { ok: true, assets });
+        } catch (error) {
+          sendJson(res, assetErrorStatus(error), {
+            ok: false,
+            error: error?.code || "asset_list_failed",
+            message: error?.message || "Images could not be listed.",
+          });
+        }
+        return;
+      }
+      if (pathname === "/asset-upload") {
+        if (req.method !== "POST") {
+          res.setHeader("Allow", "POST");
+          sendJson(res, 405, { ok: false, error: "method_not_allowed" });
+          return;
+        }
+        const origin = req.headers.origin;
+        if (origin && origin !== new URL(inst.url).origin) {
+          sendJson(res, 403, { ok: false, error: "origin_not_allowed" });
+          return;
+        }
+        try {
+          const content = await readBinaryBody(req);
+          const imported = await importArchitectureAsset(inst.workspaceRoot, {
+            filename: requestUrl.searchParams.get("name") || "",
+            contentType: req.headers["content-type"],
+            content,
+          });
+          sendJson(res, 201, { ok: true, asset: imported });
+        } catch (error) {
+          sendJson(res, assetErrorStatus(error), {
+            ok: false,
+            error: error?.code || error?.message || "asset_upload_failed",
+            message: error?.message || "The image could not be imported.",
+          });
+        }
+        return;
+      }
       if (pathname === "/draft") {
         if (req.method !== "POST") {
           res.setHeader("Allow", "POST");
@@ -590,7 +688,12 @@ export function createArchitectureEditorManager({
             realpath(join(inst.workspaceRoot, "assets")),
             realpath(asset),
           ]);
-          if (!isPathInside(canonicalAssets, canonicalAsset)) {
+          const canonicalWorkspace = await realpath(inst.workspaceRoot);
+          if (
+            !isPathInside(canonicalWorkspace, canonicalAssets) ||
+            !isPathInside(canonicalWorkspace, canonicalAsset) ||
+            !isPathInside(canonicalAssets, canonicalAsset)
+          ) {
             res.statusCode = 403;
             res.end("Forbidden");
             return;
