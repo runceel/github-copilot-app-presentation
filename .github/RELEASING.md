@@ -42,9 +42,9 @@ Extension は **実行時の npm 依存をゼロ**に保ちます。利用者は
 - `test-results/`、`playwright-report/` などのテスト出力
 
 言い換えると、ZIP に入れるのは `.github/extensions/presentation/` 配下だけです。同ディレクトリ
-の中に `package.json` や `node_modules/` を作らないでください。なお同ディレクトリ配下の
-`test/` と `scripts/` は Node 標準機能のみで動く開発用資産なので、ZIP から省いても
-Extension の動作には影響しません。
+の中に `package.json` や `node_modules/` を作らないでください。同ディレクトリ配下の
+`test/` は開発用資産なので ZIP から省けますが、`scripts/` には Markdown の安全な保存処理で
+使う実行時モジュールが含まれるため ZIP へ含めます。
 一方 `.github/extensions/presentation/schema/` は**意図的に ZIP へ含めます**。利用者が
 手元で Architecture DSL の JSON Schema を参照し、エディター補完・検証を効かせるための
 資産だからです（拡張の実行時には読み込まれません）。
