@@ -8,6 +8,10 @@ import {
   findArchitectureBlocks,
   replaceArchitectureBlock,
 } from "../../.github/extensions/presentation/scripts/markdown-blocks.mjs";
+import {
+  ARCHITECTURE_ASSET_MAX_BYTES,
+  normalizeArchitectureAssetName,
+} from "../../.github/extensions/presentation/scripts/architecture-assets.mjs";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const EXT_DIR = join(REPO_ROOT, ".github", "extensions", "presentation");
@@ -17,6 +21,11 @@ const MIME = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".mjs": "text/javascript; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".webp": "image/webp",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
 };
 
 async function sendFile(res, path) {
@@ -53,12 +62,39 @@ function readBody(req) {
   });
 }
 
+function readBinaryBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    let settled = false;
+    const settle = (callback, value) => {
+      if (settled) return;
+      settled = true;
+      callback(value);
+    };
+    req.on("data", (chunk) => {
+      if (settled) return;
+      size += chunk.length;
+      if (size > ARCHITECTURE_ASSET_MAX_BYTES) {
+        settle(reject, new Error("asset_too_large"));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (!settled) settle(resolve, Buffer.concat(chunks));
+    });
+    req.on("error", (error) => settle(reject, error));
+  });
+}
+
 export async function startArchitectureEditorHarness({
   source,
   sourcePath = "slides.md",
   blockIndex = 0,
   theme = "dark",
   saveDelay = 0,
+  assets = {},
 } = {}) {
   parseArchitecture(source);
   let markdown = `# Fixture\n\n\`\`\`architecture\n${source.trimEnd()}\n\`\`\`\n`;
@@ -73,6 +109,12 @@ export async function startArchitectureEditorHarness({
   const stateDelays = [];
   const saves = [];
   const clients = new Set();
+  const assetFiles = new Map(
+    Object.entries(assets).map(([path, content]) => [
+      path.replace(/^\/+/, ""),
+      Buffer.isBuffer(content) ? content : Buffer.from(content),
+    ]),
+  );
 
   function broadcast() {
     for (const client of [...clients]) client.write(`data: ${version}\n\n`);
@@ -108,6 +150,45 @@ export async function startArchitectureEditorHarness({
       res.write(`data: ${version}\n\n`);
       clients.add(res);
       req.on("close", () => clients.delete(res));
+      return;
+    }
+    if (pathname === "/asset-library") {
+      sendJson(res, 200, {
+        ok: true,
+        assets: [...assetFiles]
+          .filter(([path]) => /^assets\/.+\.(?:svg|png|webp|jpe?g)$/i.test(path))
+          .map(([path, content]) => ({ path, size: content.length }))
+          .sort((left, right) => left.path.localeCompare(right.path, "en")),
+      });
+      return;
+    }
+    if (pathname === "/asset-upload") {
+      try {
+        const content = await readBinaryBody(req);
+        const { stem, extension } = normalizeArchitectureAssetName(
+          url.searchParams.get("name") || "",
+        );
+        let assetPath = "";
+        for (let index = 1; index < 10_000; index += 1) {
+          const suffix = index === 1 ? "" : `-${index}`;
+          const candidate = `assets/${stem}${suffix}.${extension}`;
+          if (!assetFiles.has(candidate)) {
+            assetPath = candidate;
+            break;
+          }
+        }
+        assetFiles.set(assetPath, content);
+        sendJson(res, 201, {
+          ok: true,
+          asset: { path: assetPath, size: content.length },
+        });
+      } catch (error) {
+        sendJson(res, error?.message === "asset_too_large" ? 413 : 400, {
+          ok: false,
+          error: error?.code || error?.message || "asset_upload_failed",
+          message: error?.message,
+        });
+      }
       return;
     }
     if (pathname === "/draft") {
@@ -225,6 +306,18 @@ export async function startArchitectureEditorHarness({
       await sendFile(res, join(EXT_DIR, pathname.slice(1)));
       return;
     }
+    if (pathname.startsWith("/assets/")) {
+      const content = assetFiles.get(pathname.slice(1));
+      if (!content) {
+        res.statusCode = 404;
+        res.end("Not found");
+        return;
+      }
+      res.statusCode = 200;
+      res.setHeader("Content-Type", MIME[extname(pathname).toLowerCase()]);
+      res.end(content);
+      return;
+    }
     res.statusCode = 404;
     res.end("Not found");
   });
@@ -234,6 +327,9 @@ export async function startArchitectureEditorHarness({
   return {
     url: `http://127.0.0.1:${address.port}`,
     saves,
+    get assets() {
+      return new Map(assetFiles);
+    },
     get markdown() {
       return markdown;
     },

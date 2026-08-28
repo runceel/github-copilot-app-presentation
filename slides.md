@@ -276,13 +276,59 @@ flowchart LR
 
 ---
 
+## カスタム画像を Architecture DSL に組み込む
+
+standalone image と node icon は、同じ `assets/` の画像を参照できます。
+
+```architecture
+{
+  "version": 1,
+  "title": "Custom image example",
+  "description": "A standalone custom image connected to a node that uses the same asset as its icon.",
+  "canvas": { "width": 1600, "height": 900 },
+  "elements": [
+    {
+      "type": "image",
+      "id": "image-sample",
+      "src": "assets/architecture-image-sample.svg",
+      "fit": "contain",
+      "ariaLabel": "Architecture DSL のカスタム画像サンプル",
+      "x": 80,
+      "y": 160,
+      "width": 900,
+      "height": 560,
+      "style": { "fill": "surface", "stroke": "accent", "strokeWidth": 4, "cornerRadius": 28 }
+    },
+    {
+      "type": "node",
+      "id": "image-node",
+      "text": "Custom image",
+      "icon": "assets/architecture-image-sample.svg",
+      "x": 1180,
+      "y": 340,
+      "width": 300,
+      "height": 160,
+      "style": { "fill": "surface", "stroke": "accentStrong", "strokeWidth": 3 }
+    },
+    {
+      "type": "connector",
+      "from": "image-sample",
+      "to": "image-node",
+      "routing": "orthogonal",
+      "label": "same asset",
+      "arrow": true
+    }
+  ]
+}
+```
+
+---
+
 ## 画像とリンクを追加する
 
 画像は `assets/` フォルダーに置き、絶対パスで参照します。
 
-```markdown
-![説明文](/assets/example.png)
-```
+![Architecture DSL のカスタム画像サンプル](/assets/architecture-image-sample.svg)
 
 外部ページへのリンクも Markdown の記法で書けます。
 

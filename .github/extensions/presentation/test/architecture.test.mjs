@@ -368,7 +368,7 @@ test("renders an explicit in-place error without throwing", () => {
   assert.equal(wrapper.className, "architecture-error");
   assert.equal(wrapper.attributes.get("role"), "alert");
   assert.match(wrapper.textContent, /Architecture diagram error/);
-  assert.match(wrapper.textContent, /must be node, group, or connector/);
+  assert.match(wrapper.textContent, /must be node, group, image, or connector/);
 });
 
 test("the mixed Mermaid and architecture fixture contains a renderable DSL block", async () => {
@@ -1371,6 +1371,148 @@ test("user-supplied icons render as a sandboxed same-origin image reference", ()
   assert.deepEqual(labels, [...assets.map((_, index) => `a${index}`), "cloud icon, builtin"]);
 });
 
+test("standalone images support safe fit modes, accessibility, layout, and connectors", () => {
+  const model = parseArchitecture(
+    JSON.stringify({
+      elements: [
+        {
+          type: "group",
+          id: "gallery",
+          x: 40,
+          y: 40,
+          width: 1000,
+          height: 420,
+          layout: "row",
+          children: [
+            {
+              type: "image",
+              id: "contained",
+              src: "assets/photos/contained.png",
+              fit: "contain",
+              ariaLabel: "Contained architecture",
+            },
+            {
+              type: "image",
+              id: "covered",
+              src: "assets/photos/covered.webp",
+              fit: "cover",
+            },
+            {
+              type: "image",
+              id: "stretched",
+              src: "assets/photos/stretched.jpg",
+              fit: "stretch",
+            },
+            {
+              type: "connector",
+              from: "contained",
+              to: "covered",
+              routing: "orthogonal",
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  const rendered = descendants(renderArchitectureDiagram(model, new FakeDocument()));
+  const images = rendered.filter(
+    (node) =>
+      node.tagName === "image" &&
+      !node.attributes.has("data-architecture-icon-source"),
+  );
+  assert.deepEqual(
+    images.map((node) => node.attributes.get("href")),
+    [
+      "/assets/photos/contained.png",
+      "/assets/photos/covered.webp",
+      "/assets/photos/stretched.jpg",
+    ],
+  );
+  assert.deepEqual(
+    images.map((node) => node.attributes.get("preserveAspectRatio")),
+    ["xMidYMid meet", "xMidYMid slice", "none"],
+  );
+  assert.ok(images.every((node) => /^url\(#architecture-image-clip-/.test(node.attributes.get("clip-path"))));
+
+  const groups = rendered.filter(
+    (node) => node.attributes.get("data-architecture-type") === "image",
+  );
+  assert.deepEqual(
+    groups.map((node) => node.attributes.get("aria-label")),
+    ["Contained architecture", "covered.webp", "stretched.jpg"],
+  );
+  assert.ok(
+    rendered.some(
+      (node) =>
+        node.attributes.get("data-architecture-type") === "connector" &&
+        node.attributes.get("aria-label") === "Contained architecture to covered.webp",
+    ),
+  );
+
+  const snapshot = architectureSemanticSnapshot(model);
+  assert.deepEqual(
+    snapshot.elements
+      .filter((element) => element.type === "image")
+      .map(({ id, src, fit }) => ({ id, src, fit })),
+    [
+      { id: "contained", src: "assets/photos/contained.png", fit: "contain" },
+      { id: "covered", src: "assets/photos/covered.webp", fit: "cover" },
+      { id: "stretched", src: "assets/photos/stretched.jpg", fit: "stretch" },
+    ],
+  );
+});
+
+test("standalone images reject unsafe sources and unknown fit modes", () => {
+  for (const src of [
+    "https://example.com/image.png",
+    "data:image/png;base64,AA==",
+    "../assets/image.png",
+    "/assets/image.png",
+    "assets/../image.png",
+    "assets/image.gif",
+  ]) {
+    assert.throws(
+      () =>
+        parseArchitecture(
+          JSON.stringify({
+            elements: [
+              {
+                type: "image",
+                id: "hero",
+                src,
+                x: 0,
+                y: 0,
+                width: 320,
+                height: 180,
+              },
+            ],
+          }),
+        ),
+      /elements\[0\]\.src: must be a path under assets\//,
+    );
+  }
+  assert.throws(
+    () =>
+      parseArchitecture(
+        JSON.stringify({
+          elements: [
+            {
+              type: "image",
+              id: "hero",
+              src: "assets/hero.png",
+              fit: "tile",
+              x: 0,
+              y: 0,
+              width: 320,
+              height: 180,
+            },
+          ],
+        }),
+      ),
+    /elements\[0\]\.fit: must be one of: contain, cover, stretch/,
+  );
+});
+
 test("rejects icon references that leave the assets folder or name a remote resource", () => {
   const unsafe = [
     "assets/../extension.mjs",
@@ -1598,7 +1740,7 @@ test("diagnostics pair every problem with remediation guidance", () => {
           { type: "node", id: "dup", x: 0, y: 0, width: 10, height: 10 },
         ],
       },
-      /duplicates 'dup'; give every node and group a unique id/,
+      /duplicates 'dup'; give every node, group, and image a unique id/,
     ],
     [
       { elements: [{ type: "node", id: "n", x: 0, y: 0, width: 100, height: 100, icon: "remote" }] },

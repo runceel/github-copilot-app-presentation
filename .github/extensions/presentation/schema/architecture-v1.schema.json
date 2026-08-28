@@ -80,11 +80,15 @@
       ],
       "description": "組み込みアイコン名。24x24 の線画で描かれ、stroke にノードの textColor が入るため 4 テーマすべてで配色が自動的に追従します。"
     },
-    "iconAsset": {
+    "assetPath": {
       "type": "string",
       "maxLength": 200,
       "pattern": "^assets/(?:[A-Za-z0-9][A-Za-z0-9_-]*(?:\\.[A-Za-z0-9_-]+)*/)*[A-Za-z0-9][A-Za-z0-9_-]*(?:\\.[A-Za-z0-9_-]+)*\\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp]|[Jj][Pp][Gg]|[Jj][Pp][Ee][Gg])$",
-      "description": "リポジトリの assets/ フォルダーに置いたアイコン。拡張子は .svg / .png / .webp / .jpg / .jpeg のみ（大文字も可）。'..' を含むパス、data: URI、外部 URL は構文上作れません。ラスター画像や <image> で読み込む SVG はテーマ色に追従しないため、どのテーマの背景でも判読できる素材を用意してください。"
+      "description": "リポジトリの assets/ フォルダーに置いた画像。拡張子は .svg / .png / .webp / .jpg / .jpeg のみ（大文字も可）。'..' を含むパス、data: URI、外部 URL は構文上作れません。"
+    },
+    "iconAsset": {
+      "$ref": "#/$defs/assetPath",
+      "description": "node のアイコンとして使う assets/ 配下の画像。ラスター画像や <image> で読み込む SVG はテーマ色に追従しないため、どのテーマの背景でも判読できる素材を用意してください。"
     },
     "icon": {
       "anyOf": [
@@ -222,6 +226,39 @@
     "nodeFlow": {
       "description": "layout を持つ group の直下に置かれる node。位置とサイズは自動計算されます。",
       "$ref": "#/$defs/nodeBase"
+    },
+    "imageBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "src"],
+      "properties": {
+        "type": { "const": "image" },
+        "id": { "$ref": "#/$defs/identifier" },
+        "src": { "$ref": "#/$defs/assetPath" },
+        "fit": { "enum": ["contain", "cover", "stretch"] },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "width": { "$ref": "#/$defs/extent" },
+        "height": { "$ref": "#/$defs/extent" },
+        "ariaLabel": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "画像の代替テキスト。省略時は src のファイル名、最後に id が使われます。"
+        },
+        "z": { "$ref": "#/$defs/zIndex" },
+        "style": { "$ref": "#/$defs/style" }
+      }
+    },
+    "imageFixed": {
+      "description": "layout を持たない親の直下に置かれる image。位置とサイズが必須です。",
+      "allOf": [
+        { "$ref": "#/$defs/imageBase" },
+        { "$ref": "#/$defs/boxRequired" }
+      ]
+    },
+    "imageFlow": {
+      "description": "layout を持つ group の直下に置かれる image。位置とサイズは自動計算されます。",
+      "$ref": "#/$defs/imageBase"
     },
     "connector": {
       "type": "object",
@@ -409,7 +446,7 @@
       "required": ["type"],
       "properties": {
         "type": {
-          "enum": ["node", "group", "connector"],
+          "enum": ["node", "group", "image", "connector"],
           "description": "要素の種別。"
         }
       },
@@ -423,6 +460,10 @@
           "then": { "$ref": "#/$defs/groupFixedL0" }
         },
         {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFixed" }
+        },
+        {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
           "then": { "$ref": "#/$defs/connector" }
         }
@@ -431,7 +472,7 @@
     "elementFixedL1": {
       "type": "object",
       "required": ["type"],
-      "properties": { "type": { "enum": ["node", "group", "connector"] } },
+      "properties": { "type": { "enum": ["node", "group", "image", "connector"] } },
       "allOf": [
         {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
@@ -442,6 +483,10 @@
           "then": { "$ref": "#/$defs/groupFixedL1" }
         },
         {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFixed" }
+        },
+        {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
           "then": { "$ref": "#/$defs/connector" }
         }
@@ -450,7 +495,7 @@
     "elementFlowL1": {
       "type": "object",
       "required": ["type"],
-      "properties": { "type": { "enum": ["node", "group", "connector"] } },
+      "properties": { "type": { "enum": ["node", "group", "image", "connector"] } },
       "allOf": [
         {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
@@ -461,6 +506,10 @@
           "then": { "$ref": "#/$defs/groupFlowL1" }
         },
         {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFlow" }
+        },
+        {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
           "then": { "$ref": "#/$defs/connector" }
         }
@@ -469,7 +518,7 @@
     "elementFixedL2": {
       "type": "object",
       "required": ["type"],
-      "properties": { "type": { "enum": ["node", "group", "connector"] } },
+      "properties": { "type": { "enum": ["node", "group", "image", "connector"] } },
       "allOf": [
         {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
@@ -480,6 +529,10 @@
           "then": { "$ref": "#/$defs/groupFixedL2" }
         },
         {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFixed" }
+        },
+        {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
           "then": { "$ref": "#/$defs/connector" }
         }
@@ -488,7 +541,7 @@
     "elementFlowL2": {
       "type": "object",
       "required": ["type"],
-      "properties": { "type": { "enum": ["node", "group", "connector"] } },
+      "properties": { "type": { "enum": ["node", "group", "image", "connector"] } },
       "allOf": [
         {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
@@ -499,6 +552,10 @@
           "then": { "$ref": "#/$defs/groupFlowL2" }
         },
         {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFlow" }
+        },
+        {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
           "then": { "$ref": "#/$defs/connector" }
         }
@@ -507,7 +564,7 @@
     "elementFixedL3": {
       "type": "object",
       "required": ["type"],
-      "properties": { "type": { "enum": ["node", "group", "connector"] } },
+      "properties": { "type": { "enum": ["node", "group", "image", "connector"] } },
       "allOf": [
         {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
@@ -518,6 +575,10 @@
           "then": { "$ref": "#/$defs/groupFixedL3" }
         },
         {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFixed" }
+        },
+        {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
           "then": { "$ref": "#/$defs/connector" }
         }
@@ -526,7 +587,7 @@
     "elementFlowL3": {
       "type": "object",
       "required": ["type"],
-      "properties": { "type": { "enum": ["node", "group", "connector"] } },
+      "properties": { "type": { "enum": ["node", "group", "image", "connector"] } },
       "allOf": [
         {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
@@ -535,6 +596,10 @@
         {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "group" } } },
           "then": { "$ref": "#/$defs/groupFlowL3" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFlow" }
         },
         {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
@@ -547,7 +612,7 @@
       "required": ["type"],
       "properties": {
         "type": {
-          "enum": ["node", "connector"],
+          "enum": ["node", "image", "connector"],
           "description": "入れ子は 4 段までのため、この深さに group は置けません。"
         }
       },
@@ -555,6 +620,10 @@
         {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
           "then": { "$ref": "#/$defs/nodeFixed" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFixed" }
         },
         {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
@@ -567,7 +636,7 @@
       "required": ["type"],
       "properties": {
         "type": {
-          "enum": ["node", "connector"],
+          "enum": ["node", "image", "connector"],
           "description": "入れ子は 4 段までのため、この深さに group は置けません。"
         }
       },
@@ -575,6 +644,10 @@
         {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
           "then": { "$ref": "#/$defs/nodeFlow" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFlow" }
         },
         {
           "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },

@@ -256,6 +256,7 @@ const enumSyncCases = [
   ["PORTS (toPort)", architecture.PORTS, schema.$defs.connector.properties.toPort.enum],
   ["LAYOUTS (shorthand)", architecture.LAYOUTS, schema.$defs.layout.anyOf[0].enum],
   ["LAYOUTS (object)", architecture.LAYOUTS, schema.$defs.layoutObject.properties.type.enum],
+  ["IMAGE_FITS", architecture.IMAGE_FITS, schema.$defs.imageBase.properties.fit.enum],
   [
     "LAYOUT_DIRECTIONS",
     architecture.LAYOUT_DIRECTIONS,
@@ -275,21 +276,23 @@ test("schema pattern matches ID_PATTERN", () => {
   assert.equal(architecture.ID_PATTERN.flags, "");
 });
 
-test("schema pattern matches ICON_ASSET_PATTERN", () => {
+test("schema pattern matches asset path patterns", () => {
   // `/` は RegExp.prototype.source が必ず `\/` へ正規化するので、スキーマ側は
   // 読みやすい素の `/` で書き、比較の前に同じ正規化を通す。
   assert.equal(
-    new RegExp(schema.$defs.iconAsset.pattern).source,
-    architecture.ICON_ASSET_PATTERN.source,
+    new RegExp(schema.$defs.assetPath.pattern).source,
+    architecture.ASSET_PATH_PATTERN.source,
   );
   // フラグを付けると `pattern` へ写した瞬間に大小文字の扱いがずれるので固定する。
   assert.equal(architecture.ICON_ASSET_PATTERN.flags, "");
+  assert.equal(architecture.ASSET_PATH_PATTERN.flags, "");
+  assert.equal(architecture.ICON_ASSET_PATTERN, architecture.ASSET_PATH_PATTERN);
 });
 
-test("icon asset pattern is behaviourally equivalent between schema and parser", () => {
+test("asset path pattern is behaviourally equivalent between schema and parser", () => {
   // .source が一致していれば挙動は同じだが、「どの入力を受理する意図なのか」を
   // ここに列挙して固定しておく。拒否側が緩むと即座に落ちる。
-  const schemaPattern = new RegExp(schema.$defs.iconAsset.pattern);
+  const schemaPattern = new RegExp(schema.$defs.assetPath.pattern);
   const accepted = [
     "assets/sample.svg",
     "assets/profile.jpg",
@@ -333,19 +336,19 @@ test("icon asset pattern is behaviourally equivalent between schema and parser",
   for (const probe of [...accepted, ...rejected]) {
     assert.equal(
       schemaPattern.test(probe),
-      architecture.ICON_ASSET_PATTERN.test(probe),
-      `icon asset verdict differs for ${JSON.stringify(probe)}`,
+      architecture.ASSET_PATH_PATTERN.test(probe),
+      `asset path verdict differs for ${JSON.stringify(probe)}`,
     );
   }
   for (const probe of accepted) {
     assert.ok(
-      architecture.ICON_ASSET_PATTERN.test(probe),
+      architecture.ASSET_PATH_PATTERN.test(probe),
       `${JSON.stringify(probe)} should be an allowed asset reference`,
     );
   }
   for (const probe of rejected) {
     assert.equal(
-      architecture.ICON_ASSET_PATTERN.test(probe),
+      architecture.ASSET_PATH_PATTERN.test(probe),
       false,
       `${JSON.stringify(probe)} must not be an allowed asset reference`,
     );
@@ -386,7 +389,10 @@ test("schema constants match the parser limits", () => {
     architecture.MAX_ELEMENTS,
   );
   assert.equal(schema.$defs.connector.properties.points.maxItems, architecture.MAX_POINTS);
-  assert.equal(schema.$defs.iconAsset.maxLength, architecture.MAX_ICON_REFERENCE);
+  assert.equal(schema.$defs.assetPath.maxLength, architecture.MAX_ICON_REFERENCE);
+  for (const extension of architecture.ASSET_EXTENSIONS) {
+    assert.match(`assets/image.${extension}`, new RegExp(schema.$defs.assetPath.pattern));
+  }
 });
 
 test("schema nesting chain matches MAX_DEPTH", () => {
@@ -398,9 +404,9 @@ test("schema nesting chain matches MAX_DEPTH", () => {
 
   // 最下層では group を許可しない（parseArchitecture が depth 超過で落ちるため）。
   const deepest = schema.$defs[`elementFixedL${depth}`].properties.type.enum;
-  assert.deepEqual([...deepest].sort(), ["connector", "node"]);
+  assert.deepEqual([...deepest].sort(), ["connector", "image", "node"]);
   const deepestFlow = schema.$defs[`elementFlowL${depth}`].properties.type.enum;
-  assert.deepEqual([...deepestFlow].sort(), ["connector", "node"]);
+  assert.deepEqual([...deepestFlow].sort(), ["connector", "image", "node"]);
 
   // 1 段上では group を許可する。
   const inner = schema.$defs[`elementFixedL${depth - 1}`].properties.type.enum;
@@ -415,7 +421,10 @@ test("every exported constant is classified as schema-encoded, parser-only, or r
     "DSL_VERSION",
     "ICONS",
     "ICON_ASSET_PATTERN",
+    "ASSET_EXTENSIONS",
+    "ASSET_PATH_PATTERN",
     "ID_PATTERN",
+    "IMAGE_FITS",
     "LAYOUTS",
     "LAYOUT_DIRECTIONS",
     "LITERAL_COLORS",

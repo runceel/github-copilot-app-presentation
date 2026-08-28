@@ -221,23 +221,26 @@ canvas、外部 presenter、PDF のすべてで同じ比率に縮尺されます
 - `node` は `rect` / `rounded-rect` / `ellipse`、複数行 `text`、一意な `id` を持てます。
 - `icon` は組み込みアイコン名か、リポジトリ直下 `assets/` に置いた画像へのパスです。
   詳細は後述の「アイコン」を参照してください。
+- `image` は `assets/` の画像を独立要素として配置します。`fit` は `contain`（既定）/
+  `cover` / `stretch`、読み上げ名は `ariaLabel` で指定します。node と同様に group の
+  layout、重ね順、connector endpoint、orthogonal routing の obstacle として扱われます。
 - `group` の `children` 座標は group 左上からの相対座標です。境界・タイトルは子要素より
   前に描かれ、視覚的なコンテナになります。`layout` を省略すると従来どおり明示座標、
   `row` / `column` / `grid` を指定すると `gap`（または `rowGap` / `columnGap`）/
-  `padding` / `columns` と group の内寸から node/group child の位置と省略サイズを
+  `padding` / `columns` と group の内寸から node/group/image child の位置と省略サイズを
   決めます。完全な graph auto-layout ではなく、資料向けの決定論的な配置補助です。
 - `connector` は `from` / `to` の境界へ接続し、`straight` / `orthogonal` /
   `polyline`、矢印、ラベルをサポートします。`fromPort` / `toPort` は `auto` /
   `top` / `right` / `bottom` / `left`。同一 endpoint の複数辺には安定した lane を
   自動割当し、分岐する辺の出口も分離します。orthogonal は短い辺から経路を確定し、
-  他 node に加えて確定済み connector との重なり・交差が少ない corridor を優先します。
+  他 node/image に加えて確定済み connector との重なり・交差が少ない corridor を優先します。
   線端と box の間には既定の 14 logical px gap を設けます。完全な graph-wide 最適化では
   ないため、複雑な図では `lane` または `polyline` の中間点を明示します。長い label は
   Unicode 幅を考慮して縮小し、上限内に収まらなければ表示だけを省略します
   （完全な文字列は `aria-label` に保持）。label のピルが自分の線を隠してしまう
   ときは、線に対して垂直方向へ逃がします（後述）。
 - `z`（`-100`〜`100`）が小さい要素から描き、同じ `z` では `elements` / `children`
-  の宣言順を維持します。省略時は group `-50`、connector `-10`、node `0` となり、
+  の宣言順を維持します。省略時は group `-50`、connector `-10`、node/image `0` となり、
   コンテナ背景 → 接続線 → ノードの順で安定して重なります。
 - style は `fill` / `stroke` / `textColor` / `strokeWidth` / `fontSize` /
   `opacity` / `dash` / `cornerRadius`。色は `accent`、`accentStrong`、`accentSoft`、
@@ -245,10 +248,10 @@ canvas、外部 presenter、PDF のすべてで同じ比率に縮尺されます
   を推奨します。4 テーマへ自動追従し、リテラル色は hex、白、黒、透明だけに制限します。
 - 不正 JSON、範囲外の数値、重複 ID、未知の参照、未許可の要素・style・色は図の位置に
   エラーとして表示され、スライドの他の本文は残ります。DSL 値から HTML、script、
-  イベント属性は生成しません。外部 origin への参照も生成しません（`icon` から出る
-  唯一の URL は同一 origin の `/assets/...` だけです）。
+  イベント属性は生成しません。外部 origin への参照も生成しません（`icon` / `image.src`
+  から出る URL は同一 origin の `/assets/...` だけです）。
 - `version` は現在 `1`（省略時も v1）。source 64 KiB、全要素 200、connector 100、
-  入れ子 4 段、polyline 中間点 12、総テキスト 20,000 文字、`icon` 参照 200 文字
+  入れ子 4 段、polyline 中間点 12、総テキスト 20,000 文字、`icon` / `src` 参照 200 文字
   などの上限を設けています。
   診断は `elements[0].children[2].icon` のような JSON path と、`;` 以降に修正指針を
   含みます（例: `elements[0].icon: must be a built-in icon name (cloud, database, ...)
@@ -261,7 +264,7 @@ canvas、外部 presenter、PDF のすべてで同じ比率に縮尺されます
   （ルートの `$schema` はパーサーが受理して無視します）。スキーマは**形状**だけを検証し、
   参照整合性・ID の一意性・平坦化後の上限・layout の収まりは引き続きパーサーが判定します。
   詳細とバージョニング / 移行ポリシーは [`schema/README.md`](./schema/README.md) を参照。
-- SVG 自体は `<title>` / `<desc>` と `aria-labelledby` を持ち、group/node/connector
+- SVG 自体は `<title>` / `<desc>` と `aria-labelledby` を持ち、group/node/image/connector
   に意味のある role・`aria-label`・SVG `<title>` を付けます。必要なら root の
   `description` と各要素の `ariaLabel` を明示できます。詳細と既知の限界は
   [アクセシビリティ](#アクセシビリティ) を参照してください。
@@ -449,7 +452,7 @@ icon name (...) or a path under assets/; ...` のように修正指針まで示�
 
 #### ライセンスと帰属表示
 
-`assets/` に置いたアイコンのライセンス順守は**利用者の責任**です。
+`assets/` に置いた画像とアイコンのライセンス順守は**利用者の責任**です。
 
 - **再配布可能なライセンスの素材だけを `assets/` にコミットしてください。**
   リポジトリは公開される可能性があり、コミットは再配布に当たります。
@@ -463,6 +466,44 @@ icon name (...) or a path under assets/; ...` のように修正指針まで示�
   24×24 の枠に収めるだけで、着色も改変も行いません。
 - 組み込みアイコン（前掲の 11 種）は本リポジトリのために描き起こしたもので、
   リポジトリのライセンスに従います。**帰属表示は不要**です。
+
+### standalone image
+
+画像を node の装飾ではなく独立した図要素にする場合は `type: "image"` を使います。
+`src` の安全規則と対応形式は `node.icon` と共通です。
+
+````markdown
+```architecture
+{
+  "elements": [
+    {
+      "type": "image", "id": "system-map",
+      "src": "assets/system-map.svg",
+      "fit": "contain", "ariaLabel": "システム全体図",
+      "x": 80, "y": 80, "width": 720, "height": 420
+    },
+    {
+      "type": "node", "id": "details",
+      "text": "Details", "x": 980, "y": 230, "width": 260, "height": 120
+    },
+    {
+      "type": "connector", "from": "system-map", "to": "details",
+      "routing": "orthogonal", "arrow": true
+    }
+  ]
+}
+```
+````
+
+| `fit` | 挙動 |
+| --- | --- |
+| `contain` | 縦横比を保ち、画像全体を領域内に表示する（既定） |
+| `cover` | 縦横比を保ち、領域を埋めるようにはみ出しを切り抜く |
+| `stretch` | 縦横比を変えて領域全体へ引き伸ばす |
+
+`ariaLabel` を省略すると asset のファイル名、取得できなければ `id` が読み上げ名になります。
+画像は clip され、group の row / column / grid / layered layout、z-order、connector 接続、
+orthogonal routing の obstacle に参加します。画像の色はテーマで変更しません。
 
 ### connector の自動ルーティング
 
@@ -605,20 +646,28 @@ Architecture 図はレンダリング結果の上で直接動かせます。Canv
 別 canvas です。位置調整モードは素早い微調整のために残し、要素の追加・削除やプロパティ変更は
 専用 canvas で行います。Markdown へ新しいコードブロックを挿入する機能はありません。
 
-- node / group / connector の追加、削除、複製、並び順、親 group を編集できます。
+- node / group / image / connector の追加、削除、複製、並び順、親 group を編集できます。
 - ドラッグ、リサイズハンドル、グリッドスナップ、ズーム、パンを利用できます。図が作図領域を
   超える場合は横／縦スクロールで全体へ到達でき、中央ボタンまたは Space+ドラッグでも移動できます。
 - 作図面の要素・余白と要素ツリーを右クリックすると、対象に応じて追加、コネクター接続、
   複製、削除、前面／背面、Undo/Redo、保存を選べます。group の `レイアウト`
   サブメニューでは `なし` / `row` / `column` / `grid` / `layered` を選択でき、
   現在値をチェック表示します。子要素から親 group のレイアウトを解除する操作はありません。
-  作図面の余白から node / group を追加した場合は、右クリック位置を中心に配置します。
+  作図面の余白から node / group / image を追加した場合は、右クリック位置を中心に配置します。
 - 要素または要素ツリー項目へフォーカスして `Shift+F10` または Context Menu キーを押しても
   同じメニューを開けます。矢印キーで項目を移動し、`ArrowRight` でサブメニューを開き、
   `ArrowLeft` で親メニューへ戻ります。Enter / Space で実行、Escape で閉じます。
 - geometry、layout、style、icon、ports、routing、polyline points、canvas metadata など
   Architecture DSL v1 の編集可能なフィールドを型別インスペクターで変更できます。group の
   レイアウト種類は右側プロパティからも同じ規則で変更できます。
+- toolbar または余白／group の右クリックメニューから **画像**を選ぶと、workspace の
+  `assets/` を検索して standalone image を追加できます。node inspector の
+  **assets/ から画像を選択**も同じ picker を使います。PC からの取り込みは SVG / PNG /
+  WebP / JPG / JPEG、1 ファイル 10 MB までで、workspace 直下 `assets/` へコピーします。
+  同名は上書きせず `name-2.ext` のように採番します。
+- picker は asset の選択と取り込みだけを行い、rename / move / delete はしません。取り込んだ
+  asset は diagram 外からも参照され得る共有ファイルなので、image の削除や diagram の
+  undo/redo でもファイル自体は削除しません。
 - 変更はメモリ上の draft に留まり、**明示保存**（**保存**または `save` action）したときだけ
   元 Markdown の対象コードブロックへ反映されます。
 - open 後に Markdown が外部変更された場合は上書きせず競合を表示します。`reload` action の

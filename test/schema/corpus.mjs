@@ -17,6 +17,17 @@ const node = (over = {}) => ({
   ...over,
 });
 
+const image = (over = {}) => ({
+  type: "image",
+  id: "image",
+  src: "assets/sample.svg",
+  x: 0,
+  y: 0,
+  width: 120,
+  height: 80,
+  ...over,
+});
+
 const group = (over = {}) => ({
   type: "group",
   id: "g",
@@ -167,6 +178,82 @@ export const corpus = [
     expect: "accept",
     // "assets/" (7) + name + ".svg" (4) = 200
     source: doc([node({ icon: `assets/${repeat(189, "a")}.svg` })]),
+  },
+  {
+    name: "standalone image in every fit mode",
+    expect: "accept",
+    source: doc([
+      image({ id: "contain", fit: "contain" }),
+      image({ id: "cover", fit: "cover", x: 160 }),
+      image({ id: "stretch", fit: "stretch", x: 320 }),
+    ]),
+  },
+  {
+    name: "standalone image in every allowed format",
+    expect: "accept",
+    source: doc(
+      ["svg", "png", "webp", "jpg", "jpeg"].map((extension, index) =>
+        image({
+          id: `image-${extension}`,
+          src: `assets/image.${extension}`,
+          x: index * 160,
+        }),
+      ),
+    ),
+  },
+  {
+    name: "standalone image in a row layout",
+    expect: "accept",
+    source: doc([
+      group({
+        width: 500,
+        height: 300,
+        layout: { type: "row", gap: 20, padding: 20 },
+        children: [
+          { type: "image", id: "flow-image", src: "assets/sample.svg", fit: "contain" },
+        ],
+      }),
+    ]),
+  },
+  {
+    name: "standalone image at maximum nesting depth",
+    expect: "accept",
+    source: doc([
+      group({
+        id: "g1",
+        children: [
+          group({
+            id: "g2",
+            x: 10,
+            y: 10,
+            children: [
+              group({
+                id: "g3",
+                x: 10,
+                y: 10,
+                children: [
+                  group({
+                    id: "g4",
+                    x: 10,
+                    y: 10,
+                    children: [image({ id: "deep-image", x: 10, y: 10 })],
+                  }),
+                ],
+              }),
+            ],
+          }),
+        ],
+      }),
+    ]),
+  },
+  {
+    name: "standalone image as connector endpoint",
+    expect: "accept",
+    source: doc([
+      image({ id: "picture" }),
+      node({ id: "details", x: 300 }),
+      connector({ from: "picture", to: "details" }),
+    ]),
   },
   {
     name: "text and ariaLabel at maximum length",
@@ -492,7 +579,7 @@ export const corpus = [
   {
     name: "unknown element type",
     expect: "reject",
-    parserMessage: /must be node, group, or connector/,
+    parserMessage: /must be node, group, image, or connector/,
     source: JSON.stringify({ elements: [{ type: "widget", id: "a" }] }),
   },
   {
@@ -585,6 +672,39 @@ export const corpus = [
     name: "icon with no extension",
     expect: "reject",
     source: doc([node({ icon: "assets/logo" })]),
+  },
+  {
+    name: "standalone image without src",
+    expect: "reject",
+    source: doc([
+      { type: "image", id: "picture", x: 0, y: 0, width: 120, height: 80 },
+    ]),
+  },
+  {
+    name: "standalone image with unknown fit",
+    expect: "reject",
+    source: doc([image({ fit: "scale-down" })]),
+  },
+  {
+    name: "standalone image escaping assets",
+    expect: "reject",
+    parserMessage: /elements\[0\]\.src: must be a path under assets\//,
+    source: doc([image({ src: "assets/../secret.svg" })]),
+  },
+  {
+    name: "standalone image as data URI",
+    expect: "reject",
+    source: doc([image({ src: "data:image/svg+xml;base64,PHN2Zy8+" })]),
+  },
+  {
+    name: "standalone image as https URL",
+    expect: "reject",
+    source: doc([image({ src: "https://example.com/image.svg" })]),
+  },
+  {
+    name: "standalone image with disallowed extension",
+    expect: "reject",
+    source: doc([image({ src: "assets/image.gif" })]),
   },
   {
     name: "icon with a backslash separator",

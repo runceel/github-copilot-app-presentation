@@ -338,7 +338,9 @@ export function createArchitectureDocument(source, options = {}) {
   }
 
   function defaultBox(items) {
-    const count = items.filter((item) => item?.type === "node" || item?.type === "group").length;
+    const count = items.filter(
+      (item) => item?.type === "node" || item?.type === "group" || item?.type === "image",
+    ).length;
     return { x: 80 + count * 30, y: 80 + count * 30, width: 260, height: 140 };
   }
 
@@ -385,6 +387,27 @@ export function createArchitectureDocument(source, options = {}) {
       };
       if (!parent?.layout) Object.assign(group, requestedBox(items, options, 520, 320));
       items.push(group);
+      return { ref: id, id };
+    });
+  }
+
+  function addImage(options = {}) {
+    return mutate("image-added", (raw) => {
+      const items = targetItems(raw, options.parentId);
+      if (!items) return reject("invalid-parent", { parentId: options.parentId });
+      const parent = options.parentId ? rawEntry(raw, options.parentId)?.element : null;
+      const src = String(options.src || "").trim();
+      const filename = src.split("/").at(-1) || "Image";
+      const id = nextId(raw, options.id || filename.replace(/\.[^.]+$/, "") || "image");
+      const image = {
+        type: "image",
+        id,
+        src,
+        fit: options.fit || "contain",
+        ariaLabel: options.ariaLabel || filename,
+      };
+      if (!parent?.layout) Object.assign(image, requestedBox(items, options, 340, 220));
+      items.push(image);
       return { ref: id, id };
     });
   }
@@ -547,6 +570,7 @@ export function createArchitectureDocument(source, options = {}) {
     resize,
     addNode,
     addGroup,
+    addImage,
     addConnector,
     remove,
     duplicate,

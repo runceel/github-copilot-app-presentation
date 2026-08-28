@@ -92,6 +92,7 @@ const ROUTINGS = new Set(["straight", "orthogonal", "polyline"]);
 const PORTS = new Set(["auto", "top", "right", "bottom", "left"]);
 const LAYOUTS = new Set(["row", "column", "grid", "layered"]);
 const LAYOUT_DIRECTIONS = new Set(["down", "right"]);
+const IMAGE_FITS = new Set(["contain", "cover", "stretch"]);
 // layered レイアウトが接続グラフを読むときの再帰上限。MAX_DEPTH の検証より前に
 // 走るため、未検証の入力でスタックを溢れさせないよう独自に打ち切る。
 const MAX_GRAPH_SCAN_DEPTH = 16;
@@ -167,20 +168,22 @@ const ICONS = new Set(Object.keys(ICON_SHAPES));
 // ユーザーが持ち込むアイコンは `assets/` 配下のリポジトリ内ファイルだけを許す。
 // 描画は <image href="/assets/..."> で、extension.mjs / テストハーネスの
 // `/assets/*` ルートが safeJoin 経由で配信する。
-const ICON_ASSET_EXTENSIONS = Object.freeze(["svg", "png", "webp", "jpg", "jpeg"]);
+const ASSET_EXTENSIONS = Object.freeze(["svg", "png", "webp", "jpg", "jpeg"]);
 // JSON Schema の `pattern` にはフラグの概念が無いので `/i` を使わず、大小両方の
 // 文字クラスを機械的に展開する。こうすると `.source` をそのままスキーマへ写せて、
 // パーサーとスキーマで大文字拡張子（.PNG など）の扱いが必ず一致する。
-const ICON_ASSET_EXTENSION_PATTERN = ICON_ASSET_EXTENSIONS.map((extension) =>
+const ASSET_EXTENSION_PATTERN = ASSET_EXTENSIONS.map((extension) =>
   [...extension].map((character) => `[${character.toUpperCase()}${character}]`).join(""),
 ).join("|");
 // パス要素は英数字で始まり、'.' の後には必ず 1 文字以上が続く。これだけで
 // '..' / '.' / 空要素 / ':' を含む値（data: や http:// など）が構文的に作れなくなる。
-const ICON_ASSET_SEGMENT = "[A-Za-z0-9][A-Za-z0-9_-]*(?:\\.[A-Za-z0-9_-]+)*";
-const ICON_ASSET_PATTERN = new RegExp(
-  `^assets/(?:${ICON_ASSET_SEGMENT}/)*${ICON_ASSET_SEGMENT}\\.(?:${ICON_ASSET_EXTENSION_PATTERN})$`,
+const ASSET_PATH_SEGMENT = "[A-Za-z0-9][A-Za-z0-9_-]*(?:\\.[A-Za-z0-9_-]+)*";
+const ASSET_PATH_PATTERN = new RegExp(
+  `^assets/(?:${ASSET_PATH_SEGMENT}/)*${ASSET_PATH_SEGMENT}\\.(?:${ASSET_EXTENSION_PATTERN})$`,
 );
-const MAX_ICON_REFERENCE = 200;
+const ICON_ASSET_PATTERN = ASSET_PATH_PATTERN;
+const MAX_ASSET_REFERENCE = 200;
+const MAX_ICON_REFERENCE = MAX_ASSET_REFERENCE;
 const THEME_TOKENS = Object.freeze({
   accent: "var(--accent)",
   accentStrong: "var(--accent-strong)",
@@ -241,6 +244,19 @@ const ELEMENT_KEYS = Object.freeze({
     "z",
     "style",
     "children",
+  ]),
+  image: new Set([
+    "type",
+    "id",
+    "src",
+    "fit",
+    "x",
+    "y",
+    "width",
+    "height",
+    "ariaLabel",
+    "z",
+    "style",
   ]),
   connector: new Set([
     "type",
@@ -366,13 +382,25 @@ function enumValue(value, path, values, fallback) {
 // 受理集合は schema/architecture-v1.schema.json の $defs.icon と一致させること。
 function iconValue(value, path) {
   if (value === undefined) return "";
-  const candidate = textValue(value, path, "", MAX_ICON_REFERENCE);
+  const candidate = textValue(value, path, "", MAX_ASSET_REFERENCE);
   if (ICONS.has(candidate)) return candidate;
-  if (ICON_ASSET_PATTERN.test(candidate)) return candidate;
+  if (ASSET_PATH_PATTERN.test(candidate)) return candidate;
   fail(
     path,
     `must be a built-in icon name (${[...ICONS].join(", ")}) or a path under assets/`,
-    `replace ${describeValue(candidate)} with a built-in name, or with a repository asset such as 'assets/icons/logo.svg' (${ICON_ASSET_EXTENSIONS.map(
+    `replace ${describeValue(candidate)} with a built-in name, or with a repository asset such as 'assets/icons/logo.svg' (${ASSET_EXTENSIONS.map(
+      (extension) => `.${extension}`,
+    ).join(", ")} only; '..', 'data:' URIs and external URLs are rejected)`,
+  );
+}
+
+function assetPathValue(value, path) {
+  const candidate = textValue(value, path, "", MAX_ASSET_REFERENCE);
+  if (ASSET_PATH_PATTERN.test(candidate)) return candidate;
+  fail(
+    path,
+    "must be a path under assets/",
+    `replace ${describeValue(candidate)} with a repository asset such as 'assets/images/diagram.png' (${ASSET_EXTENSIONS.map(
       (extension) => `.${extension}`,
     ).join(", ")} only; '..', 'data:' URIs and external URLs are rejected)`,
   );
@@ -630,7 +658,10 @@ function layoutPlacements(children, group, layout, path, graphEdges = []) {
   if (!layout) return new Map();
   const flowItems = children
     .map((child, index) => ({ child, index }))
-    .filter(({ child }) => child?.type === "node" || child?.type === "group");
+    .filter(
+      ({ child }) =>
+        child?.type === "node" || child?.type === "group" || child?.type === "image",
+    );
   const placements = new Map();
   if (!flowItems.length) return placements;
   const titleReserve = group.title ? Math.max(46, group.style.fontSize * 1.7) : 0;
@@ -699,7 +730,12 @@ function layoutPlacements(children, group, layout, path, graphEdges = []) {
     track.forEach((flowIndex, positionInTrack) => {
       const { child, index } = flowItems[flowIndex];
       const defaultWidth = child.type === "group" ? cellWidth : Math.min(cellWidth, 340);
-      const defaultHeight = child.type === "group" ? cellHeight : Math.min(cellHeight, 170);
+      const defaultHeight =
+        child.type === "group"
+          ? cellHeight
+          : child.type === "image"
+            ? Math.min(cellHeight, 220)
+            : Math.min(cellHeight, 170);
       const width = numberIn(
         child.width,
         `${path}.children[${index}].width`,
@@ -779,10 +815,10 @@ function flattenElements(
     if (!Object.prototype.hasOwnProperty.call(ELEMENT_KEYS, type)) {
       fail(
         `${elementPath}.type`,
-        "must be node, group, or connector",
+        "must be node, group, image, or connector",
         element.type === undefined
-          ? 'add a "type" of node, group, or connector'
-          : `replace ${describeValue(element.type)} with node, group, or connector`,
+          ? 'add a "type" of node, group, image, or connector'
+          : `replace ${describeValue(element.type)} with node, group, image, or connector`,
       );
     }
     rejectUnknownKeys(element, ELEMENT_KEYS[type], elementPath);
@@ -857,7 +893,7 @@ function flattenElements(
       fail(
         `${elementPath}.id`,
         `duplicates '${id}'`,
-        "give every node and group a unique id across the whole diagram",
+        "give every node, group, and image a unique id across the whole diagram",
       );
     }
     ids.add(id);
@@ -890,6 +926,30 @@ function flattenElements(
           fontSize: 32,
           opacity: 1,
           cornerRadius: 28,
+        }),
+      });
+      return;
+    }
+
+    if (type === "image") {
+      output.push({
+        type,
+        id,
+        ...box,
+        src: assetPathValue(element.src, `${elementPath}.src`),
+        fit: enumValue(element.fit, `${elementPath}.fit`, IMAGE_FITS, "contain"),
+        ariaLabel: textValue(element.ariaLabel, `${elementPath}.ariaLabel`, "", 300),
+        z,
+        order,
+        sourcePath: elementPath,
+        style: normalizeStyle(element.style, `${elementPath}.style`, {
+          fill: "none",
+          stroke: "none",
+          textColor: "fg",
+          strokeWidth: 1,
+          fontSize: 24,
+          opacity: 1,
+          cornerRadius: 0,
         }),
       });
       return;
@@ -2529,9 +2589,13 @@ export function computeConnectorRoute(
   );
   if (connector.routing === "straight") return [start, end];
 
-  const nodes = [...lookup.values()].filter((element) => element.type === "node");
+  const nodes = [...lookup.values()].filter(
+    (element) => element.type === "node" || element.type === "image",
+  );
   const excluded = new Set([connector.from, connector.to]);
-  const endpointNodes = [from, to].filter((element) => element.type === "node");
+  const endpointNodes = [from, to].filter(
+    (element) => element.type === "node" || element.type === "image",
+  );
   const clearance = 42 + Math.abs(laneOffset) * 0.3;
   const fromStubExcluded =
     connector.routing === "orthogonal"
@@ -3172,7 +3236,9 @@ function planConnectorRoutes(model, lookup) {
         Math.abs(rightFrom.x - rightTo.x) + Math.abs(rightFrom.y - rightTo.y);
       return leftDistance - rightDistance || left.order - right.order;
     });
-  const nodes = [...lookup.values()].filter((element) => element.type === "node");
+  const nodes = [...lookup.values()].filter(
+    (element) => element.type === "node" || element.type === "image",
+  );
   const standaloneRoutes = new Map(
     connectors
       .filter((connector) => connector.routing === "orthogonal")
@@ -3501,6 +3567,69 @@ function renderNode(documentRef, element) {
   return group;
 }
 
+function imageAccessibleName(element) {
+  const filename = element.src.split("/").at(-1);
+  return element.ariaLabel || filename || element.id;
+}
+
+function renderImage(documentRef, element, clipId) {
+  const label = imageAccessibleName(element);
+  const preserveAspectRatio = {
+    contain: "xMidYMid meet",
+    cover: "xMidYMid slice",
+    stretch: "none",
+  }[element.fit];
+  const group = svgElement(documentRef, "g", {
+    "data-architecture-id": element.id,
+    "data-architecture-type": "image",
+    "data-architecture-order": element.order,
+    "data-architecture-src": element.src,
+    opacity: element.style.opacity,
+    role: "img",
+    "aria-label": label,
+  });
+  appendSvgTitle(documentRef, group, label);
+  group.appendChild(
+    svgElement(documentRef, "rect", {
+      x: element.x,
+      y: element.y,
+      width: element.width,
+      height: element.height,
+      rx: element.style.cornerRadius,
+      fill: element.style.fill,
+      stroke: "none",
+    }),
+  );
+  group.appendChild(
+    svgElement(documentRef, "image", {
+      x: element.x,
+      y: element.y,
+      width: element.width,
+      height: element.height,
+      href: `/${element.src}`,
+      preserveAspectRatio,
+      "clip-path": `url(#${clipId})`,
+      "aria-hidden": "true",
+    }),
+  );
+  group.appendChild(
+    svgElement(documentRef, "rect", {
+      x: element.x,
+      y: element.y,
+      width: element.width,
+      height: element.height,
+      rx: element.style.cornerRadius,
+      fill: "none",
+      stroke: element.style.stroke,
+      "stroke-width": element.style.strokeWidth,
+      "stroke-dasharray": element.style.dash,
+      "pointer-events": "none",
+      "aria-hidden": "true",
+    }),
+  );
+  return group;
+}
+
 /**
  * コネクターの端点を「読み上げるときの呼び名」に解決するための表を作る。
  *
@@ -3520,7 +3649,12 @@ function endpointDisplayNames(elements) {
   const names = new Map();
   for (const element of elements) {
     if (!element || element.type === "connector" || typeof element.id !== "string") continue;
-    const visible = element.type === "group" ? element.title : element.text;
+    const visible =
+      element.type === "group"
+        ? element.title
+        : element.type === "image"
+          ? imageAccessibleName(element)
+          : element.text;
     if (typeof visible !== "string") continue;
     const trimmed = visible.trim();
     if (trimmed) names.set(element.id, trimmed);
@@ -3638,7 +3772,8 @@ export function architectureSemanticSnapshot(model) {
         y: element.y,
         width: element.width,
         height: element.height,
-        icon: element.icon || undefined,
+        ...(element.type === "node" ? { icon: element.icon || undefined } : {}),
+        ...(element.type === "image" ? { src: element.src, fit: element.fit } : {}),
       };
     }),
   };
@@ -3684,6 +3819,21 @@ export function renderArchitectureDiagram(
   const { routes: connectorRoutes, diagnostics: routingDiagnostics } =
     planConnectorRoutes(model, lookup);
   model.elements.forEach((element, index) => {
+    if (element.type === "image") {
+      const clipPath = svgElement(documentRef, "clipPath", {
+        id: `architecture-image-clip-${renderId}-${index}`,
+      });
+      clipPath.appendChild(
+        svgElement(documentRef, "rect", {
+          x: element.x,
+          y: element.y,
+          width: element.width,
+          height: element.height,
+          rx: element.style.cornerRadius,
+        }),
+      );
+      defs.appendChild(clipPath);
+    }
     if (element.type !== "connector" || !element.arrow) return;
     const markerId = `architecture-arrow-${renderId}-${index}`;
     const marker = svgElement(documentRef, "marker", {
@@ -3714,6 +3864,10 @@ export function renderArchitectureDiagram(
       svg.appendChild(renderGroup(documentRef, element));
     } else if (element.type === "node") {
       svg.appendChild(renderNode(documentRef, element));
+    } else if (element.type === "image") {
+      svg.appendChild(
+        renderImage(documentRef, element, `architecture-image-clip-${renderId}-${index}`),
+      );
     } else {
       svg.appendChild(
         renderConnector(
@@ -3796,7 +3950,10 @@ export {
   DSL_VERSION,
   ICONS,
   ICON_ASSET_PATTERN,
+  ASSET_EXTENSIONS,
+  ASSET_PATH_PATTERN,
   ID_PATTERN,
+  IMAGE_FITS,
   LAYOUT_DIRECTIONS,
   LAYOUTS,
   LITERAL_COLORS,

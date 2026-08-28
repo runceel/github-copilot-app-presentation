@@ -38,9 +38,14 @@ const SOURCE = `${JSON.stringify(
   null,
   2,
 )}\n`;
+const EXISTING_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>';
 
 async function openEditor(page) {
-  const harness = await startArchitectureEditorHarness({ source: SOURCE });
+  const harness = await startArchitectureEditorHarness({
+    source: SOURCE,
+    assets: { "assets/existing.svg": EXISTING_SVG },
+  });
   await page.goto(harness.url, { waitUntil: "load" });
   await expect(page.locator(".tree-item")).toHaveCount(3);
   return harness;
@@ -195,6 +200,85 @@ test("コネクター追加と node 削除で参照整合性を保つ", async ({
     await page.locator('[data-action="delete"]').click();
     await expect(page.locator('[data-ref="api"].tree-item')).toHaveCount(0);
     await expect(page.locator(".tree-item")).toHaveCount(1);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("asset picker から standalone image と node icon を編集できる", async ({ page }) => {
+  const harness = await openEditor(page);
+  try {
+    await page.getByRole("button", { name: "画像", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "画像を追加" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("option", { name: "assets/existing.svg" }).click();
+    await dialog.getByRole("button", { name: "選択", exact: true }).click();
+
+    await expect(page.locator('[data-ref="existing"].tree-item')).toBeVisible();
+    await expect(page.locator('[data-editor-ref="existing"]')).toHaveAttribute(
+      "data-architecture-type",
+      "image",
+    );
+    await page.getByLabel("表示方法").selectOption("cover");
+    await expect
+      .poll(
+        () =>
+          JSON.parse(harness.draftSource).elements.find((element) => element.id === "existing")
+            ?.fit,
+      )
+      .toBe("cover");
+
+    await page.locator('[data-ref="existing"].tree-item').click({ button: "right" });
+    await page.getByRole("menuitem", { name: "ここからコネクター" }).click();
+    await page.locator('[data-editor-ref="api"]').click();
+    await expect(page.locator('[data-architecture-type="connector"]')).toHaveCount(2);
+
+    await page.locator('[data-ref="client"].tree-item').click();
+    await page.getByRole("button", { name: "assets/ から画像を選択" }).click();
+    await expect(page.getByRole("dialog", { name: "ノードの画像を選択" })).toBeVisible();
+    await page.getByRole("option", { name: "assets/existing.svg" }).click();
+    await page.getByRole("button", { name: "選択", exact: true }).click();
+    await expect
+      .poll(
+        () =>
+          JSON.parse(harness.draftSource).elements.find((element) => element.id === "client")
+            ?.icon,
+      )
+      .toBe("assets/existing.svg");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("PC からの画像取り込みは同名を採番し、diagram の undo では asset を消さない", async ({
+  page,
+}) => {
+  const harness = await openEditor(page);
+  try {
+    await page.getByRole("button", { name: "画像", exact: true }).click();
+    await page.locator("#assetFileInput").setInputFiles({
+      name: "existing.svg",
+      mimeType: "image/svg+xml",
+      buffer: Buffer.from(EXISTING_SVG),
+    });
+    await expect(page.locator("#assetDialogStatus")).toContainText(
+      "assets/existing-2.svg として取り込みました",
+    );
+    await page.getByRole("button", { name: "選択", exact: true }).click();
+    await expect(page.locator('[data-ref="existing-2"].tree-item')).toBeVisible();
+    expect(harness.assets.has("assets/existing-2.svg")).toBe(true);
+
+    await page.locator('[data-action="undo"]').click();
+    await expect(page.locator('[data-ref="existing-2"].tree-item')).toHaveCount(0);
+    expect(harness.assets.has("assets/existing-2.svg")).toBe(true);
+
+    await page.locator(".element-panel").click({
+      button: "right",
+      position: { x: 40, y: 400 },
+    });
+    await expect(
+      page.getByRole("menuitem", { name: "画像を追加", exact: true }),
+    ).toBeVisible();
   } finally {
     await harness.close();
   }
