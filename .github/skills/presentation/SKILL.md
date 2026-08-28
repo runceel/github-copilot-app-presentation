@@ -59,6 +59,9 @@ total: 6
   この場合は利用者が自分で読み込めるので、AI が断片を作り直す必要はありません。
   ページごとの front matter（Slidev 形式）と、ファイル先頭 front matter の継承
   （`layout: title` は 1 枚目にだけ効く）に対応しています。
+  読み込み時に「読み込み時点を保持」（既定）または「保存時に自動更新」を選べます。
+  source-backed な表示では操作バーから途中で切り替えられ、監視エラー時も最後の正常な
+  デッキを保持します。
 - **AI がデッキを組むケース（このスキルの本来の役割）**: 元 Markdown が
   自然言語の文章（段落主体）で、見出し＋箇条書きへの**要約・整形が必要**なとき。
   ページ分割が意図どおりでないときや、テーマ・レイアウトを指定して整えたいときも同様です。
@@ -231,6 +234,9 @@ flowchart LR
 `group`、`image`、`connector` の詳細と完全な例は
 `.github/extensions/presentation/README.md` を参照してください。
 **DSL v1 は安定版（stable）で、v1 として受理された文書は以後も v1 として受理されます。**
+本文が空の `architecture` フェンスは、要素が 0 個の空の図として扱います。専用
+Architecture Editor で最初の要素を追加して保存すると、有効な JSON DSL がフェンス内へ
+書き込まれます。空でない不正な JSON は従来どおりエラーです。
 ピクセル単位の描画結果は保証対象外なので、重要な資料では PDF 出力を事前確認してください。
 group の `layout` は `row` / `column` / `grid` / `layered`（`layered` は `direction` に
 `down` 既定 / `right`）、node の内蔵 `icon` は `cloud` / `database` / `api` / `user` /

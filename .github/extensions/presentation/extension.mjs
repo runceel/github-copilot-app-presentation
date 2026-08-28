@@ -57,6 +57,7 @@ import {
 } from "./scripts/markdown-files.mjs";
 import { serializeMarkdownSave } from "./scripts/markdown-save-coordinator.mjs";
 import { atomicReplaceMarkdown } from "./scripts/atomic-markdown-replace.mjs";
+import { createMarkdownWatcher } from "./scripts/markdown-watcher.mjs";
 import { buildDeckSlides } from "./markdown-deck.mjs";
 import {
   createPresentationHooks,
@@ -88,6 +89,8 @@ const VENDOR_DIR = join(EXT_DIR, "vendor");
 const VENDOR_MANIFEST = join(VENDOR_DIR, "vendor-assets.lock.json");
 const THEME_METADATA_NAME = "theme.json";
 const THEME_METADATA_MAX_BYTES = 64 * 1024;
+const SOURCE_MODE_SNAPSHOT = "snapshot";
+const SOURCE_MODE_LIVE = "live";
 
 const MIME = {
   ".html": "text/html; charset=utf-8",
@@ -118,6 +121,10 @@ function pdfNameForSource(sourceName) {
     .trim()
     .replace(/[. ]+$/, "");
   return `${safeBase || basename(DEFAULT_PDF_NAME, ".pdf")}.pdf`;
+}
+
+function normalizeSourceMode(value) {
+  return value === SOURCE_MODE_LIVE ? SOURCE_MODE_LIVE : SOURCE_MODE_SNAPSHOT;
 }
 
 // key uniquely identifies one running panel for one session, avoiding
@@ -1145,6 +1152,7 @@ async function persistNow(inst) {
         sourceWriteback: inst.sourceWriteback,
         sourceWritebackPath: inst.sourceWritebackPath,
         sourceWritebackSnapshot: inst.sourceWritebackSnapshot,
+        sourceMode: inst.sourceMode,
         mode: inst.mode,
         presenterProfileDir: inst.presenterProfileDir,
       }),
@@ -1311,15 +1319,19 @@ async function applyDeckNow(
     sourceWriteback = false,
     sourceWritebackPath = "",
     sourceWritebackSnapshot = "",
+    sourceMode = SOURCE_MODE_SNAPSHOT,
+    preserveSourceWatcher = false,
+    preserveCurrentIndex = false,
   },
 ) {
+  let nextSourceName = inst.sourceName;
   if (typeof sourceName === "string" && sourceName.trim()) {
     const requested = sourceName.trim();
     const candidate = resolve(inst.workspaceRoot, requested);
     if (!isPathInside(resolve(inst.workspaceRoot), candidate)) {
       throw new CanvasError("invalid_source_name", "sourceName must stay inside the workspace.");
     }
-    inst.sourceName = relative(inst.workspaceRoot, candidate);
+    nextSourceName = relative(inst.workspaceRoot, candidate);
   }
   const selection = resolveDeckTheme({
     slides,
@@ -1327,8 +1339,10 @@ async function applyDeckNow(
     explicitThemeFile: themeFile,
   });
   const custom = selection.theme === "custom"
-    ? await loadCustomTheme(inst, inst.sourceName, selection.themeFile)
+    ? await loadCustomTheme(inst, nextSourceName, selection.themeFile)
     : { file: "", css: "", dir: "", metadata: null, assets: [] };
+  if (!preserveSourceWatcher) stopSourceWatcher(inst);
+  inst.sourceName = nextSourceName;
   inst.theme = selection.theme;
   inst.themeLocked = selection.themeLocked;
   inst.customThemeFile = custom.file;
@@ -1344,14 +1358,27 @@ async function applyDeckNow(
   );
   inst.sourceWritebackPath = inst.sourceWriteback ? sourceWritebackPath : "";
   inst.sourceWritebackSnapshot = inst.sourceWriteback ? sourceWritebackSnapshot : "";
+  inst.sourceMode = inst.sourceWriteback
+    ? normalizeSourceMode(sourceMode)
+    : SOURCE_MODE_SNAPSHOT;
+  if (!preserveSourceWatcher) {
+    inst.sourceWatchStatus = "inactive";
+    inst.sourceWatchError = "";
+  }
   inst.slides = ensureBackCover(slides.slice());
-  inst.index = clampIndex(index ?? 0, inst.slides.length);
+  inst.index = clampIndex(preserveCurrentIndex ? inst.index : index ?? 0, inst.slides.length);
   inst.deckVersion += 1;
   await applyDeckSlide(inst);
 }
 
 async function applyDeck(inst, options) {
-  return serializeArchitectureEdit(inst, () => applyDeckNow(inst, options));
+  return serializeArchitectureEdit(inst, async () => {
+    await applyDeckNow(inst, options);
+    if (inst.sourceMode === SOURCE_MODE_LIVE) {
+      const token = startSourceWatcher(inst);
+      if (token !== null) await refreshImportedSourceNow(inst, token);
+    }
+  });
 }
 
 // Move to targetIndex within the loaded deck. Returns whether the visible slide
@@ -1411,6 +1438,160 @@ function importedSourceError(error) {
     return { status: 409, body: { ok: false, error: "source_file_unavailable" } };
   }
   return { status: 404, body: { ok: false, error: "source_file_not_found" } };
+}
+
+function sourceWatchError(error) {
+  if (error?.code === "SOURCE_FILE_TOO_LARGE") return "source_file_too_large";
+  if (error?.code === "SOURCE_FILE_UNAVAILABLE") return "source_file_unavailable";
+  if (error?.code === "EMPTY_MARKDOWN") return "empty_markdown";
+  if (error?.code === "WATCH_FAILED") return "watch_failed";
+  if (error?.code === "ENOENT") return "source_file_not_found";
+  return "source_reload_failed";
+}
+
+function setSourceWatchState(inst, status, error = "") {
+  const changed =
+    inst.sourceWatchStatus !== status ||
+    inst.sourceWatchError !== error;
+  inst.sourceWatchStatus = status;
+  inst.sourceWatchError = error;
+  if (changed) broadcast(inst);
+}
+
+function stopSourceWatcher(inst) {
+  inst.sourceWatcherToken += 1;
+  if (!inst.sourceWatcher) return;
+  try {
+    inst.sourceWatcher.close();
+  } catch (_) {
+    /* already closed */
+  }
+  inst.sourceWatcher = null;
+}
+
+async function readImportedSource(inst) {
+  const canonicalRoot = await realpath(resolve(inst.workspaceRoot));
+  const candidate = inst.sourceWritebackPath
+    ? safeJoin(canonicalRoot, inst.sourceWritebackPath)
+    : null;
+  if (!candidate || !isPathInside(canonicalRoot, candidate) || !isMarkdownPath(candidate)) {
+    const error = new Error("source_file_unavailable");
+    error.code = "SOURCE_FILE_UNAVAILABLE";
+    throw error;
+  }
+  const target = await resolveImportedSourceTarget(canonicalRoot, candidate);
+  const markdown = await readFile(target.path, "utf8");
+  const slides = buildDeckSlides(markdown);
+  if (!slides.length) {
+    const error = new Error("empty_markdown");
+    error.code = "EMPTY_MARKDOWN";
+    throw error;
+  }
+  return { markdown, slides };
+}
+
+async function refreshImportedSourceNow(inst, token) {
+  if (
+    token !== inst.sourceWatcherToken ||
+    inst.sourceMode !== SOURCE_MODE_LIVE ||
+    !inst.sourceWriteback
+  ) {
+    return false;
+  }
+  try {
+    const { markdown, slides } = await readImportedSource(inst);
+    if (
+      token !== inst.sourceWatcherToken ||
+      inst.sourceMode !== SOURCE_MODE_LIVE ||
+      !inst.sourceWriteback
+    ) {
+      return false;
+    }
+    if (markdown !== inst.sourceWritebackSnapshot) {
+      await applyDeckNow(inst, {
+        slides,
+        index: inst.index,
+        sourceName: inst.sourceName,
+        sourceWriteback: true,
+        sourceWritebackPath: inst.sourceWritebackPath,
+        sourceWritebackSnapshot: markdown,
+        sourceMode: SOURCE_MODE_LIVE,
+        preserveSourceWatcher: true,
+        preserveCurrentIndex: true,
+      });
+    }
+    if (
+      token !== inst.sourceWatcherToken ||
+      inst.sourceMode !== SOURCE_MODE_LIVE ||
+      !inst.sourceWatcher
+    ) {
+      return false;
+    }
+    setSourceWatchState(inst, "watching");
+    return true;
+  } catch (error) {
+    if (token === inst.sourceWatcherToken && inst.sourceMode === SOURCE_MODE_LIVE) {
+      setSourceWatchState(inst, "error", sourceWatchError(error));
+    }
+    return false;
+  }
+}
+
+function startSourceWatcher(inst) {
+  stopSourceWatcher(inst);
+  if (!inst.sourceWriteback || inst.sourceMode !== SOURCE_MODE_LIVE) return null;
+  const sourcePath = safeJoin(resolve(inst.workspaceRoot), inst.sourceWritebackPath);
+  if (!sourcePath) {
+    setSourceWatchState(inst, "error", "source_file_unavailable");
+    return null;
+  }
+  const token = inst.sourceWatcherToken;
+  try {
+    inst.sourceWatcher = createMarkdownWatcher({
+      path: sourcePath,
+      onChange: () =>
+        serializeArchitectureEdit(inst, () => refreshImportedSourceNow(inst, token)),
+      onError: () => {
+        if (token !== inst.sourceWatcherToken || inst.sourceMode !== SOURCE_MODE_LIVE) return;
+        stopSourceWatcher(inst);
+        setSourceWatchState(inst, "error", "watch_failed");
+      },
+    });
+    setSourceWatchState(inst, "watching");
+    return token;
+  } catch (error) {
+    const wrapped = new Error(error?.message || "watch_failed");
+    wrapped.code = "WATCH_FAILED";
+    setSourceWatchState(inst, "error", sourceWatchError(wrapped));
+    return null;
+  }
+}
+
+async function setSourceMode(inst, mode, { reload = true } = {}) {
+  const next = normalizeSourceMode(mode);
+  return serializeArchitectureEdit(inst, async () => {
+    if (!inst.sourceWriteback) {
+      return { ok: false, error: "source_not_available" };
+    }
+    if (next === SOURCE_MODE_SNAPSHOT) {
+      stopSourceWatcher(inst);
+      inst.sourceMode = SOURCE_MODE_SNAPSHOT;
+      setSourceWatchState(inst, "inactive");
+      schedulePersist(inst);
+      return { ok: true, changed: true };
+    }
+
+    inst.sourceMode = SOURCE_MODE_LIVE;
+    schedulePersist(inst);
+    const token = startSourceWatcher(inst);
+    if (reload && token !== null) await refreshImportedSourceNow(inst, token);
+    return {
+      ok: true,
+      changed: true,
+      status: inst.sourceWatchStatus,
+      error: inst.sourceWatchError,
+    };
+  });
 }
 
 async function applyArchitectureEdit(inst, { index, block, source, deckVersion }) {
@@ -1533,6 +1714,30 @@ async function synchronizeImportedPresentations({ workspaceRoot, sourcePath, mar
       serializeArchitectureEdit(inst, async () => {
         const slides = buildDeckSlides(markdown);
         if (!slides.length) return;
+        if (inst.sourceMode === SOURCE_MODE_LIVE) {
+          const token = inst.sourceWatcherToken;
+          try {
+            await applyDeckNow(inst, {
+              slides,
+              index: inst.index,
+              sourceName: inst.sourceName,
+              sourceWriteback: true,
+              sourceWritebackPath: inst.sourceWritebackPath,
+              sourceWritebackSnapshot: markdown,
+              sourceMode: SOURCE_MODE_LIVE,
+              preserveSourceWatcher: true,
+              preserveCurrentIndex: true,
+            });
+            if (token === inst.sourceWatcherToken && inst.sourceWatcher) {
+              setSourceWatchState(inst, "watching");
+            }
+          } catch (error) {
+            if (token === inst.sourceWatcherToken) {
+              setSourceWatchState(inst, "error", sourceWatchError(error));
+            }
+          }
+          return;
+        }
         inst.sourceWritebackSnapshot = markdown;
         inst.slides = ensureBackCover(slides);
         inst.index = clampIndex(inst.index, inst.slides.length);
@@ -1624,6 +1829,10 @@ async function startServer(inst) {
           customThemeCss: inst.customThemeCss,
           customThemeMeta: inst.customThemeMeta,
           mode: inst.mode,
+          sourceBacked: inst.sourceWriteback,
+          sourceMode: inst.sourceMode,
+          sourceWatchStatus: inst.sourceWatchStatus,
+          sourceWatchError: inst.sourceWatchError,
           presenterRunning: isProcessRunning(inst.presenterProcess),
           architectureEdit: Boolean(inst.architectureEdit),
           architectureDetailedEdit: architectureEditorManager.canOpenFromPresentation(inst),
@@ -2059,6 +2268,16 @@ async function startServer(inst) {
         return;
       }
       const rel = typeof body.path === "string" ? body.path.trim() : "";
+      if (
+        body.sourceMode !== undefined &&
+        body.sourceMode !== SOURCE_MODE_SNAPSHOT &&
+        body.sourceMode !== SOURCE_MODE_LIVE
+      ) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "invalid_source_mode" }));
+        return;
+      }
       if (!rel) {
         res.statusCode = 400;
         res.setHeader("Content-Type", "application/json; charset=utf-8");
@@ -2125,6 +2344,7 @@ async function startServer(inst) {
           sourceWriteback: true,
           sourceWritebackPath,
           sourceWritebackSnapshot: text,
+          sourceMode: normalizeSourceMode(body.sourceMode),
         });
       } catch (e) {
         res.statusCode = 400;
@@ -2143,6 +2363,55 @@ async function startServer(inst) {
           total: inst.slides.length,
           theme: inst.theme,
           sourceName: inst.sourceName,
+          sourceMode: inst.sourceMode,
+          sourceWatchStatus: inst.sourceWatchStatus,
+        }),
+      );
+      return;
+    }
+    if (pathname === "/source-mode") {
+      if (req.method !== "POST") {
+        res.statusCode = 405;
+        res.setHeader("Allow", "POST");
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+        return;
+      }
+      const origin = req.headers.origin;
+      if (origin && origin !== new URL(inst.url).origin) {
+        res.statusCode = 403;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "origin_not_allowed" }));
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        res.statusCode = error?.message === "payload_too_large" ? 413 : 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: error?.message || "bad_request" }));
+        return;
+      }
+      if (body.mode !== SOURCE_MODE_SNAPSHOT && body.mode !== SOURCE_MODE_LIVE) {
+        res.statusCode = 400;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "invalid_source_mode" }));
+        return;
+      }
+      activateInstance(inst);
+      const previous = inst.sourceMode;
+      const result = await setSourceMode(inst, body.mode);
+      res.statusCode = result.ok ? 200 : 409;
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Cache-Control", "no-store");
+      res.end(
+        JSON.stringify({
+          ...result,
+          changed: result.ok ? previous !== inst.sourceMode : false,
+          sourceMode: inst.sourceMode,
+          sourceWatchStatus: inst.sourceWatchStatus,
+          sourceWatchError: inst.sourceWatchError,
         }),
       );
       return;
@@ -2248,6 +2517,11 @@ async function ensureInstance(ctx) {
       sourceWriteback: false,
       sourceWritebackPath: "",
       sourceWritebackSnapshot: "",
+      sourceMode: SOURCE_MODE_SNAPSHOT,
+      sourceWatchStatus: "inactive",
+      sourceWatchError: "",
+      sourceWatcher: null,
+      sourceWatcherToken: 0,
       clients: new Set(),
       assetsRoot: join(repoRoot, "assets"),
       workspaceRoot: repoRoot,
@@ -2303,6 +2577,7 @@ async function ensureInstance(ctx) {
           ? saved.sourceWritebackSnapshot
           : "";
       }
+      if (inst.sourceWriteback) inst.sourceMode = normalizeSourceMode(saved.sourceMode);
       if (saved.mode === "adhoc" || saved.mode === "deck") inst.mode = saved.mode;
       if (isPresenterProfilePath(saved.presenterProfileDir)) {
         inst.presenterProfileDir = saved.presenterProfileDir;
@@ -2328,6 +2603,13 @@ async function ensureInstance(ctx) {
     const { server, url } = await startServer(inst);
     inst.server = server;
     inst.url = url;
+  }
+  if (
+    inst.sourceWriteback &&
+    inst.sourceMode === SOURCE_MODE_LIVE &&
+    !inst.sourceWatcher
+  ) {
+    await setSourceMode(inst, SOURCE_MODE_LIVE);
   }
   activateInstance(inst);
   startPenListener();
@@ -2562,9 +2844,13 @@ const session = await joinSession({
             await serializeArchitectureEdit(inst, async () => {
               inst.markdown = markdown;
               inst.mode = "adhoc";
+              stopSourceWatcher(inst);
               inst.sourceWriteback = false;
               inst.sourceWritebackPath = "";
               inst.sourceWritebackSnapshot = "";
+              inst.sourceMode = SOURCE_MODE_SNAPSHOT;
+              inst.sourceWatchStatus = "inactive";
+              inst.sourceWatchError = "";
               inst.version += 1;
               broadcast(inst);
               schedulePersist(inst);
@@ -2701,6 +2987,10 @@ const session = await joinSession({
               inst.sourceWriteback = false;
               inst.sourceWritebackPath = "";
               inst.sourceWritebackSnapshot = "";
+              stopSourceWatcher(inst);
+              inst.sourceMode = SOURCE_MODE_SNAPSHOT;
+              inst.sourceWatchStatus = "inactive";
+              inst.sourceWatchError = "";
               inst.mode = "deck";
               inst.architectureEdit = false;
               inst.deckVersion += 1;
@@ -2768,6 +3058,7 @@ const session = await joinSession({
         const inst = instances.get(key);
         if (!inst) return;
         await stopPresenter(inst);
+        stopSourceWatcher(inst);
         for (const res of [...inst.clients]) {
           try {
             res.end();

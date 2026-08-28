@@ -39,6 +39,7 @@ import {
   listMarkdownFiles,
 } from "../../.github/extensions/presentation/scripts/markdown-files.mjs";
 import { buildDeckSlides } from "../../.github/extensions/presentation/markdown-deck.mjs";
+import { createMarkdownWatcher } from "../../.github/extensions/presentation/scripts/markdown-watcher.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "..", "..");
@@ -156,6 +157,10 @@ export async function startHarness({
     sourceName: "",
     sourceWriteback: false,
     sourceWritebackSnapshot: "",
+    sourceMode: "snapshot",
+    sourceWatchStatus: "inactive",
+    sourceWatchError: "",
+    sourceWatcher: null,
   };
   // renderer が POST してきた印刷結果。テスト側が "ready" を確認するために保持する。
   const printReports = [];
@@ -172,6 +177,80 @@ export async function startHarness({
         sseClients.delete(client);
       }
     }
+  }
+
+  function stopSourceWatcher() {
+        if (!state.sourceWatcher) return;
+        state.sourceWatcher.close();
+        state.sourceWatcher = null;
+      }
+
+  async function reloadSource() {
+        if (!state.sourceWriteback || state.sourceMode !== "live") return;
+        const sourcePath = state.sourceName ? safeJoin(markdownRoot, state.sourceName) : null;
+        try {
+          if (!sourcePath || !isMarkdownPath(sourcePath)) throw new Error("source_file_unavailable");
+          const markdown = await readFile(sourcePath, "utf8");
+          const imported = buildDeckSlides(markdown);
+          if (!imported.length) throw new Error("empty_markdown");
+          if (markdown !== state.sourceWritebackSnapshot) {
+            state.slides = imported;
+            state.index = Math.min(state.index, state.slides.length - 1);
+            state.sourceWritebackSnapshot = markdown;
+            state.deckVersion += 1;
+            state.version += 1;
+          }
+          state.sourceWatchStatus = "watching";
+          state.sourceWatchError = "";
+          broadcast();
+        } catch (error) {
+          state.sourceWatchStatus = "error";
+          state.sourceWatchError =
+            error?.message === "empty_markdown" ? "empty_markdown" : "source_file_not_found";
+          broadcast();
+        }
+      }
+
+  function startSourceWatcher() {
+        stopSourceWatcher();
+        if (!state.sourceWriteback || state.sourceMode !== "live") return;
+        const sourcePath = state.sourceName ? safeJoin(markdownRoot, state.sourceName) : null;
+        if (!sourcePath) {
+          state.sourceWatchStatus = "error";
+          state.sourceWatchError = "source_file_unavailable";
+          return;
+        }
+        try {
+          state.sourceWatcher = createMarkdownWatcher({
+            path: sourcePath,
+            onChange: reloadSource,
+            onError: () => {
+              state.sourceWatchStatus = "error";
+              state.sourceWatchError = "watch_failed";
+              broadcast();
+            },
+          });
+          state.sourceWatchStatus = "watching";
+          state.sourceWatchError = "";
+        } catch (_) {
+          state.sourceWatchStatus = "error";
+          state.sourceWatchError = "watch_failed";
+        }
+      }
+
+  async function setSourceMode(mode) {
+        if (!state.sourceWriteback) return false;
+        state.sourceMode = mode === "live" ? "live" : "snapshot";
+        if (state.sourceMode === "live") {
+          startSourceWatcher();
+          await reloadSource();
+        } else {
+          stopSourceWatcher();
+          state.sourceWatchStatus = "inactive";
+          state.sourceWatchError = "";
+          broadcast();
+        }
+        return true;
   }
 
   const server = createServer(async (req, res) => {
@@ -206,6 +285,10 @@ export async function startHarness({
         total: state.slides.length,
         theme: state.theme,
         mode: "deck",
+        sourceBacked: state.sourceWriteback,
+        sourceMode: state.sourceMode,
+        sourceWatchStatus: state.sourceWatchStatus,
+        sourceWatchError: state.sourceWatchError,
         presenterRunning: false,
         architectureEdit: state.architectureEdit,
       });
@@ -462,6 +545,14 @@ export async function startHarness({
         return;
       }
       const rel = typeof body.path === "string" ? body.path.trim() : "";
+      if (
+        body.sourceMode !== undefined &&
+        body.sourceMode !== "snapshot" &&
+        body.sourceMode !== "live"
+      ) {
+        sendJson(res, 400, { ok: false, error: "invalid_source_mode" });
+        return;
+      }
       const abs = markdownRoot && rel ? safeJoin(markdownRoot, rel) : null;
       if (!abs) {
         sendJson(res, 400, { ok: false, error: "path_outside_workspace" });
@@ -488,8 +579,15 @@ export async function startHarness({
       state.sourceName = rel;
       state.sourceWriteback = true;
       state.sourceWritebackSnapshot = text;
+      state.sourceMode = body.sourceMode === "live" ? "live" : "snapshot";
+      state.sourceWatchStatus = "inactive";
+      state.sourceWatchError = "";
       state.deckVersion += 1;
       state.version += 1;
+      if (state.sourceMode === "live") {
+        startSourceWatcher();
+        await reloadSource();
+      }
       broadcast();
       sendJson(res, 200, {
         ok: true,
@@ -498,6 +596,40 @@ export async function startHarness({
         total: state.slides.length,
         theme: state.theme,
         sourceName: state.sourceName,
+        sourceMode: state.sourceMode,
+        sourceWatchStatus: state.sourceWatchStatus,
+      });
+      return;
+    }
+
+    if (pathname === "/source-mode") {
+      if (req.method !== "POST") {
+        res.setHeader("Allow", "POST");
+        sendJson(res, 405, { ok: false, error: "method_not_allowed" });
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (_) {
+        sendJson(res, 400, { ok: false, error: "bad_request" });
+        return;
+      }
+      if (body.mode !== "snapshot" && body.mode !== "live") {
+        sendJson(res, 400, { ok: false, error: "invalid_source_mode" });
+        return;
+      }
+      const previous = state.sourceMode;
+      if (!(await setSourceMode(body.mode))) {
+        sendJson(res, 409, { ok: false, error: "source_not_available" });
+        return;
+      }
+      sendJson(res, 200, {
+        ok: true,
+        changed: previous !== state.sourceMode,
+        sourceMode: state.sourceMode,
+        sourceWatchStatus: state.sourceWatchStatus,
+        sourceWatchError: state.sourceWatchError,
       });
       return;
     }
@@ -577,6 +709,12 @@ export async function startHarness({
     get sourceName() {
       return state.sourceName;
     },
+    get sourceMode() {
+      return state.sourceMode;
+    },
+    get sourceWatchStatus() {
+      return state.sourceWatchStatus;
+    },
     /** 現在のスライド枚数（インポートで増減する）。 */
     get total() {
       return state.slides.length;
@@ -586,6 +724,7 @@ export async function startHarness({
       return state.slides[i];
     },
     async close() {
+      stopSourceWatcher();
       for (const client of [...sseClients]) {
         try {
           client.end();

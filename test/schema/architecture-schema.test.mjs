@@ -125,7 +125,10 @@ test("every architecture block in the repository passes both validators", async 
   assert.ok(blocks.length >= 5, `expected repository samples, found ${blocks.length}`);
 
   for (const block of blocks) {
-    const schemaResult = schemaCheckSource(block.source);
+    // 空フェンスは Markdown の省略記法なので、厳密な JSON Schema へ渡す前に
+    // renderer と同じ canonical な空ドキュメントへ展開する。
+    const normalized = architecture.normalizeArchitectureSource(block.source);
+    const schemaResult = schemaCheckSource(normalized);
     assert.equal(schemaResult.ok, true, `${block.label} failed schema: ${schemaResult.message}`);
     const parserResult = parserCheck(block.source);
     assert.equal(parserResult.ok, true, `${block.label} failed parser: ${parserResult.message}`);

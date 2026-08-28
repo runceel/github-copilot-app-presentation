@@ -39,6 +39,7 @@ test.describe("Markdown インポート", () => {
     try {
       await page.locator("#navImport").click();
       await expect(page.locator("#importPicker")).toBeVisible();
+      await expect(page.locator("#importModeSnapshot")).toBeChecked();
 
       const item = page.locator("#importList .overview-link", {
         hasText: "import-source.md",
@@ -48,6 +49,7 @@ test.describe("Markdown インポート", () => {
 
       await expect(page.locator("#importPicker")).toBeHidden();
       await expect.poll(() => harness.sourceName).toBe("import-source.md");
+      expect(harness.sourceMode).toBe("snapshot");
       // 表紙 + 通常 3 枚。背表紙の自動追加はハーネスでは行わない。
       expect(harness.total).toBe(4);
 
@@ -81,6 +83,99 @@ test.describe("Markdown インポート", () => {
       await expect(page.locator("#navImport")).toBeHidden();
     } finally {
       await harness.close();
+    }
+  });
+
+  test("live を選んで保存を追従し、途中で固定表示へ切り替えられる", async ({ page }) => {
+    const root = await mkdtemp(join(tmpdir(), "presentation-import-live-"));
+    const sourcePath = join(root, "live.md");
+    const initial = "# First\n\n---\n\n## Current\n\nBefore\n";
+    await writeFile(sourcePath, initial, "utf8");
+    const harness = await startHarness({ slides: SLIDES, markdownRoot: root });
+    try {
+      await page.goto(harness.url, { waitUntil: "load" });
+      await waitForSlideReady(page);
+      await expect(page.locator("#navSourceMode")).toBeHidden();
+      await page.locator("#navImport").click();
+      await page.locator('input[name="importMode"][value="live"]').check();
+      await page.locator("#importList .overview-link", { hasText: "live.md" }).click();
+      await expect.poll(() => harness.sourceMode).toBe("live");
+      await expect(page.locator("#navSourceMode")).toBeVisible();
+      await expect(page.locator("#navSourceMode")).toHaveAttribute("data-state", "active");
+
+      await page.locator("#navNext").click();
+      await expect.poll(() => harness.index).toBe(1);
+      const updated = initial.replace("Before", "After save");
+      await writeFile(sourcePath, updated, "utf8");
+      await expect.poll(() => harness.slideAt(1)).toContain("After save");
+      await expect.poll(() => harness.index).toBe(1);
+      await expect(page.locator(".deck")).toContainText("After save");
+
+      await writeFile(sourcePath, "", "utf8");
+      await expect.poll(() => harness.sourceWatchStatus).toBe("error");
+      await expect(page.locator(".deck")).toContainText("After save");
+      await expect(page.locator("#navSourceMode")).toHaveAttribute("data-state", "error");
+
+      const recovered = updated.replace("After save", "Recovered");
+      await writeFile(sourcePath, recovered, "utf8");
+      await expect.poll(() => harness.sourceWatchStatus).toBe("watching");
+      await expect(page.locator(".deck")).toContainText("Recovered");
+
+      await page.locator("#navSourceMode").click();
+      await expect.poll(() => harness.sourceMode).toBe("snapshot");
+      await expect(page.locator("#navSourceMode")).not.toHaveAttribute("data-state", "active");
+      await writeFile(sourcePath, recovered.replace("Recovered", "Must stay hidden"), "utf8");
+      await page.waitForTimeout(300);
+      await expect(page.locator(".deck")).toContainText("Recovered");
+      await expect(page.locator(".deck")).not.toContainText("Must stay hidden");
+    } finally {
+      await harness.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("固定表示から live へ切り替えた時点で最新版を読み込む", async ({ page }) => {
+    const root = await mkdtemp(join(tmpdir(), "presentation-import-switch-"));
+    const sourcePath = join(root, "switch.md");
+    await writeFile(sourcePath, "# Snapshot\n", "utf8");
+    const harness = await startHarness({ slides: SLIDES, markdownRoot: root });
+    try {
+      await page.goto(harness.url, { waitUntil: "load" });
+      await waitForSlideReady(page);
+      await page.locator("#navImport").click();
+      await page.locator("#importList .overview-link", { hasText: "switch.md" }).click();
+      await expect(page.locator(".deck")).toContainText("Snapshot");
+      await writeFile(sourcePath, "# Latest\n", "utf8");
+      await page.waitForTimeout(300);
+      await expect(page.locator(".deck")).toContainText("Snapshot");
+
+      await page.locator("#navSourceMode").click();
+      await expect.poll(() => harness.sourceMode).toBe("live");
+      await expect(page.locator(".deck")).toContainText("Latest");
+    } finally {
+      await harness.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("空の architecture フェンスを空の図として認識する", async ({ page }) => {
+    const root = await mkdtemp(join(tmpdir(), "presentation-import-empty-architecture-"));
+    await writeFile(join(root, "empty.md"), "# Empty\n\n```architecture\n```\n", "utf8");
+    const harness = await startHarness({ slides: SLIDES, markdownRoot: root });
+    try {
+      await page.goto(harness.url, { waitUntil: "load" });
+      await waitForSlideReady(page);
+      await page.locator("#navImport").click();
+      await page.locator("#importList .overview-link", { hasText: "empty.md" }).click();
+      await waitForSlideReady(page);
+      await expect(page.locator(".architecture-diagram")).toHaveCount(1);
+      await expect(page.locator(".architecture-error")).toHaveCount(0);
+
+      await page.locator("#navEdit").click();
+      await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(1);
+    } finally {
+      await harness.close();
+      await rm(root, { recursive: true, force: true });
     }
   });
 

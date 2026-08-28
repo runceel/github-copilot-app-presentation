@@ -710,6 +710,10 @@ let overviewOpen = false;
 let importOpen = false;
 let importPending = false;
 let importFiles = [];
+let sourceBacked = false;
+let sourceMode = "snapshot";
+let sourceWatchStatus = "inactive";
+let sourceWatchError = "";
 let presenterLaunchPending = false;
 let pdfExportPending = false;
 
@@ -773,6 +777,71 @@ function updateArchitectureEditButton(enabled = architectureEditMode) {
   button.dataset.state = enabled && !presenterMode ? "active" : "";
   button.title = enabled ? "図形編集モードを終了" : "図形編集モード";
   button.setAttribute("aria-label", button.title);
+}
+
+function sourceWatchErrorMessage(code) {
+  if (code === "empty_markdown") return "Markdown が空のため最後の表示を保持しています";
+  if (code === "source_file_too_large") return "Markdown が大きすぎるため最後の表示を保持しています";
+  if (code === "source_file_unavailable") return "Markdown の保存先を確認できません";
+  if (code === "watch_failed") return "Markdown の保存監視を開始できません";
+  if (code === "source_file_not_found") return "Markdown が見つからないため最後の表示を保持しています";
+  return "Markdown の再読み込みに失敗したため最後の表示を保持しています";
+}
+
+function updateSourceModeButton() {
+  const button = document.getElementById("navSourceMode");
+  const status = document.getElementById("sourceStatus");
+  if (!button) return;
+  button.hidden = presenterMode || !sourceBacked;
+  if (!sourceBacked) {
+    button.dataset.state = "";
+    if (status) status.textContent = "";
+    return;
+  }
+  if (sourceMode === "live" && sourceWatchStatus === "error") {
+    const message = sourceWatchErrorMessage(sourceWatchError);
+    button.dataset.state = "error";
+    button.title = `${message}。クリックすると読み込み時点の表示へ固定します`;
+    button.setAttribute("aria-label", button.title);
+    if (status) status.textContent = message;
+    return;
+  }
+  const live = sourceMode === "live";
+  button.dataset.state = live ? "active" : "";
+  button.title = live
+    ? "Markdown の自動更新を停止して現在の表示を固定する"
+    : "Markdown の保存時に自動更新する";
+  button.setAttribute("aria-label", button.title);
+  if (status) {
+    status.textContent = live
+      ? "Markdown の保存時にスライドを自動更新します"
+      : "Markdown は読み込み時点の表示を保持しています";
+  }
+}
+
+async function requestSourceMode(mode) {
+  try {
+    const response = await fetch("./source-mode", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.ok) {
+      const status = document.getElementById("sourceStatus");
+      if (status) status.textContent = data.error || "Markdown の表示モードを変更できませんでした";
+      return;
+    }
+    await fetchState();
+  } catch (_) {
+    const status = document.getElementById("sourceStatus");
+    if (status) status.textContent = "Markdown の表示モードを変更できませんでした";
+  }
+}
+
+async function toggleSourceMode() {
+  if (presenterMode || !sourceBacked) return;
+  await requestSourceMode(sourceMode === "live" ? "snapshot" : "live");
 }
 
 /**
@@ -896,6 +965,14 @@ async function fetchState() {
   if (typeof data.presenterRunning === "boolean") {
     updatePresenterButton(data.presenterRunning);
   }
+  if (typeof data.sourceBacked === "boolean") sourceBacked = data.sourceBacked;
+  sourceMode = data.sourceMode === "live" ? "live" : "snapshot";
+  sourceWatchStatus =
+    data.sourceWatchStatus === "watching" || data.sourceWatchStatus === "error"
+      ? data.sourceWatchStatus
+      : "inactive";
+  sourceWatchError = typeof data.sourceWatchError === "string" ? data.sourceWatchError : "";
+  updateSourceModeButton();
   const detailedEditChanged =
     typeof data.architectureDetailedEdit === "boolean" &&
     data.architectureDetailedEdit !== architectureDetailedEdit;
@@ -1185,10 +1262,14 @@ async function importMarkdown(path) {
   importPending = true;
   setImportMessage(`${path} を読み込んでいます。`);
   try {
+    const selectedMode =
+      document.querySelector('input[name="importMode"]:checked')?.value === "live"
+        ? "live"
+        : "snapshot";
     const res = await fetch("./import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path }),
+      body: JSON.stringify({ path, sourceMode: selectedMode }),
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) {
@@ -1210,6 +1291,8 @@ function openImportPicker() {
   const el = document.getElementById("importPicker");
   if (el) el.hidden = false;
   const filter = document.getElementById("importFilter");
+  const snapshotMode = document.getElementById("importModeSnapshot");
+  if (snapshotMode) snapshotMode.checked = true;
   if (filter) {
     filter.value = "";
     filter.focus();
@@ -1262,6 +1345,7 @@ function wireControls() {
   bind("navPresent", openPresenterWindow);
   bind("navExport", exportPdfFromCanvas);
   bind("navImport", toggleImportPicker);
+  bind("navSourceMode", toggleSourceMode);
   bind("navList", toggleOverview);
   bind("overviewClose", closeOverview);
   bind("importClose", closeImportPicker);

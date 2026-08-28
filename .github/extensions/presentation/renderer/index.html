@@ -18,9 +18,11 @@
     <button id="navPresent" class="nav-btn" type="button" title="外部ウィンドウで表示 (F11 で全画面)" aria-label="外部ウィンドウで表示">&#x26F6;</button>
     <button id="navExport" class="nav-btn" type="button" title="PDFに保存" aria-label="PDFに保存">&#128438;</button>
     <button id="navImport" class="nav-btn" type="button" title="Markdown を読み込む (I)" aria-label="Markdown を読み込む">&#128193;</button>
+    <button id="navSourceMode" class="nav-btn" type="button" title="Markdown の保存時に自動更新する" aria-label="Markdown の保存時に自動更新する" hidden>&#8635;</button>
     <button id="navList" class="nav-btn" type="button" title="スライド一覧 (O)" aria-label="スライド一覧">&#9776;</button>
     <span id="presentStatus" class="sr-only" aria-live="polite"></span>
     <span id="exportStatus" class="sr-only" aria-live="polite"></span>
+    <span id="sourceStatus" class="sr-only" aria-live="polite"></span>
   </nav>
 
   <!-- Slide-list overview overlay, toggled from the control bar / keyboard. -->
@@ -41,6 +43,11 @@
         <span>Markdown を読み込む</span>
         <button id="importClose" class="nav-btn" type="button" title="閉じる (Esc)" aria-label="閉じる">&#10005;</button>
       </div>
+      <fieldset class="import-mode">
+        <legend>保存時の表示更新</legend>
+        <label><input id="importModeSnapshot" type="radio" name="importMode" value="snapshot" checked> 読み込み時点を保持</label>
+        <label><input type="radio" name="importMode" value="live"> 保存時に自動更新</label>
+      </fieldset>
       <input id="importFilter" class="import-filter" type="search" placeholder="ファイル名で絞り込み" aria-label="ファイル名で絞り込み" autocomplete="off">
       <p id="importMessage" class="import-message" role="status" aria-live="polite"></p>
       <ol id="importList" class="overview-list"></ol>
