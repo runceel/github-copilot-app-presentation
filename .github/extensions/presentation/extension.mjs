@@ -63,6 +63,7 @@ import {
   deckValidationFeedback,
   readGuide,
 } from "./presentation-guide.mjs";
+import { buildPresenterBrowserArgs } from "./presenter-window.mjs";
 import {
   DEFAULT_THEME,
   mapThemeMetadataAssets,
@@ -551,19 +552,10 @@ async function launchPresenter(inst) {
     presenterUrl.searchParams.set("present", "1");
     const child = spawn(
       browser,
-      [
-        "--disable-background-mode",
-        "--disable-component-update",
-        "--disable-default-apps",
-        "--disable-extensions",
-        "--disable-session-crashed-bubble",
-        "--no-default-browser-check",
-        "--no-first-run",
-        "--start-fullscreen",
-        "--start-maximized",
-        `--user-data-dir=${profileDir}`,
-        `--app=${presenterUrl.href}`,
-      ],
+      buildPresenterBrowserArgs({
+        profileDir,
+        presenterUrl: presenterUrl.href,
+      }),
       {
         windowsHide: false,
         stdio: "ignore",
@@ -2383,7 +2375,7 @@ const session = await joinSession({
       id: "presentation",
       displayName: "Presentation",
       description:
-        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。open 時に slides/index/theme を渡すと最初からデッキを表示できる（プレースホルダーを挟まない）。発表途中の再ロードや差し替えは load_deck で行う。以降のページ送りは canvas 内の ◀ ▶・矢印キー・スライド一覧、対応する Windows 環境では Surface Pen の末尾ボタン（1回押しで次へ、長押しで前へ、2回押しで外部プレゼン画面の起動・終了）で完結する。open_presenter で同期された外部全画面ウィンドウを起動できる。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替え、export_pdf で表示中のデッキを16:9 PDFへ書き出せる。",
+        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。open 時に slides/index/theme を渡すと最初からデッキを表示できる（プレースホルダーを挟まない）。発表途中の再ロードや差し替えは load_deck で行う。以降のページ送りは canvas 内の ◀ ▶・矢印キー・スライド一覧、対応する Windows 環境では Surface Pen の末尾ボタン（1回押しで次へ、長押しで前へ、2回押しで外部プレゼン画面の起動・終了）で完結する。open_presenter で同期された外部ウィンドウを起動し、必要に応じてブラウザーや OS の標準操作で全画面化できる。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替え、export_pdf で表示中のデッキを16:9 PDFへ書き出せる。",
       inputSchema: {
         type: "object",
         properties: {
@@ -2583,7 +2575,7 @@ const session = await joinSession({
         {
           name: "open_presenter",
           description:
-            "表示中のデッキを同期した外部プレゼン画面として開く。Microsoft Edge / Google Chrome / Chromium を専用プロファイルの app mode + fullscreen で起動し、canvas と同じページ位置・キーボード操作・Surface Pen 操作を共有する。既に起動中なら新しいウィンドウは増やさない。Surface Pen の末尾ボタン2回押しでも同じ起動・終了トグルができる。",
+            "表示中のデッキを同期した移動・リサイズ可能な 1280x720 の外部プレゼン画面として開く。Microsoft Edge / Google Chrome / Chromium を専用プロファイルの app mode で起動し、canvas と同じページ位置・キーボード操作・Surface Pen 操作を共有する。全画面化はブラウザーや OS の標準操作（Windows では F11）で行う。既に起動中なら新しいウィンドウは増やさない。Surface Pen の末尾ボタン2回押しでも同じ起動・終了トグルができる。",
           handler: async (ctx) => {
             const inst = instances.get(keyOf(ctx));
             if (!inst) {
