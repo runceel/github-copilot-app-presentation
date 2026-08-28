@@ -81,6 +81,38 @@ test("変更は draft に留まり、保存ボタンで初めて Markdown へ反
   }
 });
 
+test("connector label の重なりを箱の手前と後ろから選べる", async ({ page }) => {
+  const harness = await openEditor(page);
+  try {
+    await page.locator('[data-ref="elements[2]"].tree-item').click();
+    const layer = page.locator('select[id^="field-labelLayer"]');
+    await expect(layer).toHaveValue("front");
+    await expect(
+      page.locator(
+        '.architecture-svg > [data-architecture-connector-label][data-architecture-label-layer="front"]',
+      ),
+    ).toHaveCount(0);
+
+    await page.locator('input[id^="field-label"]').fill("HTTPS");
+    await page.locator('input[id^="field-label"]').press("Enter");
+    await expect(
+      page.locator(
+        '.architecture-svg > [data-architecture-connector-label][data-architecture-label-layer="front"]',
+      ),
+    ).toHaveCount(1);
+
+    await layer.selectOption("behind");
+    await expect(
+      page.locator(
+        '[data-architecture-connector] > [data-architecture-connector-label][data-architecture-label-layer="behind"]',
+      ),
+    ).toHaveCount(1);
+    await expect(page.locator('[data-action="save"]')).toBeEnabled();
+  } finally {
+    await harness.close();
+  }
+});
+
 test("選択、キーボード移動、リサイズ、Undo/Redo を同じ draft で扱う", async ({ page }) => {
   const harness = await openEditor(page);
   try {

@@ -350,6 +350,7 @@ export const corpus = [
       fromPort: "right",
       toPort: "left",
       label: "calls",
+      labelLayer: "behind",
       ariaLabel: "a calls b",
       routing: "orthogonal",
       arrow: false,
@@ -914,6 +915,11 @@ export const corpus = [
     name: "arrow is not a boolean",
     expect: "reject",
     source: withConnector({ arrow: "yes" }),
+  },
+  {
+    name: "unknown connector label layer",
+    expect: "reject",
+    source: withConnector({ labelLayer: "middle" }),
   },
   {
     name: "lane out of range",

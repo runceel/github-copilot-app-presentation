@@ -25,6 +25,8 @@ test("readGuide returns every document-backed topic", async () => {
   assert.match(schemaGuide, /"shield"/);
   assert.match(schemaGuide, /"textColor"/);
   assert.match(schemaGuide, /assets\//);
+  assert.match(schemaGuide, /"labelLayer"/);
+  assert.match(schemaGuide, /"front"/);
 
   const themeSchemaGuide = await readGuide("theme-schema");
   assert.match(themeSchemaGuide, /"--accent"/);
@@ -44,6 +46,7 @@ test("readGuide returns every document-backed topic", async () => {
   assert.match(await readGuide("overview"), /`sourceName`/);
   assert.match(await readGuide("architecture-dsl"), /専用 Architecture Editor/);
   assert.match(await readGuide("architecture-dsl"), /明示保存/);
+  assert.match(await readGuide("architecture-dsl"), /`labelLayer`/);
 });
 
 test("presentation hook primes each session at most once", () => {

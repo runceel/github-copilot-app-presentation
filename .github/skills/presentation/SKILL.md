@@ -243,6 +243,9 @@ group の `layout` は `row` / `column` / `grid` / `layered`（`layered` は `di
 `down` 既定 / `right`）、node の内蔵 `icon` は `cloud` / `database` / `api` / `user` /
 `server` / `analytics` / `browser` / `mobile` / `network` / `queue` / `shield` の 11 種、
 connector の port は `auto` 既定 / `top` / `right` / `bottom` / `left` を使えます。
+connector の label は `labelLayer: "front"`（既定）で box より手前に表示します。
+従来どおり box の後ろに置く場合だけ `labelLayer: "behind"` を指定します。細かな label 用
+z-index は指定しません。
 外部 URL や data URI は指定しません。内蔵アイコン以外を使いたいときは、元 Markdown と
 同じ場所またはリポジトリ直下の `assets/` に画像を置いて `icon: "assets/foo.svg"` で
 参照します（**先頭スラッシュなし**）。Markdown 隣接側が優先されるため、共通画像を

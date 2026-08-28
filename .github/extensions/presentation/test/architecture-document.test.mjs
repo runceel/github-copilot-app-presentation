@@ -77,7 +77,15 @@ test("node/group/connector の追加と複製は一意 ID の有効な DSL を�
   const node = document.addNode({ parentId: "zone", text: "Worker" });
   assert.equal(node.ok, true);
   assert.equal(document.addGroup().ok, true);
-  assert.equal(document.addConnector({ from: "client", to: node.id }).ok, true);
+  assert.equal(
+    document.addConnector({
+      from: "client",
+      to: node.id,
+      label: "dispatches",
+      labelLayer: "behind",
+    }).ok,
+    true,
+  );
   const copy = document.duplicate("zone");
   assert.equal(copy.ok, true);
   assert.notEqual(copy.id, "zone");
@@ -87,6 +95,14 @@ test("node/group/connector の追加と複製は一意 ID の有効な DSL を�
   assert.equal(new Set(ids).size, ids.length);
   assert.ok(model.elements.some((element) => element.id === node.id));
   assert.ok(model.elements.some((element) => element.id === copy.id));
+  const addedConnector = model.elements.find(
+    (element) =>
+      element.type === "connector" &&
+      element.from === "client" &&
+      element.to === node.id,
+  );
+  assert.equal(addedConnector.label, "dispatches");
+  assert.equal(addedConnector.labelLayer, "behind");
 });
 
 test("connector の複製は実在する source path を返し、続けて複製できる", () => {

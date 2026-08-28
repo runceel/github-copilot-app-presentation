@@ -272,10 +272,13 @@ canvas、外部 presenter、PDF のすべてで同じ比率に縮尺されます
   ないため、複雑な図では `lane` または `polyline` の中間点を明示します。長い label は
   Unicode 幅を考慮して縮小し、上限内に収まらなければ表示だけを省略します
   （完全な文字列は `aria-label` に保持）。label のピルが自分の線を隠してしまう
-  ときは、線に対して垂直方向へ逃がします（後述）。
+  ときは、線に対して垂直方向へ逃がします（後述）。`labelLayer` は `front`（既定）なら
+  box より手前へ表示し、`behind` なら従来どおり connector 本体の z-order に残します。
 - `z`（`-100`〜`100`）が小さい要素から描き、同じ `z` では `elements` / `children`
   の宣言順を維持します。省略時は group `-50`、connector `-10`、node/image `0` となり、
-  コンテナ背景 → 接続線 → ノードの順で安定して重なります。
+  コンテナ背景 → 接続線 → ノードの順で安定して重なります。connector の `z` は線本体と
+  `labelLayer: "behind"` のラベルに適用され、`front` のラベルは box 描画後の専用レイヤーへ
+  出ます。
 - style は `fill` / `stroke` / `textColor` / `strokeWidth` / `fontSize` /
   `opacity` / `dash` / `cornerRadius`。色は `accent`、`accentStrong`、`accentSoft`、
   `accentLine`、`surface`、`fg`、`muted`、`body`、`border`、`bg` の theme token
@@ -544,6 +547,13 @@ orthogonal routing の obstacle に参加します。画像の色はテーマで
 ### connector の自動ルーティング
 
 `routing: "orthogonal"` の connector は、手動 polyline なしで配線されます。
+
+ラベルの重なり順は `labelLayer` で2択にします。細かな z-index は指定しません。
+
+| `labelLayer` | 表示 |
+| --- | --- |
+| `front`（既定） | box の描画後にラベルを重ね、ノードや画像より手前に表示 |
+| `behind` | ラベルを connector 本体の z-order に置き、従来どおり box の後ろに隠れる表示 |
 
 1. **候補列挙とコスト最小化** — 直線・L 字などの候補を作り、コスト関数で最良を選びます。
    コストは重い順に「ノード貫通」「ラベルがノードを覆う」「他の経路との交差・重なり」

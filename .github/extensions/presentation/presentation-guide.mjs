@@ -54,6 +54,9 @@ function architectureSchemaSummary(schema) {
       builtIn: defs.iconName.enum,
       assetPath: defs.iconAsset.description,
     },
+    connector: {
+      labelLayer: defs.connector.properties.labelLayer,
+    },
     style: {
       keys: Object.keys(defs.style.properties),
       colors: defs.color.description,

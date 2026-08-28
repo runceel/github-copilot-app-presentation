@@ -433,6 +433,8 @@ export function createArchitectureDocument(source, options = {}) {
         routing: options.routing || "orthogonal",
         arrow: options.arrow !== false,
       };
+      if (options.label) connector.label = options.label;
+      if (options.labelLayer) connector.labelLayer = options.labelLayer;
       items.push(connector);
       return { from: connector.from, to: connector.to };
     });
