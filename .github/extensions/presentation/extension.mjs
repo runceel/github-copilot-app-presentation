@@ -63,6 +63,7 @@ import { resolveAssetFile } from "./scripts/asset-paths.mjs";
 import { resolveThemeFile } from "./scripts/theme-paths.mjs";
 import { buildDeckSlides } from "./markdown-deck.mjs";
 import {
+  architectureValidationErrors,
   createPresentationHooks,
   deckValidationFeedback,
   readGuide,
@@ -2861,6 +2862,67 @@ const session = await joinSession({
               schedulePersist(inst);
             });
             return { ok: true, version: inst.version };
+          },
+        },
+        {
+          name: "get_architecture_errors",
+          description:
+            "現在表示対象になっている Architecture DSL の文法エラーを取得する。index を省略するとデッキ全体、0 始まりの index を指定するとそのスライドだけを検証する。show_slide による一時差し替えも反映する。",
+          inputSchema: {
+            type: "object",
+            properties: {
+              index: {
+                type: "integer",
+                minimum: 0,
+                description:
+                  "検証するスライドの 0 始まりインデックス。省略時はデッキ全体を検証する。",
+              },
+            },
+            additionalProperties: false,
+          },
+          handler: async (ctx) => {
+            const inst = instances.get(keyOf(ctx));
+            if (!inst) {
+              throw new CanvasError(
+                "canvas_not_open",
+                "presentation canvas is not open",
+              );
+            }
+            const slides = getExportSlides(inst);
+            if (!slides.length) {
+              throw new CanvasError(
+                "no_deck",
+                "no slide content is loaded; open or load a deck first",
+              );
+            }
+            const input = ctx.input ?? {};
+            const hasIndex = Object.prototype.hasOwnProperty.call(input, "index");
+            const index = input.index;
+            if (hasIndex && (!Number.isInteger(index) || index < 0)) {
+              throw new CanvasError(
+                "invalid_input",
+                "index must be a non-negative integer",
+              );
+            }
+            if (hasIndex && index >= slides.length) {
+              throw new CanvasError(
+                "slide_out_of_range",
+                `slide index ${index} is outside the loaded range 0-${slides.length - 1}`,
+              );
+            }
+            activateInstance(inst);
+            const errors = architectureValidationErrors(
+              slides,
+              hasIndex ? { index } : {},
+            );
+            return {
+              ok: true,
+              scope: hasIndex ? "slide" : "deck",
+              ...(hasIndex ? { index, page: index + 1 } : {}),
+              total: slides.length,
+              errorCount: errors.length,
+              errors,
+            };
           },
         },
         {

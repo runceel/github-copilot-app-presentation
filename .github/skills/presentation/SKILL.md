@@ -103,6 +103,7 @@ AI がその代わりに使うものではありません）。
 | `load_deck` | 登録済みデッキを差し替える / 再ロードする。`slides`（各スライド 1 枚分の Markdown 断片の配列）、任意の `index`（最初に表示する 0 始まりインデックス、既定 0）、任意の `theme`（デッキ全体の配色テーマ、`dark`/`light`/`microsoft`/`custom`、既定 `dark`）を渡す。**発表途中で内容やテーマを変える**ときに使う（開始時は通常 `open` の `input` で渡す）。 |
 | `goto_slide` | 登録済みデッキ内で表示スライドを切り替える。`index`（0 始まり）を渡す。範囲外は端に丸められる。**通常のページ送りは canvas 内で行われるため不要**だが、ユーザーがチャットで「3 ページ目に飛んで」のように特定ページを指定したときに使う。 |
 | `show_slide` | スライドを 1 枚だけ差し替える。デッキ未登録での単発表示や、その場限りの差し替え用。通常のプレゼンでは使わない。 |
+| `get_architecture_errors` | 表示対象の Architecture DSL 文法エラーを取得する。入力なしでデッキ全体、`index`（0 始まり）指定でそのスライドだけを検証する。戻り値の `errors` には `slideIndex` / 1 始まりの `page` / `blockIndex` / `architecture` / `code` / `message` が入り、`show_slide` の一時差し替えも反映される。 |
 | `open_presenter` | 表示中のデッキを、canvas と同期された移動・リサイズ可能な 1280x720 の外部ウィンドウで開く。Edge / Chrome / Chromium の app mode を使い、ページ位置・キーボード・Surface Pen 操作を共有する。全画面化はブラウザーや OS の標準操作（Windows では `F11`）で行う。Surface Pen の末尾ボタン 2 回押しでも起動 / 終了できる。 |
 | `close_presenter` | `open_presenter` で起動した外部プレゼン画面を閉じる。 |
 | `export_pdf` | 表示中のデッキを16:9 PDFへ書き出すAI用action。任意の `outputPath` はworkspaceからの相対 `.pdf` パス、省略時は `presentation.pdf`。Canvas のプリンターアイコンは `sourceName` から `<元ファイル名>.pdf` を自動保存する。任意の `theme`（`dark`/`light`/`microsoft`/`custom`）はPDFだけに適用し、canvas表示は変えない。1スライド1ページで、背景・画像・コード強調・Mermaidを含む。`show_slide` による現在ページの一時差し替えも反映する。 |
