@@ -22,12 +22,25 @@ Extension の共有マニフェストは
 
 - Extension フォルダーを含む手動導入用 ZIP
 - ZIP の SHA-256 チェックサム
+- `Presentation-win-x64.zip` と `Presentation-win-arm64.zip`
+- 各 Presentation Desktop ZIP の `.sha256`
 - 変更概要、互換性、確認済みコミット SHA
 - 同梱 OSS の更新がある場合は `THIRD-PARTY-NOTICES.md` の確認
 
 ZIP は `.github/extensions/presentation/` を展開後にユーザー拡張ディレクトリへ配置できる
 構成にします。Mermaid を含む完全版は、Gist の単一ファイルおおむね 1 MB 上限に抵触するため
 Gist へ分割せず、リポジトリのフォルダー URL またはリリース ZIP で配布します。
+
+Presentation Desktop は次のコマンドで unpackaged・self-contained のポータブル ZIP を作成し、
+同じ GitHub Release へ添付します。
+
+```powershell
+apps\Presentation.Desktop\scripts\Publish.ps1 -Architecture x64
+apps\Presentation.Desktop\scripts\Publish.ps1 -Architecture arm64
+```
+
+生成された ZIP と `.sha256` を両方添付します。Windows App SDK と .NET runtime は同梱し、
+WebView2 Runtime と Edge / Chrome / Chromium は利用環境の前提としてリリースノートに記載します。
 
 ### ZIP に含めないもの
 

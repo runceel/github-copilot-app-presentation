@@ -1,0 +1,214 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="PresentationApp.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:PresentationApp"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    KeyDown="OnPageKeyDown"
+    IsTabStop="True"
+    mc:Ignorable="d">
+
+    <Grid Padding="24" RowSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <CommandBar
+            x:Name="PresenterCommandBar"
+            DefaultLabelPosition="Right"
+            IsOpen="False">
+            <AppBarButton
+                AutomationProperties.AutomationId="OpenMarkdownButton"
+                Command="{x:Bind ViewModel.OpenMarkdownCommand}"
+                Icon="OpenFile"
+                Label="Markdown を開く" />
+            <AppBarButton
+                AutomationProperties.AutomationId="StartPresentationButton"
+                Command="{x:Bind ViewModel.TogglePresentationCommand}"
+                Icon="FullScreen"
+                Label="{x:Bind ViewModel.PresenterButtonText, Mode=OneWay}" />
+            <CommandBar.Content>
+                <TextBlock
+                    AutomationProperties.AutomationId="SourceFileNameText"
+                    MaxWidth="720"
+                    Text="{x:Bind ViewModel.SourceDisplayName, Mode=OneWay}"
+                    TextTrimming="CharacterEllipsis"
+                    VerticalAlignment="Center" />
+            </CommandBar.Content>
+        </CommandBar>
+
+        <InfoBar
+            Grid.Row="1"
+            AutomationProperties.AutomationId="PresentationErrorInfoBar"
+            IsClosable="True"
+            IsOpen="{x:Bind ViewModel.IsErrorOpen, Mode=TwoWay}"
+            Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+            Severity="Error"
+            Title="表示を更新できませんでした" />
+
+        <Grid
+            x:Name="PreviewGrid"
+            Grid.Row="2"
+            ColumnSpacing="16"
+            RowSpacing="16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*" />
+                <ColumnDefinition Width="16" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition x:Name="CurrentPreviewRow" Height="*" />
+                <RowDefinition x:Name="NextPreviewRow" Height="0" />
+            </Grid.RowDefinitions>
+
+            <Border
+                x:Name="CurrentPreviewBorder"
+                Grid.Column="0"
+                SizeChanged="OnPreviewBorderSizeChanged"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource ControlCornerRadius}">
+                <Grid>
+                    <Grid
+                        x:Name="CurrentAspectHost"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+                        <WebView2
+                            x:Name="CurrentSlideWebView"
+                            AutomationProperties.AutomationId="CurrentSlideWebView"
+                            IsHitTestVisible="False"
+                            IsTabStop="False" />
+                    </Grid>
+                    <Border
+                        Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                        Visibility="{x:Bind local:MainPage.InvertVisibility(ViewModel.IsDeckLoaded), Mode=OneWay}">
+                        <StackPanel
+                            HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="8">
+                            <FontIcon
+                                FontSize="40"
+                                Glyph="&#xE8A5;" />
+                            <TextBlock
+                                Style="{StaticResource SubtitleTextBlockStyle}"
+                                Text="Markdown を開くとプレビューを表示します" />
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </Border>
+
+            <Border
+                x:Name="NextPreviewBorder"
+                Grid.Column="2"
+                SizeChanged="OnPreviewBorderSizeChanged"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource ControlCornerRadius}">
+                <Grid>
+                    <Grid
+                        x:Name="NextAspectHost"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+                        <WebView2
+                            x:Name="NextSlideWebView"
+                            AutomationProperties.AutomationId="NextSlideWebView"
+                            IsHitTestVisible="False"
+                            IsTabStop="False" />
+                    </Grid>
+                    <Border
+                        Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"
+                        Visibility="{x:Bind local:MainPage.NextPlaceholderVisibility(ViewModel.IsDeckLoaded, ViewModel.HasNextSlide), Mode=OneWay}">
+                        <TextBlock
+                            HorizontalAlignment="Center"
+                            Style="{StaticResource BodyStrongTextBlockStyle}"
+                            Text="次のスライドはありません"
+                            VerticalAlignment="Center" />
+                    </Border>
+                    <Border
+                        HorizontalAlignment="Left"
+                        VerticalAlignment="Top"
+                        Margin="12"
+                        Padding="8,4"
+                        Background="{ThemeResource SystemControlBackgroundAccentBrush}"
+                        CornerRadius="{ThemeResource ControlCornerRadius}"
+                        Visibility="{x:Bind local:MainPage.BoolToVisibility(ViewModel.IsDeckLoaded), Mode=OneWay}">
+                        <TextBlock
+                            Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"
+                            Style="{StaticResource CaptionTextBlockStyle}"
+                            Text="次のスライド" />
+                    </Border>
+                </Grid>
+            </Border>
+
+            <VisualStateManager.VisualStateGroups>
+                <VisualStateGroup>
+                    <VisualState x:Name="Wide">
+                        <VisualState.StateTriggers>
+                            <AdaptiveTrigger MinWindowWidth="1100" />
+                        </VisualState.StateTriggers>
+                    </VisualState>
+                    <VisualState x:Name="Compact">
+                        <VisualState.StateTriggers>
+                            <AdaptiveTrigger MinWindowWidth="0" />
+                        </VisualState.StateTriggers>
+                        <VisualState.Setters>
+                            <Setter Target="CurrentPreviewBorder.(Grid.ColumnSpan)" Value="3" />
+                            <Setter Target="NextPreviewBorder.(Grid.Column)" Value="0" />
+                            <Setter Target="NextPreviewBorder.(Grid.ColumnSpan)" Value="3" />
+                            <Setter Target="NextPreviewBorder.(Grid.Row)" Value="1" />
+                            <Setter Target="CurrentPreviewRow.Height" Value="2*" />
+                            <Setter Target="NextPreviewRow.Height" Value="*" />
+                        </VisualState.Setters>
+                    </VisualState>
+                </VisualStateGroup>
+            </VisualStateManager.VisualStateGroups>
+        </Grid>
+
+        <Grid Grid.Row="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Button
+                Grid.Column="0"
+                HorizontalAlignment="Right"
+                AutomationProperties.AutomationId="PreviousSlideButton"
+                Command="{x:Bind ViewModel.PreviousCommand}"
+                Content="前へ"
+                KeyboardAcceleratorPlacementMode="Hidden">
+                <Button.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Left" />
+                    <KeyboardAccelerator Key="PageUp" />
+                </Button.KeyboardAccelerators>
+            </Button>
+            <TextBlock
+                Grid.Column="1"
+                Margin="24,0"
+                AutomationProperties.AutomationId="PageCounterText"
+                Style="{StaticResource BodyStrongTextBlockStyle}"
+                Text="{x:Bind ViewModel.PageCounter, Mode=OneWay}"
+                VerticalAlignment="Center" />
+            <Button
+                Grid.Column="2"
+                HorizontalAlignment="Left"
+                AutomationProperties.AutomationId="NextSlideButton"
+                Command="{x:Bind ViewModel.NextCommand}"
+                Content="次へ"
+                KeyboardAcceleratorPlacementMode="Hidden">
+                <Button.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="Right" />
+                    <KeyboardAccelerator Key="PageDown" />
+                    <KeyboardAccelerator Key="Space" />
+                </Button.KeyboardAccelerators>
+            </Button>
+        </Grid>
+    </Grid>
+</Page>

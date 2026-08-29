@@ -375,6 +375,7 @@ body.presenter-mode #navPresent{display:none;}
 body.presenter-mode #navExport{display:none;}
 body.presenter-mode #navImport{display:none;}
 body.presenter-mode #navSourceMode{display:none;}
+body.preview-mode .nav,body.preview-mode .overview{display:none!important;}
 /* デッキ未読込のときは、読み込みボタンだけを残して導線にする。 */
 .nav.nav-empty > :not(#navImport){display:none;}
 
@@ -437,6 +438,7 @@ body.presenter-mode #navSourceMode{display:none;}
     overflow:visible;background:none;
     -webkit-print-color-adjust:exact;print-color-adjust:exact;
   }
+
   body.print-mode #stage{display:block;width:13.333333in;height:auto;}
   body.print-mode .deck{
     width:13.333333in;height:7.5in;min-height:7.5in;max-height:7.5in;
@@ -470,4 +472,12 @@ body.presenter-mode #navSourceMode{display:none;}
      720px page boundary and forces an extra blank page in the exported PDF. */
   body.print-mode .mermaidTooltip{display:none!important;}
   body.print-mode .nav,body.print-mode .overview{display:none!important;}
+}
+
+@media (forced-colors:active){
+  body{background:Canvas;color:CanvasText;}
+  .deck{background:Canvas!important;color:CanvasText;border:1px solid CanvasText;}
+  .deck::before{background:Highlight;}
+  .deck a{color:LinkText;}
+  .deck pre,.deck code,.deck table,.deck th,.deck td{border-color:CanvasText;}
 }

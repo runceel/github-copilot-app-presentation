@@ -199,6 +199,17 @@ const THEME_TOKENS = Object.freeze({
   bg: "var(--bg)",
 });
 const LITERAL_COLORS = /^(?:#[0-9a-f]{3,8}|black|white|transparent|none)$/i;
+
+function localAssetUrl(documentRef, path) {
+  const normalized = String(path || "").replace(/^\/+/, "");
+  try {
+    const base = new URL(documentRef.baseURI);
+    if (base.protocol === "http:" || base.protocol === "https:") {
+      return new URL(normalized, base).pathname;
+    }
+  } catch (_) {}
+  return `/${normalized}`;
+}
 const STYLE_KEYS = new Set([
   "fill",
   "stroke",
@@ -3451,7 +3462,7 @@ function renderIcon(documentRef, element) {
         y: 0,
         width: 24,
         height: 24,
-        href: `/${element.icon}`,
+        href: localAssetUrl(documentRef, element.icon),
         preserveAspectRatio: "xMidYMid meet",
       }),
     );
@@ -3620,7 +3631,7 @@ function renderImage(documentRef, element, clipId) {
       y: element.y,
       width: element.width,
       height: element.height,
-      href: `/${element.src}`,
+      href: localAssetUrl(documentRef, element.src),
       preserveAspectRatio,
       "clip-path": `url(#${clipId})`,
       "aria-hidden": "true",

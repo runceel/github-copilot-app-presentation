@@ -89,3 +89,39 @@ jobs:
             test-results/
           retention-days: 7
           if-no-files-found: ignore
+
+  desktop:
+    name: Presentation Desktop
+    runs-on: windows-latest
+
+    steps:
+      - name: チェックアウト
+        uses: actions/checkout@v5
+
+      - name: .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Core テスト
+        run: dotnet test apps\Presentation.Desktop\tests\Presentation.Core.Tests\Presentation.Core.Tests.csproj -c Release
+
+      - name: WinUI build
+        run: dotnet build apps\Presentation.Desktop\src\Presentation.App\Presentation.App.csproj -c Release -r win-x64 -p:Platform=x64
+
+      - name: x64 portable publish
+        shell: pwsh
+        run: apps\Presentation.Desktop\scripts\Publish.ps1 -Architecture x64
+
+      - name: ARM64 portable publish
+        shell: pwsh
+        run: apps\Presentation.Desktop\scripts\Publish.ps1 -Architecture arm64
+
+      - name: ポータブル成果物
+        uses: actions/upload-artifact@v5
+        with:
+          name: presentation-desktop
+          path: |
+            apps/Presentation.Desktop/artifacts/*.zip
+            apps/Presentation.Desktop/artifacts/*.sha256
+          retention-days: 7
