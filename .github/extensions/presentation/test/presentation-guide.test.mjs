@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  architectureValidationErrors,
   createPresentationHooks,
   deckValidationFeedback,
   readGuide,
@@ -153,4 +154,97 @@ test("deck validation finds an unclosed architecture fence after a valid block",
   ].join("\n");
 
   assert.match(deckValidationFeedback([slide]), /コードフェンスが閉じられていません/);
+});
+
+test("architecture validation returns structured errors for the whole deck", () => {
+  const slides = [
+    [
+      "---",
+      "layout: title",
+      "---",
+      "```architecture",
+      '{"elements":[{"type":"node","id":"missing-size"}]}',
+      "```",
+    ].join("\n"),
+    [
+      "---",
+      "layout: center",
+      "---",
+      "```architecture",
+      '{"elements":[]}',
+      "```",
+      "```architecture",
+      "{",
+      "```",
+    ].join("\n"),
+    [
+      "---",
+      "layout: center",
+      "---",
+      "```architecture",
+      '{"elements":[]',
+    ].join("\n"),
+  ];
+
+  const errors = architectureValidationErrors(slides);
+  assert.equal(errors.length, 4);
+  assert.deepEqual(
+    errors.map(({ slideIndex, page, blockIndex, architecture, code }) => ({
+      slideIndex,
+      page,
+      blockIndex,
+      architecture,
+      code,
+    })),
+    [
+      {
+        slideIndex: 0,
+        page: 1,
+        blockIndex: 0,
+        architecture: 1,
+        code: "invalid_architecture",
+      },
+      {
+        slideIndex: 1,
+        page: 2,
+        blockIndex: 1,
+        architecture: 2,
+        code: "invalid_architecture",
+      },
+      {
+        slideIndex: 2,
+        page: 3,
+        blockIndex: 0,
+        architecture: 1,
+        code: "invalid_architecture",
+      },
+      {
+        slideIndex: 2,
+        page: 3,
+        blockIndex: 0,
+        architecture: 1,
+        code: "unclosed_architecture_fence",
+      },
+    ],
+  );
+  assert.match(errors[0].message, /finite number/);
+  assert.match(errors[1].message, /invalid JSON/);
+  assert.match(errors[2].message, /invalid JSON/);
+  assert.match(errors[3].message, /閉じられていません/);
+});
+
+test("architecture validation can target one slide by zero-based index", () => {
+  const slides = [
+    "```architecture\n{\n```",
+    "```architecture\n{\"elements\":[]}\n```",
+    "```architecture\n{\"elements\":[]",
+  ];
+
+  assert.deepEqual(architectureValidationErrors(slides, { index: 1 }), []);
+  const errors = architectureValidationErrors(slides, { index: 2 });
+  assert.equal(errors.length, 2);
+  assert.equal(errors[0].slideIndex, 2);
+  assert.equal(errors[0].page, 3);
+  assert.equal(errors[0].code, "invalid_architecture");
+  assert.equal(errors[1].code, "unclosed_architecture_fence");
 });

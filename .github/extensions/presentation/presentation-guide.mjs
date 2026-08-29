@@ -183,7 +183,72 @@ function architectureSources(markdown) {
       lines.push(line);
     }
   }
-  return { sources, unclosed: Boolean(fence) };
+  return {
+    sources,
+    unclosed: Boolean(fence),
+    unclosedBlockIndex: sources.length,
+    unclosedSource: fence ? lines.join("\n") : "",
+  };
+}
+
+function architectureError(slideIndex, blockIndex, code, message) {
+  return {
+    slideIndex,
+    page: slideIndex + 1,
+    blockIndex,
+    architecture: blockIndex + 1,
+    code,
+    message,
+  };
+}
+
+export function architectureValidationErrors(slides, { index } = {}) {
+  const targets = index === undefined
+    ? slides.map((slide, slideIndex) => ({ slide, slideIndex }))
+    : [{ slide: slides[index], slideIndex: index }];
+  const errors = [];
+
+  for (const { slide, slideIndex } of targets) {
+    const architecture = architectureSources(slide);
+    for (const [blockIndex, source] of architecture.sources.entries()) {
+      try {
+        parseArchitecture(source);
+      } catch (error) {
+        errors.push(
+          architectureError(
+            slideIndex,
+            blockIndex,
+            "invalid_architecture",
+            error?.message || String(error),
+          ),
+        );
+      }
+    }
+    if (architecture.unclosed) {
+      try {
+        parseArchitecture(architecture.unclosedSource);
+      } catch (error) {
+        errors.push(
+          architectureError(
+            slideIndex,
+            architecture.unclosedBlockIndex,
+            "invalid_architecture",
+            error?.message || String(error),
+          ),
+        );
+      }
+      errors.push(
+        architectureError(
+          slideIndex,
+          architecture.unclosedBlockIndex,
+          "unclosed_architecture_fence",
+          "architecture コードフェンスが閉じられていません。末尾に ``` を追加してください。",
+        ),
+      );
+    }
+  }
+
+  return errors;
 }
 
 export function deckValidationFeedback(slides) {
@@ -194,21 +259,17 @@ export function deckValidationFeedback(slides) {
         `slide ${slideIndex + 1}: front matter がありません。必要な deck/layout/page/total/size を先頭の --- ブロックへ追加してください。`,
       );
     }
-    const architecture = architectureSources(slide);
-    for (const [blockIndex, source] of architecture.sources.entries()) {
-      try {
-        parseArchitecture(source);
-      } catch (error) {
-        warnings.push(
-          `slide ${slideIndex + 1}, architecture ${blockIndex + 1}: ${error?.message || error}。presentation_guide の architecture-dsl / architecture-schema を確認してください。`,
-        );
-      }
-    }
-    if (architecture.unclosed) {
-      warnings.push(
-        `slide ${slideIndex + 1}: architecture コードフェンスが閉じられていません。末尾に \`\`\` を追加してください。`,
-      );
-    }
   });
+  for (const error of architectureValidationErrors(slides)) {
+    if (error.code === "unclosed_architecture_fence") {
+      warnings.push(
+        `slide ${error.page}: ${error.message}`,
+      );
+      continue;
+    }
+    warnings.push(
+      `slide ${error.page}, architecture ${error.architecture}: ${error.message}。presentation_guide の architecture-dsl / architecture-schema を確認してください。`,
+    );
+  }
   return warnings.length ? `スライド検証フィードバック:\n- ${warnings.join("\n- ")}` : undefined;
 }
