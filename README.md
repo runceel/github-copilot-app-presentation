@@ -48,11 +48,17 @@ Gist は小さな Extension の共有には便利ですが、単一ファイル�
 | --- | --- |
 | `.github/extensions/presentation/` | Copilot canvas Extension。本体、renderer、同梱 OSS を提供します。 |
 | `.github/skills/presentation/SKILL.md` | Markdown を全スライドの断片へ変換し、Extension を起動する任意導入の Skill です。 |
+| `apps/Presentation.Desktop/` | Markdown を開いてプレビューし、Edge / Chrome の発表画面を起動する WinUI 3 デスクトップアプリです。 |
 | `slides.md` などのルート Markdown | すぐ試せるサンプルおよびプレゼン原稿です。利用者の資料に置き換えられます。 |
 
 Skill は便利な起動手順であり、Extension 本体の代替ではありません。Skill を導入しない
 場合も、`presentation` canvas を直接開いて `slides` を渡せます。Extension と Skill の
 変更は独立してリリースできるため、互換性を壊す変更はリリースノートに記載します。
+
+GitHub Copilot App を開かずに発表する場合は
+[Presentation Desktop](./apps/Presentation.Desktop/README.md) を利用できます。Markdown を
+ファイルダイアログから開くと現在と次のスライドをプレビューし、同期された Edge / Chrome
+の app mode ウィンドウを発表画面として起動します。
 
 ## 最小操作例
 

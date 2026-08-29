@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+artifacts/
+test-results/
+tests/Presentation.UiTests/screenshots/
+tests/Presentation.UiTests/test-results.json
+*.user

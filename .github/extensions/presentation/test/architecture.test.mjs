@@ -1383,6 +1383,31 @@ test("user-supplied icons render as a sandboxed same-origin image reference", ()
   assert.deepEqual(labels, [...assets.map((_, index) => `a${index}`), "cloud icon, builtin"]);
 });
 
+test("asset references follow a nested loopback renderer base path", () => {
+  const model = parseArchitecture(
+    JSON.stringify({
+      elements: [
+        {
+          type: "node",
+          id: "logo",
+          x: 20,
+          y: 20,
+          width: 220,
+          height: 120,
+          icon: "assets/icons/logo.svg",
+        },
+      ],
+    }),
+  );
+  const documentRef = new FakeDocument();
+  documentRef.baseURI = "http://127.0.0.1:1234/session-token/?preview=1";
+  const image = descendants(renderArchitectureDiagram(model, documentRef)).find(
+    (node) => node.tagName === "image",
+  );
+
+  assert.equal(image.attributes.get("href"), "/session-token/assets/icons/logo.svg");
+});
+
 test("standalone images support safe fit modes, accessibility, layout, and connectors", () => {
   const model = parseArchitecture(
     JSON.stringify({

@@ -51,6 +51,17 @@ function nonEmpty(value) {
   return typeof value === "string" && value.trim().length > 0;
 }
 
+function localAssetUrl(path, documentRef = document) {
+  const normalized = String(path || "").replace(/^\/+/, "");
+  try {
+    const base = new URL(documentRef.baseURI);
+    if (base.protocol === "http:" || base.protocol === "https:") {
+      return new URL(normalized, base).pathname;
+    }
+  } catch (_) {}
+  return `/${normalized}`;
+}
+
 // --- themes ----------------------------------------------------------------
 // The deck theme is chosen by the agent (load_deck `theme`) and delivered via
 // /state; slide front matter may override it unless the deck theme was explicit.
@@ -75,6 +86,8 @@ let lastMermaidTheme = null;
 let architectureEditMode = false;
 let architectureDetailedEdit = false;
 let presenterMode = false;
+let previewMode = false;
+let previewOffset = 0;
 // 直近に描画したスライドの Markdown。編集モードの切り替えで描き直すために持つ。
 let lastMarkdown = "";
 // 描画中のスライドに取り付けた編集 UI。再描画のたびに破棄する。
@@ -415,6 +428,9 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
   // event handlers, javascript: URLs) while keeping safe formatting such as the
   // <br> tags the title slide relies on.
   bodyEl.innerHTML = window.DOMPurify.sanitize(window.marked.parse(body));
+  bodyEl.querySelectorAll('img[src^="/assets/"]').forEach((image) => {
+    image.setAttribute("src", localAssetUrl(image.getAttribute("src")));
+  });
   applyEmojiShortcodes(bodyEl);
   const slideTitle = moveLeadingSlideTitle(
     header,
@@ -952,7 +968,8 @@ async function openDetailedArchitectureEditor(index, block) {
 }
 
 async function fetchState() {
-  const res = await fetch("./state", { cache: "no-store" });
+  const stateUrl = previewOffset ? `./state?offset=${previewOffset}` : "./state";
+  const res = await fetch(stateUrl, { cache: "no-store" });
   if (!res.ok) return;
   const data = await res.json();
   if (typeof data.theme === "string") deckTheme = normalizeTheme(data.theme);
@@ -1008,6 +1025,7 @@ async function fetchState() {
 // Server-authoritative: every nav action POSTs to /navigate, then immediately
 // re-fetches /state for an instant update (without waiting for the SSE nudge).
 async function navigate(payload) {
+  if (previewMode) return;
   try {
     const res = await fetch("./navigate", {
       method: "POST",
@@ -1121,7 +1139,7 @@ function updateNav() {
   // デッキが無いときも、presenter 以外では読み込みボタンだけを残して出す
   // （まだスライドが無い状態から Markdown をインポートできるようにする）。
   const empty = navTotal <= 0;
-  nav.hidden = empty && presenterMode;
+  nav.hidden = previewMode || (empty && presenterMode);
   nav.classList.toggle("nav-empty", empty);
   const counter = document.getElementById("navCounter");
   if (counter) {
@@ -1504,7 +1522,12 @@ function init() {
     initPrint(params).catch(reportPrintBootstrapFailure);
     return;
   }
-  if (params.get("present") === "1") {
+  if (params.get("preview") === "1") {
+    previewMode = true;
+    presenterMode = true;
+    previewOffset = Math.max(-1, Math.min(1, Number(params.get("offset")) || 0));
+    document.body.classList.add("presenter-mode", "preview-mode");
+  } else if (params.get("present") === "1") {
     presenterMode = true;
     document.body.classList.add("presenter-mode");
   } else if (params.get("architectureEdit") === "1") {
@@ -1517,7 +1540,7 @@ function init() {
   }
 
   updateArchitectureEditButton();
-  wireControls();
+  if (!previewMode) wireControls();
   window.addEventListener("resize", scheduleLayoutRefresh);
   if (document.fonts?.ready) {
     document.fonts.ready.then(scheduleLayoutRefresh).catch(() => {});

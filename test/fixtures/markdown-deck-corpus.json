@@ -1,0 +1,32 @@
+[
+  {
+    "name": "deck metadata and title layout",
+    "markdown": "---\ndeck: Demo\nlayout: title\n---\n# Cover\n\n---\n\n## Body",
+    "slides": [
+      "---\ndeck: Demo\nlayout: title\n---\n# Cover",
+      "---\ndeck: Demo\npage: 2\ntotal: 2\n---\n## Body"
+    ]
+  },
+  {
+    "name": "separator inside a code fence",
+    "markdown": "## Code\n\n```text\n---\n```",
+    "slides": [
+      "---\npage: 1\ntotal: 1\n---\n## Code\n\n```text\n---\n```"
+    ]
+  },
+  {
+    "name": "per slide front matter overrides inherited metadata",
+    "markdown": "---\ndeck: Demo\ntheme: light\n---\n# One\n\n---\nlayout: section\nkicker: Next\n---\n\n# Two",
+    "slides": [
+      "---\ndeck: Demo\ntheme: light\npage: 1\ntotal: 2\n---\n# One",
+      "---\ndeck: Demo\ntheme: light\nlayout: section\nkicker: Next\n---\n# Two"
+    ]
+  },
+  {
+    "name": "metadata keys remain ASCII compatible with JavaScript",
+    "markdown": "---\ndéck: Value\n---\n# Body",
+    "slides": [
+      "---\npage: 1\ntotal: 1\n---\ndéck: Value\n---\n# Body"
+    ]
+  }
+]
