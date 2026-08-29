@@ -30,7 +30,7 @@ canvas iframe（renderer/）
 
 - **全スライドはプレゼン開始時に `open_canvas` の `input`（`slides`）で一括登録**します。open ハンドラーが URL を返す前にデッキを適用するため、canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。発表途中の差し替え・テーマ変更は `load_deck` で行います。**ページ送りは canvas 内のボタン（◀ ▶）・スライド面の余白を左クリック/右クリックする操作・矢印キー・スライド一覧（☰）で完結**し、その操作は拡張機能のループバックサーバー（`POST /navigate`）に送られて全クライアントへ反映されます。余白の左クリックは次のスライド、右クリックは前のスライドです。本文、リンク、画像、ナビゲーション UI、スライド一覧では既存の操作を優先し、右クリックのコンテキストメニューも維持します。外部サーバーや `localhost` ポートの手動起動は不要です。
 - Windows では、**Surface Pen の末尾ボタンを 1 回押すと次へ、長押しすると前へ**移動し、**2 回押し（ダブルクリック）で外部プレゼン画面を起動 / 終了**します。末尾ボタンが生成する `Win+F20`（1 回押し）・`Win+F19`（2 回押し）・`Win+F18`（長押し）を小さな Windows PowerShell ヘルパーのキーボードフックで受け取り、既存のナビゲーション処理と外部プレゼン画面の制御へ渡します。ジェスチャーの判定は Windows 側が行い、2 回押しのときに 1 回押しの `Win+F20` は送られないため、ページ送りの応答が遅くなることはありません。公式 `PenButtonListener` に必要なアプリのパッケージ ID には依存しません。
-- 配色は **dark（既定）/ light / microsoft / custom**。`open` の `input` または `load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。`microsoft` は組み込みの配色プリセット、`custom` は `themeFile` または front matter の `theme-file` で指定した CSS カスタムプロパティ専用ファイルです。テーマ指定は **明示的な依頼（canvas の theme） > Markdown front matter > dark** の順です。テーマファイルは元 Markdown と同じフォルダーを基準にした相対パスで、workspace 外や任意セレクターは拒否します。CSS と同じフォルダーに `theme.json` があれば、表紙背景・表紙/背表紙ロゴ・著作権表示を自動的に読み込みます。**どのテーマでもデッキ末尾に背表紙（`layout: backcover`）が自動追加**されます（既に背表紙があれば追加しません）。ロゴと著作権表示はメタデータまたは front matter で明示したときだけ表示されます。
+- 配色は **dark（既定）/ light / microsoft / custom**。`open` の `input` または `load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。`microsoft` は組み込みの配色プリセット、`custom` は `themeFile` または front matter の `theme-file` で指定した CSS カスタムプロパティ専用ファイルです。テーマ指定は **明示的な依頼（canvas の theme） > Markdown front matter > dark** の順です。テーマファイルは元 Markdown と同じフォルダー、リポジトリルートの順で同じ相対パスを探索します。これによりリポジトリ共通テーマを、Markdown ごとの同名テーマで上書きできます。workspace 外や任意セレクターは拒否します。CSS と同じフォルダーに `theme.json` があれば、表紙背景・表紙/背表紙ロゴ・著作権表示を自動的に読み込みます。**どのテーマでもデッキ末尾に背表紙（`layout: backcover`）が自動追加**されます（既に背表紙があれば追加しません）。ロゴと著作権表示はメタデータまたは front matter で明示したときだけ表示されます。
 - カスタムテーマの詳細は [`docs/custom-theme-authoring.md`](docs/custom-theme-authoring.md) を参照してください。生成 AI からは `presentation_guide` の `custom-themes` / `theme-schema` トピックで同じ情報を取得できます。`schema/theme-v1.json` は標準カスタムプロパティ、`schema/theme-metadata-v1.schema.json` は `theme.json` の機械可読スキーマです。
 - コンテンツサイズは **auto（既定）/ normal / large / xlarge** の4段階。`auto` はコード・表・画像・Mermaidを含まない通常スライドを計測し、余白が大きい場合だけ安全な範囲で拡大します。
 - ナビゲーション UI（操作バー・✎ 編集モード・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。操作バーの ✎ を押すと `edit_architecture` と同じ位置調整モードを切り替えられます。📂 から読み込んだ Markdown の図では、位置調整ツールバーの **詳細編集**から専用の `architecture-editor` canvas を開けます。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。余白クリックは通常の canvas/presenter 表示でのみ有効で、PDF 印刷モードでは登録されません。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
@@ -95,8 +95,8 @@ layout: section    ← このページだけ章扉
 ```
 
 読み込んだファイル名は `sourceName` として保持されるので、PDF Export の
-`<元ファイル名>.pdf`、Markdown 隣接 `assets/`、相対指定の `theme-file` もそのまま
-解決できます。
+`<元ファイル名>.pdf`、Markdown 隣接 `assets/`、Markdown 相対を優先してリポジトリルートへ
+フォールバックする `theme-file` もそのまま解決できます。
 workspace 外のファイルは選べません（OS のファイルダイアログは使いません）。
 
 ## AI 向け作成ガイド
@@ -124,6 +124,7 @@ Extension 単体をユーザースコープへ導入した場合も同じ仕様�
 | `layout` | 表紙は `title`、セクション区切りは `section`、背表紙は `backcover`、見出しと本文をまとめて上下中央に置くなら `center`。通常スライド（省略時）は見出しも本文も上寄せ |
 | `size` | `auto`（既定）/ `normal` / `large` / `xlarge` |
 | `theme` | スライド単位の上書き。通常はデッキの `theme` を使う |
+| `theme-file` | `custom` 用 CSS。Markdown と同じフォルダー、リポジトリルートの順で同じ相対パスを探索 |
 | `logo` / `copyright` | `backcover` のメタデータ既定値を上書きする表示内容 |
 
 先頭スライドは `layout: title` の表紙として作ります。デッキ末尾の
@@ -172,6 +173,13 @@ layout: section
 ### テーマの選び方
 
 テーマはデッキ全体の `theme` に指定します。指定がなければ `dark` を使います。
+
+`custom` の `theme-file` は、元 Markdown と同じフォルダーからの相対パスを先に、
+リポジトリルートからの同じ相対パスを次に探索します。リポジトリ共通テーマを
+`themes/brand/theme.css` に置き、必要なデッキだけ
+`<Markdown のフォルダー>/themes/brand/theme.css` で上書きできます。AI が
+`open` / `load_deck` を使う場合は、探索基準を確定するため `sourceName` に元 Markdown の
+workspace 相対パスを渡してください。
 
 | テーマ | 選択基準 |
 | --- | --- |

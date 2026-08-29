@@ -96,7 +96,7 @@ AI がその代わりに使うものではありません）。
 
 ## 主なアクション
 
-> **プレゼンの開始は、`open_canvas`（`canvasId: "presentation"`）の `input` に `slides`（必要なら `index` / `theme` / `sourceName`）を渡してデッキごと開く**のが基本です。`sourceName` には元 Markdown の workspace 相対パスを渡してください。Markdown 隣接 `assets/` と相対 `theme-file` の基準になり、Canvas のプリンターアイコンから `<元ファイル名>.pdf` を保存できます。こうすると canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。下表のアクションは、開始後の操作・更新に使います。
+> **プレゼンの開始は、`open_canvas`（`canvasId: "presentation"`）の `input` に `slides`（必要なら `index` / `theme` / `sourceName`）を渡してデッキごと開く**のが基本です。`sourceName` には元 Markdown の workspace 相対パスを渡してください。Markdown 隣接 `assets/` と `theme-file` の Markdown 相対探索の基準になり、Canvas のプリンターアイコンから `<元ファイル名>.pdf` を保存できます。こうすると canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。下表のアクションは、開始後の操作・更新に使います。
 
 | アクション | 用途 |
 | --- | --- |
@@ -160,7 +160,7 @@ Architecture DSL v1 の文法と既存位置調整モードの stable な保存�
 | `layout` | `title` は表紙、`section` はセクション区切り、`backcover` は背表紙、`center` は見出し＋本文をまとめて上下中央に置くレイアウト。`title` / `backcover` にはカスタムテーマの `theme.json` が反映される。通常スライドは省略（見出しも本文も上寄せ） |
 | `size` | コンテンツサイズ。`auto`（既定）/`normal`/`large`/`xlarge`。`auto` は余白の多い通常スライドだけを canvas が安全な範囲で拡大する |
 | `theme` | （任意・上書き用）このスライドだけ配色テーマを変える。`dark`/`light`/`microsoft`/`custom`。明示的な canvas の `theme` がある場合はそちらが優先 |
-| `theme-file` | `custom` 用。CSS カスタムプロパティだけを定義したファイルを、元 Markdown と同じフォルダーを基準にした相対パスで指定する（例: `./themes/brand/theme.css`）。同じフォルダーの `theme.json` は自動読込 |
+| `theme-file` | `custom` 用。CSS カスタムプロパティだけを定義したファイルを相対パスで指定する（例: `themes/brand/theme.css`）。元 Markdown と同じフォルダー、リポジトリルートの順で探索し、同じフォルダーの `theme.json` は自動読込 |
 | `logo` | （`layout: backcover` のみ）背表紙左上の文字列。`theme.json` のロゴより優先し、空にすると非表示 |
 | `copyright` | （`layout: backcover` のみ）背表紙左下の著作権表示。`theme.json` の文言より優先し、空にすると非表示 |
 
@@ -192,12 +192,18 @@ Architecture DSL v1 の文法と既存位置調整モードの stable な保存�
 ```markdown
 ---
 theme: custom
-theme-file: ./themes/brand/theme.css
+theme-file: themes/brand/theme.css
 ---
 ## ブランドテーマ
 ```
 
 `theme.css` には `--bg: #101820;` のような CSS カスタムプロパティだけを書きます。セレクターや `url()` は使用できません。表紙背景・表紙/背表紙ロゴ・著作権表示が必要な場合は、同じフォルダーに `theme.json` と `assets/` を置きます。画像は `theme.json` 基準の `assets/...` 相対パスで指定し、テーマフォルダー外へは出せません。
+
+`theme-file` は Markdown と同じフォルダーからの相対パスを先に、リポジトリルートからの
+同じ相対パスを次に探索します。リポジトリ共通の
+`themes/brand/theme.css` を既定にし、必要な Markdown のフォルダーだけ
+`themes/brand/theme.css` を置けばデッキ単位で上書きできます。`open` / `load_deck` では
+探索基準を確定するため `sourceName` を必ず渡します。
 
 > **どのテーマでも、デッキの末尾に背表紙（Closing logo slide）が自動で 1 枚追加されます。** 最終スライドが `layout: backcover` でなければ拡張機能が既定の背表紙を補います（すでにある場合は追加しません）。agent 側で背表紙を書く必要はありません。ロゴと著作権表示は `theme.json` または背表紙 front matter で明示したときだけ表示されます。
 
@@ -298,7 +304,7 @@ DSL の機械可読な JSON Schema は
 
 - `canvasId`: `"presentation"`
 - `instanceId`: `"presentation"`
-- `input`: `{ "slides": ["<スライド1>", "<スライド2>", ...], "index": 0, "theme": "dark", "sourceName": "path/to/slides.md" }`（`index` は省略可・既定 0、`theme` は省略可・既定 `dark`。手順 3 で決めたテーマを渡す。`sourceName` は元 Markdown の workspace 相対パス。Markdown 隣接 `assets/` と相対 `theme-file` の解決に必須）
+- `input`: `{ "slides": ["<スライド1>", "<スライド2>", ...], "index": 0, "theme": "dark", "sourceName": "path/to/slides.md" }`（`index` は省略可・既定 0、`theme` は省略可・既定 `dark`。手順 3 で決めたテーマを渡す。`sourceName` は元 Markdown の workspace 相対パス。Markdown 隣接 `assets/` と、Markdown 相対を優先してリポジトリルートへフォールバックする `theme-file` の解決に必須）
 
 URL の指定は不要で、拡張機能が表示先を用意します。外部サーバーの起動や生存確認は不要です。これでデッキが登録され、最初のスライドが canvas に表示されます。**以降のページ送りは canvas 内の操作で完結する**ので、agent は通常それ以上の操作をしません（次の手順 5 を参照）。
 
@@ -499,4 +505,5 @@ total: 8
 - 「デッキ未登録」エラー（`goto_slide` が `no_deck` を返す）のとき: 先に `open` の `input`（または `load_deck`）でスライド配列を登録する。
 - 拡張機能が見つからない／アクションが無いとき: `.github/extensions/presentation/` が存在するか確認し、必要なら拡張機能を再読み込みする。canvas 一覧に `presentation` が出ていれば利用可能。
 - 画像が出ないとき: ローカル画像は元 Markdown と同じ場所またはリポジトリ直下の `assets/` に置き、`/assets/...` の絶対パスで参照しているか、`open` / `load_deck` の `sourceName` に元 Markdown の workspace 相対パスを渡したか確認する。
+- カスタムテーマが見つからないとき: `theme-file` と同じ相対パスのファイルが元 Markdown のフォルダーまたはリポジトリルートにあるか、`sourceName` が元 Markdown を指しているか確認する。両方にある場合は Markdown 側が優先される。
 - Mermaid 図が出ないとき: 記法の誤りがあってもスライドは空白にならず、他の本文はそのまま表示される。記法を見直して再送する。
