@@ -12,7 +12,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
     private readonly PresentationServer _server;
     private readonly DeckLoader _loader;
     private readonly DeckWatcher _watcher;
-    private readonly BrowserPresenterService _browserPresenter;
+    private readonly PresenterWindowService _presenterWindow;
     private readonly FilePickerService _filePicker;
     private readonly Func<nint> _windowHandle;
     private readonly SynchronizationContext _uiContext;
@@ -24,7 +24,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
         PresentationServer server,
         DeckLoader loader,
         DeckWatcher watcher,
-        BrowserPresenterService browserPresenter,
+        PresenterWindowService presenterWindow,
         FilePickerService filePicker,
         Func<nint> windowHandle)
     {
@@ -32,14 +32,15 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
         _server = server;
         _loader = loader;
         _watcher = watcher;
-        _browserPresenter = browserPresenter;
+        _presenterWindow = presenterWindow;
         _filePicker = filePicker;
         _windowHandle = windowHandle;
         _uiContext = SynchronizationContext.Current
             ?? throw new InvalidOperationException("The presenter must be created on the UI thread.");
 
         _session.Changed += OnSessionChanged;
-        _browserPresenter.StatusChanged += OnPresenterStatusChanged;
+        _presenterWindow.StatusChanged += OnPresenterStatusChanged;
+        _presenterWindow.InitializationFailed += OnPresenterInitializationFailed;
     }
 
     [ObservableProperty]
@@ -108,15 +109,15 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
     {
         try
         {
-            if (_browserPresenter.IsRunning)
+            if (_presenterWindow.IsRunning)
             {
-                await _browserPresenter.StopAsync();
+                await _presenterWindow.StopAsync();
             }
             else
             {
                 var baseUri = _server.BaseUri
                     ?? throw new InvalidOperationException("The presentation server is not ready.");
-                await _browserPresenter.OpenAsync(baseUri);
+                await _presenterWindow.OpenAsync(baseUri);
             }
         }
         catch (InvalidOperationException error)
@@ -139,9 +140,10 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
     public async ValueTask DisposeAsync()
     {
         _session.Changed -= OnSessionChanged;
-        _browserPresenter.StatusChanged -= OnPresenterStatusChanged;
+        _presenterWindow.StatusChanged -= OnPresenterStatusChanged;
+        _presenterWindow.InitializationFailed -= OnPresenterInitializationFailed;
         await _watcher.DisposeAsync();
-        await _browserPresenter.DisposeAsync();
+        await _presenterWindow.DisposeAsync();
         await _server.DisposeAsync();
         _loadGate.Dispose();
     }
@@ -249,6 +251,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
     private void OnPresenterStatusChanged(object? sender, EventArgs args) =>
         PostToUi(UpdatePresenterStatus);
 
+    private void OnPresenterInitializationFailed(object? sender, string message) =>
+        ShowError(message);
+
     private void ApplySnapshot(PresentationSnapshot snapshot)
     {
         IsDeckLoaded = snapshot.Total > 0;
@@ -263,7 +268,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
 
     private void UpdatePresenterStatus()
     {
-        IsPresenterRunning = _browserPresenter.IsRunning;
+        IsPresenterRunning = _presenterWindow.IsRunning;
         PresenterButtonText = IsPresenterRunning ? "発表を終了" : "発表を開始";
     }
 

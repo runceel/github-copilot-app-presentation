@@ -39,6 +39,7 @@ $required = @(
     "App.xbf",
     "MainPage.xbf",
     "MainWindow.xbf",
+    "PresenterWindow.xbf",
     "PresentationApp.pri",
     "Assets\AppIcon.ico",
     "Web\index.html",

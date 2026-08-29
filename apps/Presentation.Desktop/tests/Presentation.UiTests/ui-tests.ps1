@@ -1,10 +1,13 @@
 param(
     [Parameter(Mandatory)]
     [int]$AppPid,
-    [string]$FixturePath = (Join-Path $PSScriptRoot "fixtures\live-reload.md")
+    [string]$FixturePath = ""
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($FixturePath)) {
+    $FixturePath = Join-Path $PSScriptRoot "fixtures\live-reload.md"
+}
 $results = @()
 $tempDeck = Join-Path $env:TEMP "presentation-ui-test-$([guid]::NewGuid().ToString('N')).md"
 $screenshotDir = Join-Path $PSScriptRoot "screenshots"
@@ -27,6 +30,49 @@ public static class PresentationUiNative {
     public static extern IntPtr SendMessageText(IntPtr hWnd, uint message, IntPtr wParam, string lParam);
     [DllImport("user32.dll", EntryPoint = "SendMessageW")]
     public static extern IntPtr SendMessage(IntPtr hWnd, uint message, IntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")]
+    public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
+    [DllImport("user32.dll")]
+    private static extern bool GetGUIThreadInfo(uint threadId, ref GUITHREADINFO info);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GUITHREADINFO {
+        public int Size;
+        public uint Flags;
+        public IntPtr Active;
+        public IntPtr Focus;
+        public IntPtr Capture;
+        public IntPtr MenuOwner;
+        public IntPtr MoveSize;
+        public IntPtr Caret;
+        public RECT CaretRect;
+    }
+
+    public static void SendKey(IntPtr windowHandle, int virtualKey) {
+        var info = new GUITHREADINFO();
+        info.Size = Marshal.SizeOf<GUITHREADINFO>();
+        var threadId = GetWindowThreadProcessId(windowHandle, IntPtr.Zero);
+        if (!GetGUIThreadInfo(threadId, ref info) || info.Focus == IntPtr.Zero) {
+            throw new InvalidOperationException("The presenter does not have a focused WebView2 window.");
+        }
+
+        SendMessage(info.Focus, 0x0100, (IntPtr)virtualKey, (IntPtr)1);
+        SendMessage(
+            info.Focus,
+            0x0101,
+            (IntPtr)virtualKey,
+            new IntPtr(unchecked((long)0xC0000001)));
+    }
 }
 "@
 
@@ -57,6 +103,32 @@ function Get-UiElements {
             Get-UiElements -Elements $element.children
         }
     }
+}
+
+function Get-WindowBounds {
+    param([IntPtr]$WindowHandle)
+    $rect = [PresentationUiNative+RECT]::new()
+    if (-not [PresentationUiNative]::GetWindowRect($WindowHandle, [ref]$rect)) {
+        throw "Could not read window bounds for $WindowHandle."
+    }
+    return [pscustomobject]@{
+        left = $rect.Left
+        top = $rect.Top
+        right = $rect.Right
+        bottom = $rect.Bottom
+    }
+}
+
+function Test-SameBounds {
+    param(
+        [object]$Left,
+        [object]$Right,
+        [int]$Tolerance = 2
+    )
+    return [Math]::Abs($Left.left - $Right.left) -le $Tolerance -and
+        [Math]::Abs($Left.top - $Right.top) -le $Tolerance -and
+        [Math]::Abs($Left.right - $Right.right) -le $Tolerance -and
+        [Math]::Abs($Left.bottom - $Right.bottom) -le $Tolerance
 }
 
 function Open-Markdown {
@@ -116,27 +188,73 @@ try {
         Invoke-WinApp ui wait-for PresentationErrorInfoBar -a $AppPid --gone -t 5000 | Out-Null
     }
 
-    Invoke-Test "Open and close the audience window" {
-        $before = @(Get-Process -Name msedge,chrome,chromium -ErrorAction SilentlyContinue |
-            Select-Object -ExpandProperty Id)
+    Invoke-Test "Presenter opens a second top-level window in the same process" {
+        $before = @(winapp ui list-windows -a $AppPid --json | ConvertFrom-Json | Select-Object -ExpandProperty hwnd)
         Invoke-WinApp ui invoke StartPresentationButton -a $AppPid | Out-Null
-        $audience = $null
-        for ($attempt = 0; $attempt -lt 50 -and -not $audience; $attempt++) {
+        $presenter = $null
+        for ($attempt = 0; $attempt -lt 50 -and -not $presenter; $attempt++) {
             Start-Sleep -Milliseconds 100
-            $audience = Get-Process -Name msedge,chrome,chromium -ErrorAction SilentlyContinue |
-                Where-Object { $_.Id -notin $before -and $_.MainWindowHandle -ne 0 } |
+            $presenter = winapp ui list-windows -a $AppPid --json |
+                ConvertFrom-Json |
+                Where-Object { $_.hwnd -notin $before } |
                 Select-Object -First 1
         }
-        if (-not $audience) { throw "Audience browser window did not open." }
-        $audiencePid = $audience.Id
-        $audience.Dispose()
-        Invoke-WinApp ui invoke StartPresentationButton -a $AppPid | Out-Null
+        if (-not $presenter) { throw "Presenter window did not open in the app process." }
+        $script:presenterHwnd = $presenter.hwnd
+    }
+
+    Invoke-Test "F11 and Escape toggle native fullscreen" {
+        $windowHandle = [IntPtr]$script:presenterHwnd
+        $windowedBounds = Get-WindowBounds -WindowHandle $windowHandle
+        [PresentationUiNative]::SendKey($windowHandle, 0x7A)
+
+        $fullScreenBounds = $windowedBounds
+        for ($attempt = 0; $attempt -lt 30; $attempt++) {
+            Start-Sleep -Milliseconds 100
+            $fullScreenBounds = Get-WindowBounds -WindowHandle $windowHandle
+            if (-not (Test-SameBounds $windowedBounds $fullScreenBounds)) { break }
+        }
+        if (Test-SameBounds $windowedBounds $fullScreenBounds) {
+            throw "F11 did not change the presenter window bounds."
+        }
+
+        [PresentationUiNative]::SendKey($windowHandle, 0x1B)
+        $restoredBounds = $fullScreenBounds
+        for ($attempt = 0; $attempt -lt 30; $attempt++) {
+            Start-Sleep -Milliseconds 100
+            $restoredBounds = Get-WindowBounds -WindowHandle $windowHandle
+            if (-not (Test-SameBounds $fullScreenBounds $restoredBounds)) { break }
+        }
+        if (Test-SameBounds $fullScreenBounds $restoredBounds) {
+            throw "Escape did not leave fullscreen: fullscreen $($fullScreenBounds | ConvertTo-Json -Compress), actual $($restoredBounds | ConvertTo-Json -Compress)."
+        }
+    }
+
+    Invoke-Test "Closing the presenter window restores the main screen state" {
+        Invoke-WinApp ui invoke Close -w $script:presenterHwnd | Out-Null
         for ($attempt = 0; $attempt -lt 50; $attempt++) {
-            if (-not (Get-Process -Id $audiencePid -ErrorAction SilentlyContinue)) { break }
+            $remaining = winapp ui list-windows -a $AppPid --json |
+                ConvertFrom-Json |
+                Where-Object { $_.hwnd -eq $script:presenterHwnd }
+            if (-not $remaining) { break }
             Start-Sleep -Milliseconds 100
         }
-        if (Get-Process -Id $audiencePid -ErrorAction SilentlyContinue) {
-            throw "Audience browser process did not stop."
+        $remaining = winapp ui list-windows -a $AppPid --json |
+            ConvertFrom-Json |
+            Where-Object { $_.hwnd -eq $script:presenterHwnd }
+        if ($remaining) { throw "Presenter window did not close." }
+
+        $tree = winapp ui inspect -a $AppPid --interactive --json | ConvertFrom-Json
+        $elements = @(Get-UiElements -Elements $tree.windows[0].elements)
+        $startButton = $elements | Where-Object automationId -eq "StartPresentationButton"
+        $expectedStartLabel = [string]::Concat(
+            [char]0x767A,
+            [char]0x8868,
+            [char]0x3092,
+            [char]0x958B,
+            [char]0x59CB)
+        if (-not $startButton -or $startButton.name -ne $expectedStartLabel) {
+            throw "Main window did not revert to the 'start presentation' state after the audience closed the presenter window."
         }
     }
 
