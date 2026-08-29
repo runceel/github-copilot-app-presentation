@@ -40,7 +40,7 @@ apps\Presentation.Desktop\scripts\Publish.ps1 -Architecture arm64
 ```
 
 生成された ZIP と `.sha256` を両方添付します。Windows App SDK と .NET runtime は同梱し、
-WebView2 Runtime と Edge / Chrome / Chromium は利用環境の前提としてリリースノートに記載します。
+WebView2 Runtime は利用環境の前提としてリリースノートに記載します。
 
 ### ZIP に含めないもの
 

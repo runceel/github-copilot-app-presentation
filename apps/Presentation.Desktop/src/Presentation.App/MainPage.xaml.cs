@@ -13,6 +13,7 @@ namespace PresentationApp;
 
 public sealed partial class MainPage : Page
 {
+    private readonly PresenterWindowService _presenterWindowService;
     private CoreWebView2Environment? _webViewEnvironment;
 
     public MainPageViewModel ViewModel { get; }
@@ -22,14 +23,14 @@ public sealed partial class MainPage : Page
         InitializeComponent();
 
         var session = new PresentationSession();
-        var browserPresenter = new BrowserPresenterService();
-        var server = new PresentationServer(session, () => browserPresenter.IsRunning);
+        _presenterWindowService = new PresenterWindowService();
+        var server = new PresentationServer(session, () => _presenterWindowService.IsRunning);
         ViewModel = new MainPageViewModel(
             session,
             server,
             new DeckLoader(new MarkdownDeckParser(), new ThemeService()),
             new DeckWatcher(),
-            browserPresenter,
+            _presenterWindowService,
             new FilePickerService(),
             () => App.WindowHandle);
         ViewModel.PropertyChanged += OnViewModelPropertyChanged;
@@ -67,6 +68,7 @@ public sealed partial class MainPage : Page
                 userDataFolder,
                 EnvironmentVariableTarget.Process);
             _webViewEnvironment = await CoreWebView2Environment.CreateAsync();
+            _presenterWindowService.SetEnvironment(_webViewEnvironment);
             await InitializeWebViewAsync(
                 CurrentSlideWebView,
                 ViewModel.CurrentPreviewUri,
@@ -94,11 +96,7 @@ public sealed partial class MainPage : Page
         try
         {
             await webView.EnsureCoreWebView2Async(environment);
-            webView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
-            webView.CoreWebView2.Settings.AreDevToolsEnabled = false;
-            webView.CoreWebView2.Settings.IsZoomControlEnabled = false;
-            webView.NavigationStarting += OnWebViewNavigationStarting;
-            webView.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
+            WebViewPolicy.Configure(webView, () => ViewModel.CurrentPreviewUri);
             if (source is not null)
             {
                 webView.Source = source;
@@ -127,33 +125,6 @@ public sealed partial class MainPage : Page
         {
             NextSlideWebView.Source = ViewModel.NextPreviewUri;
         }
-    }
-
-    private void OnWebViewNavigationStarting(
-        WebView2 sender,
-        CoreWebView2NavigationStartingEventArgs args)
-    {
-        if (!Uri.TryCreate(args.Uri, UriKind.Absolute, out var target))
-        {
-            args.Cancel = true;
-            return;
-        }
-
-        var allowed = ViewModel.CurrentPreviewUri;
-        if (allowed is null ||
-            !target.GetLeftPart(UriPartial.Authority).Equals(
-                allowed.GetLeftPart(UriPartial.Authority),
-                StringComparison.OrdinalIgnoreCase))
-        {
-            args.Cancel = true;
-        }
-    }
-
-    private void OnNewWindowRequested(
-        CoreWebView2 sender,
-        CoreWebView2NewWindowRequestedEventArgs args)
-    {
-        args.Handled = true;
     }
 
     private void OnPageKeyDown(object sender, KeyRoutedEventArgs args)

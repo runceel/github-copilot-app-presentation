@@ -9,10 +9,13 @@ Markdown を presentation canvas と同じ renderer で表示し、GitHub Copilo
 - 矢印、PageUp/PageDown、Space、Home、End で移動
 - Markdown 保存時に自動再読込し、現在ページを維持
 - 読込失敗時は最後の正常なデッキを維持
-- Edge / Chrome の app mode ウィンドウを発表画面として起動
+- 発表画面はネイティブ WinUI 3 Window（WebView2 全面表示）として、アプリと同じプロセス内で起動
 - dark / light / microsoft / custom theme、Mermaid、コード強調、Architecture DSL、ローカル画像に対応
 
-発表画面は 1280x720 を基準に起動します。全画面化はブラウザーまたは Windows の標準操作で行います。
+発表画面は 1280x720、通常のタイトルバー付きウィンドウとして Windows の既定配置で起動します。
+F11 で全画面に切り替え、Esc で全画面から通常表示に戻ります（通常表示時の Esc はスライド側の
+既存の挙動を妨げません）。メイン画面の開始 / 終了ボタン、発表ウィンドウ自身を閉じる操作、
+アプリ終了時の一括終了のいずれからも状態が同期します。
 
 ## 開発環境
 
@@ -52,7 +55,8 @@ scripts\Publish.ps1 -Architecture arm64
 
 成果物は `artifacts\Presentation-win-<architecture>.zip` です。単一 EXE ではなく、renderer、native DLL、ライセンス通知を含むフォルダー配布です。
 
-利用環境には Microsoft Edge WebView2 Runtime と、発表画面用の Edge / Chrome / Chromium が必要です。
+利用環境には Microsoft Edge WebView2 Runtime が必要です。発表画面はアプリ内蔵のネイティブ
+Window で表示するため、別途 Edge / Chrome / Chromium を用意する必要はありません。
 
 ## Markdown と assets
 
