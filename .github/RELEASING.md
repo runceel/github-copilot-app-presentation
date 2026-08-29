@@ -31,16 +31,18 @@ ZIP は `.github/extensions/presentation/` を展開後にユーザー拡張デ�
 構成にします。Mermaid を含む完全版は、Gist の単一ファイルおおむね 1 MB 上限に抵触するため
 Gist へ分割せず、リポジトリのフォルダー URL またはリリース ZIP で配布します。
 
-Presentation Desktop は次のコマンドで unpackaged・self-contained のポータブル ZIP を作成し、
-同じ GitHub Release へ添付します。
+Extension と Presentation Desktop の全配布物は次のコマンドでまとめて生成します。
 
 ```powershell
-apps\Presentation.Desktop\scripts\Publish.ps1 -Architecture x64
-apps\Presentation.Desktop\scripts\Publish.ps1 -Architecture arm64
+pwsh scripts\PackageRelease.ps1 -Version vMAJOR.MINOR.PATCH
 ```
 
-生成された ZIP と `.sha256` を両方添付します。Windows App SDK と .NET runtime は同梱し、
+生成先は `artifacts\releases\<version>\` です。Extension、x64 Desktop、ARM64 Desktop の
+ZIP と `.sha256` をすべて同じ GitHub Release へ添付します。Windows App SDK と .NET runtime は同梱し、
 WebView2 Runtime と Edge / Chrome / Chromium は利用環境の前提としてリリースノートに記載します。
+
+Copilot へマージから release 作成まで依頼する場合は
+`.github/skills/presentation-release/SKILL.md` の手順を使用します。
 
 ### ZIP に含めないもの
 

@@ -9,3 +9,6 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
+
+# Release packaging
+artifacts/

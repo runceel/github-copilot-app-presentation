@@ -14,19 +14,19 @@ GitHub Copilot App に次のように依頼してください。
 >
 > `https://github.com/runceel/github-copilot-app-presentation/tree/main/.github/extensions/presentation`
 
-`main` の URL は最新版を指します。再現可能な導入には、固定タグ `v1.7.0` の URL を
+`main` の URL は最新版を指します。再現可能な導入には、固定タグ `v1.10.0` の URL を
 使ってください。
 
 ```text
-https://github.com/runceel/github-copilot-app-presentation/tree/v1.7.0/.github/extensions/presentation
+https://github.com/runceel/github-copilot-app-presentation/tree/v1.10.0/.github/extensions/presentation
 ```
 
 ## 最新リリース
 
-現在の presentation canvas の最新版は **v1.7.0** です。
+現在の presentation canvas / Presentation Desktop の最新版は **v1.10.0** です。
 
-- [v1.7.0 リリース](https://github.com/runceel/github-copilot-app-presentation/releases/tag/v1.7.0)
-- [固定タグから Extension を導入](https://github.com/runceel/github-copilot-app-presentation/tree/v1.7.0/.github/extensions/presentation)
+- [v1.10.0 リリース](https://github.com/runceel/github-copilot-app-presentation/releases/tag/v1.10.0)
+- [固定タグから Extension を導入](https://github.com/runceel/github-copilot-app-presentation/tree/v1.10.0/.github/extensions/presentation)
 
 リリースには、手動導入用 ZIP と SHA-256 チェックサムを添付しています。更新時は既存のタグを
 移動せず、新しいバージョンタグを使用します。
@@ -48,6 +48,7 @@ Gist は小さな Extension の共有には便利ですが、単一ファイル�
 | --- | --- |
 | `.github/extensions/presentation/` | Copilot canvas Extension。本体、renderer、同梱 OSS を提供します。 |
 | `.github/skills/presentation/SKILL.md` | Markdown を全スライドの断片へ変換し、Extension を起動する任意導入の Skill です。 |
+| `.github/skills/presentation-release/SKILL.md` | PR のマージ、全 ZIP と SHA-256 の生成、GitHub Release の公開手順です。 |
 | `apps/Presentation.Desktop/` | Markdown を開いてプレビューし、Edge / Chrome の発表画面を起動する WinUI 3 デスクトップアプリです。 |
 | `slides.md` などのルート Markdown | すぐ試せるサンプルおよびプレゼン原稿です。利用者の資料に置き換えられます。 |
 
@@ -88,6 +89,7 @@ front matter（Slidev 形式）も使えます。
 ## ドキュメント
 
 - [presentation Skill](./.github/skills/presentation/SKILL.md)
+- [presentation-release Skill](./.github/skills/presentation-release/SKILL.md)
 - [Extension の仕様とアクション](./.github/extensions/presentation/README.md)
 - [同梱 OSS の第三者通知](./.github/extensions/presentation/THIRD-PARTY-NOTICES.md)
 - [リリース手順](./.github/RELEASING.md)
