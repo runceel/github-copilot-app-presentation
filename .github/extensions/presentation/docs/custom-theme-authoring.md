@@ -11,7 +11,7 @@
 ```markdown
 ---
 theme: custom
-theme-file: ./themes/brand/theme.css
+theme-file: themes/brand/theme.css
 ---
 ```
 
@@ -26,6 +26,18 @@ themes/brand/
     cover.svg
     logo.svg
 ```
+
+`theme-file` は次の順で同じ相対パスを探索します。
+
+1. 元 Markdown と同じフォルダー
+2. リポジトリルート
+
+たとえばリポジトリルートの `themes/brand/theme.css` を全デッキの共通テーマとして置き、
+特定の `decks/quarterly/slides.md` だけを変える場合は
+`decks/quarterly/themes/brand/theme.css` を置きます。どちらの Markdown にも
+`theme-file: themes/brand/theme.css` と書け、Markdown 側が優先されます。
+AI が `open` / `load_deck` でデッキを登録するときは、Markdown 相対探索のため
+`sourceName` に元 Markdown の workspace 相対パスを渡します。
 
 ```css
 --bg: #101820;
@@ -143,7 +155,7 @@ CSS と同じフォルダーに `theme.json` があると自動的に読み込�
 - 値は空にできません。
 - セレクター、`@import`、`url(...)`、`javascript:`、`expression(...)` は使用できません。
 - CSS の任意ルールや JavaScript をテーマファイルへ書かないでください。
-- テーマファイルはワークスペース内に置き、Markdown からの相対パスで指定してください。
+- テーマファイルはワークスペース内に置き、Markdown とリポジトリルートのどちらからも安全に解決できる相対パスで指定してください。
 - テーマファイルの最大サイズは 64 KiB です。
 - `theme.json` の最大サイズは 64 KiB です。
 - 同じプロパティを複数回指定した場合は最後の値が使われます。

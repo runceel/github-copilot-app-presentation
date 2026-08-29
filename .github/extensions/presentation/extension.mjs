@@ -60,6 +60,7 @@ import { serializeMarkdownSave } from "./scripts/markdown-save-coordinator.mjs";
 import { atomicReplaceMarkdown } from "./scripts/atomic-markdown-replace.mjs";
 import { createMarkdownWatcher } from "./scripts/markdown-watcher.mjs";
 import { resolveAssetFile } from "./scripts/asset-paths.mjs";
+import { resolveThemeFile } from "./scripts/theme-paths.mjs";
 import { buildDeckSlides } from "./markdown-deck.mjs";
 import {
   createPresentationHooks,
@@ -1204,26 +1205,19 @@ async function applyDeckSlide(inst) {
 // slide. Shared by the `load_deck` action and the `open` handler so both paths
 // populate instance state identically. Callers must validate `slides` (a
 // non-empty array of strings) before calling.
-function resolveThemeFile(inst, sourceName, themeFile) {
-  if (!themeFile) return "";
-  if (isAbsolute(themeFile)) {
-    throw new CanvasError("invalid_theme_file", "theme-file must be relative to the slide Markdown file.");
-  }
-  const sourcePath = sourceName
-    ? resolve(inst.workspaceRoot, sourceName)
-    : resolve(inst.workspaceRoot, "slides.md");
-  const candidate = safeJoin(dirname(sourcePath), themeFile);
-  if (!candidate || !isPathInside(resolve(inst.workspaceRoot), candidate)) {
-    throw new CanvasError("invalid_theme_file", "theme-file must stay inside the workspace.");
-  }
-  return candidate;
-}
-
 async function loadCustomTheme(inst, sourceName, themeFile) {
   if (!themeFile) {
     throw new CanvasError("invalid_theme_file", "custom theme requires themeFile or front matter theme-file.");
   }
-  const path = resolveThemeFile(inst, sourceName, themeFile);
+  let path;
+  try {
+    path = await resolveThemeFile(inst.workspaceRoot, sourceName, themeFile);
+  } catch (error) {
+    throw new CanvasError("invalid_theme_file", error.message);
+  }
+  if (!path) {
+    throw new CanvasError("theme_file_not_found", `Could not read custom theme file: ${themeFile}`);
+  }
   let realThemeFile;
   let realWorkspaceRoot;
   try {
@@ -2693,12 +2687,12 @@ const session = await joinSession({
           themeFile: {
             type: "string",
             description:
-              "CSS カスタムプロパティだけを定義したテーマファイル。元 Markdown と同じフォルダーを基準にした相対パス。同じフォルダーの theme.json は自動的に読み込む。",
+              "CSS カスタムプロパティだけを定義したテーマファイル。元 Markdown と同じフォルダー、リポジトリルートの順で同じ相対パスを探索する。同じフォルダーの theme.json は自動的に読み込む。",
           },
           sourceName: {
             type: "string",
             description:
-              "元 Markdown の workspace 相対パス。Markdown 隣接 assets/ と相対 theme-file の基準になり、Canvas の PDF ボタンはこのファイル名に .pdf を付けて保存する。",
+              "元 Markdown の workspace 相対パス。Markdown 隣接 assets/ と theme-file の Markdown 相対探索の基準になり、Canvas の PDF ボタンはこのファイル名に .pdf を付けて保存する。",
           },
         },
         additionalProperties: false,
@@ -2731,12 +2725,12 @@ const session = await joinSession({
               themeFile: {
                 type: "string",
                 description:
-                  "CSS カスタムプロパティだけを定義したテーマファイル。元 Markdown と同じフォルダーを基準にした相対パス。同じフォルダーの theme.json は自動的に読み込む。",
+                  "CSS カスタムプロパティだけを定義したテーマファイル。元 Markdown と同じフォルダー、リポジトリルートの順で同じ相対パスを探索する。同じフォルダーの theme.json は自動的に読み込む。",
               },
               sourceName: {
                 type: "string",
                 description:
-                  "元 Markdown の workspace 相対パス。Markdown 隣接 assets/ と相対 theme-file の基準になり、Canvas の PDF ボタンはこのファイル名に .pdf を付けて保存する。",
+                  "元 Markdown の workspace 相対パス。Markdown 隣接 assets/ と theme-file の Markdown 相対探索の基準になり、Canvas の PDF ボタンはこのファイル名に .pdf を付けて保存する。",
               },
             },
             required: ["slides"],
