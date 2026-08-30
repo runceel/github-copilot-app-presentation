@@ -63,7 +63,7 @@ const GROUP_SOURCE = `${JSON.stringify(
 const ASSET_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>';
 
-test("専用 Architecture Editor に WCAG 違反がない", async ({ page }) => {
+test("the dedicated Architecture Editor has no WCAG violations", async ({ page }) => {
   const harness = await startArchitectureEditorHarness({ source: SOURCE });
   try {
     await page.goto(harness.url, { waitUntil: "load" });
@@ -80,7 +80,7 @@ test("専用 Architecture Editor に WCAG 違反がない", async ({ page }) => 
   }
 });
 
-test("右クリックメニューを開いた状態でも WCAG 違反がない", async ({ page }) => {
+test("there are no WCAG violations with the context menu open", async ({ page }) => {
   const harness = await startArchitectureEditorHarness({ source: SOURCE });
   try {
     await page.goto(harness.url, { waitUntil: "load" });
@@ -98,13 +98,13 @@ test("右クリックメニューを開いた状態でも WCAG 違反がない",
   }
 });
 
-test("レイアウトサブメニューを開いた状態でも WCAG 違反がない", async ({ page }) => {
+test("there are no WCAG violations with the layout submenu open", async ({ page }) => {
   const harness = await startArchitectureEditorHarness({ source: GROUP_SOURCE });
   try {
     await page.goto(harness.url, { waitUntil: "load" });
     await page.locator('[data-ref="zone"].tree-item').click({ button: "right" });
-    await page.getByRole("menuitem", { name: "レイアウト", exact: true }).hover();
-    await expect(page.getByRole("menu", { name: "zone のレイアウト" })).toBeVisible();
+    await page.getByRole("menuitem", { name: "Layout", exact: true }).hover();
+    await expect(page.getByRole("menu", { name: "Layout for zone" })).toBeVisible();
 
     const result = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
@@ -117,17 +117,17 @@ test("レイアウトサブメニューを開いた状態でも WCAG 違反が�
   }
 });
 
-test("画像 picker は keyboard 選択と focus 復帰を行い WCAG 違反がない", async ({ page }) => {
+test("the image picker supports keyboard selection, restores focus, and has no WCAG violations", async ({ page }) => {
   const harness = await startArchitectureEditorHarness({
     source: SOURCE,
     assets: { "assets/accessible.svg": ASSET_SVG },
   });
   try {
     await page.goto(harness.url, { waitUntil: "load" });
-    const trigger = page.getByRole("button", { name: "画像", exact: true });
+    const trigger = page.getByRole("button", { name: "Image", exact: true });
     await trigger.focus();
     await page.keyboard.press("Enter");
-    const dialog = page.getByRole("dialog", { name: "画像を追加" });
+    const dialog = page.getByRole("dialog", { name: "Add image" });
     await expect(dialog).toBeVisible();
     await expect(page.locator("#assetSearch")).toBeFocused();
 
@@ -141,7 +141,7 @@ test("画像 picker は keyboard 選択と focus 復帰を行い WCAG 違反が�
     const option = dialog.getByRole("option", { name: "assets/accessible.svg" });
     await option.focus();
     await page.keyboard.press("Enter");
-    await dialog.getByRole("button", { name: "選択", exact: true }).press("Enter");
+    await dialog.getByRole("button", { name: "Select", exact: true }).press("Enter");
     await expect(dialog).toBeHidden();
     await expect(trigger).toBeFocused();
     await expect(page.locator('[data-ref="accessible"].tree-item')).toBeVisible();

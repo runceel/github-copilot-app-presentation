@@ -1,13 +1,13 @@
-// Architecture 図のアクセシビリティ回帰。
+// Architecture diagram accessibility regression tests.
 //
-// 検証したいのは 4 点。
-//   1. 支援技術に同じ内容が **二重に**届かない（可視 <text> とアクセシブル名の重複）
-//   2. 図のすべての要素に**空でないアクセシブル名**がある
-//   3. キーボードで図に**到達できる**（通常表示は図全体で 1 タブストップ）
-//   4. 宣言順が DOM に公開され、描画順（z 順）と区別できる
+// Verify four properties:
+//   1. Assistive technology does not receive the same content **twice** (visible <text> plus name).
+//   2. Every diagram element has a **nonempty accessible name**.
+//   3. The diagram is **keyboard reachable** (one tab stop for the full diagram in normal view).
+//   4. Declaration order is exposed in the DOM and differs from paint (z) order.
 //
-// 判定の根拠は Chromium のアクセシビリティツリー（CDP）と axe-core であって、
-// DOM 属性ではない。理由は test/a11y/ax.mjs の先頭に書いた。
+// Results are based on Chromium's accessibility tree (CDP) and axe-core, not DOM attributes.
+// See the beginning of test/a11y/ax.mjs for the rationale.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -34,11 +34,11 @@ async function openDeck(page, options = {}) {
   return harness;
 }
 
-test.describe("図が支援技術へ渡す内容", () => {
-  test("axe-core が図の中に違反を報告しない（通常表示）", async ({ page }) => {
+test.describe("content the diagram exposes to assistive technology", () => {
+  test("axe-core reports no violations in the diagram in normal view", async ({ page }) => {
     const harness = await openDeck(page);
     try {
-      // 図に限定して **best-practice まで含む全ルール**を当てる。ここは Phase 6 の担当範囲。
+      // Apply **all rules, including best practices**, within the diagram. This is Phase 6 scope.
       const result = await new AxeBuilder({ page }).include(".architecture-diagram").analyze();
       expect(
         result.violations.map((violation) => `${violation.id}: ${violation.help}`),
@@ -48,7 +48,7 @@ test.describe("図が支援技術へ渡す内容", () => {
     }
   });
 
-  test("axe-core が図の中に違反を報告しない（編集モード）", async ({ page }) => {
+  test("axe-core reports no violations in the diagram in edit mode", async ({ page }) => {
     const harness = await openDeck(page, { architectureEdit: true });
     try {
       await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(1);
@@ -61,14 +61,13 @@ test.describe("図が支援技術へ渡す内容", () => {
     }
   });
 
-  test("axe-core がページ全体に WCAG A/AA の違反を報告しない", async ({ page }) => {
+  test("axe-core reports no WCAG A/AA violations across the full page", async ({ page }) => {
     const harness = await openDeck(page);
     try {
-      // ページ全体は WCAG A/AA に限定する。best-practice まで広げると
-      // デッキ外殻（landmark-one-main / page-has-heading-one / region）が出るが、
-      // これは Architecture DSL ではなくスライド全体の HTML 構造の話で、
-      // 直すと全スライドの見た目に影響しうるため Phase 6 の範囲外と判断した。
-      // 範囲外にしたのは best-practice だけで、**WCAG 適合そのものは緩めていない**。
+      // Limit full-page checks to WCAG A/AA. Including best practices reports shell issues
+      // (landmark-one-main / page-has-heading-one / region) in the overall slide HTML, not the
+      // Architecture DSL. Fixing those could affect every slide, so they are outside Phase 6 scope.
+      // Only best-practice rules are excluded; **WCAG conformance itself is not relaxed**.
       const result = await new AxeBuilder({ page })
         .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
         .analyze();
@@ -80,19 +79,19 @@ test.describe("図が支援技術へ渡す内容", () => {
     }
   });
 
-  test("同じ文字列が二重に読み上げられない", async ({ page }) => {
+  test("the same string is not announced twice", async ({ page }) => {
     const harness = await openDeck(page);
     try {
       const diagram = findDiagram(await accessibilityTree(page), DIAGRAM_TITLE);
-      expect(diagram, "図がアクセシビリティツリーに出ていない").not.toBeNull();
+      expect(diagram, "the diagram is absent from the accessibility tree").not.toBeNull();
 
-      // 図の中に残ってよいのは「要素そのもの」だけ。可視 <text> が StaticText として
-      // 残っていると、role="img" / role="group" のアクセシブル名と合わせて 2 回読まれる。
-      // （修正前の実測では node / group / connector の **全要素**で二重になっていた）
+      // Only the elements themselves may remain in the diagram. If visible <text> remains as
+      // StaticText, it is announced once there and again as the role="img" / role="group" name.
+      // Before the fix, **every** node, group, and connector was announced twice.
       const inside = flatten(diagram.children);
       expect(inside.filter((node) => node.role === "StaticText")).toEqual([]);
 
-      // 図の直下は「宣言された要素の数」とちょうど一致する。
+      // Direct diagram children exactly match the number of declared elements.
       const semantics = await readDiagramSemantics(page, DIAGRAM_TITLE);
       expect(diagram.children).toHaveLength(semantics.elements.length);
     } finally {
@@ -100,11 +99,11 @@ test.describe("図が支援技術へ渡す内容", () => {
     }
   });
 
-  test("可視テキストはすべて支援技術から隠れている", async ({ page }) => {
+  test("all visible text is hidden from assistive technology", async ({ page }) => {
     const harness = await openDeck(page);
     try {
-      // node 本文・group タイトル・connector ラベルの 3 系統すべてが対象。
-      // 幅に収まらないと表示側は省略されるので、正はあくまで aria-label 側にある。
+      // Cover node bodies, group titles, and connector labels. Visible text may be truncated when it
+      // does not fit, so aria-label remains the authoritative value.
       const texts = await page.$$eval(`${SVG} text`, (nodes) =>
         nodes.map((node) => ({
           text: node.textContent,
@@ -118,16 +117,15 @@ test.describe("図が支援技術へ渡す内容", () => {
     }
   });
 
-  test("すべての要素に空でないアクセシブル名がある", async ({ page }) => {
+  test("every element has a nonempty accessible name", async ({ page }) => {
     const harness = await openDeck(page);
     try {
       const diagram = findDiagram(await accessibilityTree(page), DIAGRAM_TITLE);
       const nameless = diagram.children.filter((node) => node.name.trim() === "");
       expect(nameless).toEqual([]);
 
-      // connector の名前は端点を **画面に見えている文字列** で呼ぶ。
-      // ここが ID（client / api / worker）に戻ったら、図を見ている人が読んでいる
-      // ラベルと読み上げが食い違うということ。
+      // Connector names identify endpoints by **visible text**. If this regresses to IDs (client /
+      // api / worker), the announcement no longer matches what someone viewing the diagram reads.
       const names = diagram.children.map((node) => node.name);
       expect(names).toContain("Client to API: request");
       expect(names).toContain("API to Worker: enqueue");
@@ -137,8 +135,8 @@ test.describe("図が支援技術へ渡す内容", () => {
   });
 });
 
-test.describe("キーボードでの到達", () => {
-  test("通常表示では図全体がちょうど 1 つのタブストップになる", async ({ page }) => {
+test.describe("keyboard reachability", () => {
+  test("the whole diagram is exactly one tab stop in normal view", async ({ page }) => {
     const harness = await openDeck(page);
     try {
       const stops = await page.$$eval(`${SVG}, ${SVG} [tabindex]`, (nodes) =>
@@ -148,7 +146,7 @@ test.describe("キーボードでの到達", () => {
       );
       expect(stops).toEqual(["svg"]);
 
-      // 実際にフォーカスが載ることまで確認する（属性があるだけでは到達を保証しない）。
+      // Verify actual focus; the presence of an attribute alone does not guarantee reachability.
       await page.locator(SVG).focus();
       const focused = await page.evaluate(() =>
         document.activeElement?.classList?.contains("architecture-svg"),
@@ -159,11 +157,11 @@ test.describe("キーボードでの到達", () => {
     }
   });
 
-  test("編集モードでは要素がタブストップになり、図のルートは重複しない", async ({ page }) => {
+  test("elements become tab stops in edit mode without duplicating the diagram root", async ({ page }) => {
     const harness = await openDeck(page, { architectureEdit: true });
     try {
       await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(1);
-      // ルートに tabindex が残っていると「図」→「最初の要素」と空振りのストップが増える。
+      // A tabindex on the root adds an empty stop between "diagram" and the first element.
       expect(await page.getAttribute(SVG, "tabindex")).toBeNull();
 
       const stops = await page.$$eval(`${SVG} [tabindex="0"]`, (nodes) =>
@@ -175,25 +173,24 @@ test.describe("キーボードでの到達", () => {
     }
   });
 
-  test("編集 UI の 2 つの live region が別々の役割を保っている", async ({ page }) => {
+  test("the two edit UI live regions retain separate purposes", async ({ page }) => {
       const harness = await openDeck(page, { architectureEdit: true });
       try {
         const toolbar = page.locator(".architecture-editor-toolbar");
         await expect(toolbar).toHaveCount(1);
         await expect(toolbar).toHaveAttribute("role", "toolbar");
 
-        // 操作結果と保存結果は **別々の live region** でなければならない。
+        // Operation and save results must use **separate live regions**.
         //
-        // 統合したくなる理由はある: 1 回の操作で「moved」と「saving → saved」が
-        // ほぼ同時に流れるため、支援技術によっては二重に読み上げられる。
-        // それでも統合してはいけないのは、両者の寿命が違うから。操作結果は次の操作で
-        // 上書きしてよいが、**保存失敗は「編集が実際に失われた」という意味**なので、
-        // 次の保存が成功するまで消してはならない。1 つにまとめると、次の操作の
-        // 「moved」が保存失敗の告知を消してしまう。
+        // Combining them is tempting because one operation emits "moved" and "saving → saved" nearly
+        // simultaneously, which some AT may announce twice. They must remain separate because their
+        // lifetimes differ. The next operation may replace its result, but a **save failure means an
+        // edit was actually lost** and must persist until the next successful save. A single region
+        // would let the next "moved" message erase the save-failure announcement.
         //
-        // ここが 1 つになったら、まず test:editing の「保存の失敗が利用者に見える」
-        // 3 本が落ちるはずだが、そちらは DOM の状態を見ているので aria 属性だけを
-        // 落とした場合は素通りする。この検証はその隙間を埋めるためにある。
+        // If these merge, the three test:editing cases asserting visible save failures should fail,
+        // but they inspect DOM state and miss a regression limited to aria attributes. This check
+        // fills that gap.
         const regions = await toolbar.evaluate((node) =>
           Array.from(node.querySelectorAll('[role="status"]')).map((region) => ({
             purpose: region.hasAttribute("data-architecture-edit-status")
@@ -205,7 +202,7 @@ test.describe("キーボードでの到達", () => {
           })),
         );
         expect(regions.map((region) => region.purpose).sort()).toEqual(["edit", "save"]);
-        // どちらも polite（assertive にするとスライド操作のたびに読み上げを割り込む）。
+        // Both are polite; assertive would interrupt announcements on every slide operation.
         expect(regions.map((region) => region.live)).toEqual(["polite", "polite"]);
       } finally {
         await harness.close();
@@ -213,25 +210,25 @@ test.describe("キーボードでの到達", () => {
   });
 });
 
-test.describe("読み上げ順と宣言順", () => {
-  test("宣言順が DOM に公開され、描画順と区別できる", async ({ page }) => {
+test.describe("announcement and declaration order", () => {
+  test("declaration order is exposed in the DOM and distinct from paint order", async ({ page }) => {
     const harness = await openDeck(page);
     try {
       const semantics = await readDiagramSemantics(page, DIAGRAM_TITLE);
       const declaration = semantics.elements.map((element) => element.id);
       const painted = await domOrder(page, DIAGRAM_TITLE);
 
-      // data-architecture-order は 0..n-1 の**抜けのない**通し番号でなければならない。
-      // 抜けや重複があると「宣言順」として使えない。
+      // data-architecture-order must be a **gapless** sequence from 0 through n-1. Gaps or duplicates
+      // make it unusable as declaration order.
       expect(semantics.elements.map((element) => element.order)).toEqual(
         semantics.elements.map((_, index) => index),
       );
       expect(declaration.sort()).toEqual([...painted].sort());
 
-      // このフィクスチャでは既定の z（group -50 / connector -10 / node 0）により
-      // 描画順と宣言順がずれる。ずれること自体が仕様であり、README に書いた
-      // 「z は視覚のためのもので、読み上げ順の決定要因にしない」という方針の根拠。
-      // ここが一致し始めたら方針か既定 z が変わっているので、README も直すこと。
+      // Default z values (group -50 / connector -10 / node 0) make paint and declaration order
+      // differ in this fixture. This is intentional and supports README's policy that z is visual,
+      // not a determinant of announcement order. If they begin to match, the policy or default z
+      // changed and README must also be updated.
       expect(painted).not.toEqual(semantics.elements.map((element) => element.id));
       expect(painted).toEqual([
         "zone",
@@ -246,7 +243,7 @@ test.describe("読み上げ順と宣言順", () => {
     }
   });
 
-  test("読み上げ順は DOM 順と一致する（AT から見た順序の固定）", async ({ page }) => {
+  test("announcement order matches DOM order, fixing the sequence exposed to AT", async ({ page }) => {
     const harness = await openDeck(page);
     try {
       const diagram = findDiagram(await accessibilityTree(page), DIAGRAM_TITLE);

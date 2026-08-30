@@ -1,61 +1,34 @@
-// Playwright 設定（テスト基盤。拡張機能の配布物には含めません）。
+// Playwright configuration for test infrastructure; it is not distributed with the Extension.
 //
-// ビジュアル回帰のスナップショットは **プラットフォームごと**に分けて保存します。
-// フォントラスタライズが OS で異なるため、Windows で撮ったベースラインを Linux の CI
-// と共有することはできません。CI は `ubuntu-24.04` に固定し、同じ Playwright バージョンの
-// 公式 Docker イメージで生成した linux ベースラインを使います（README 参照）。
+// Visual regression snapshots are stored per platform. Font rasterization differs by OS, so
+// Windows baselines cannot be shared with Linux CI. CI is fixed to ubuntu-24.04 and uses Linux
+// baselines generated with the matching official Playwright container.
 
 import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "test",
-  // ビジュアル比較は同一プラットフォーム内では決定論的だが、CI では並列実行の揺れを
-  // 避けるためワーカーを 1 本にする。
+  // Rendering is deterministic on each platform. CI uses one worker to avoid concurrency noise.
   workers: process.env.CI ? 1 : undefined,
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: process.env.CI ? [["github"], ["list"]] : [["list"]],
-  // 例: test/visual/__screenshots__/visual/linux/architecture-dark.png
+  // Example: test/visual/__screenshots__/visual/linux/architecture-dark.png
   snapshotPathTemplate: "{testDir}/__screenshots__/{projectName}/{platform}/{arg}{ext}",
   expect: {
     toHaveScreenshot: {
-      // 比較は**割合ではなく絶対値**で、しかも許容 0px で行う。
+      // Visual comparisons intentionally allow zero changed pixels.
       //
-      // 以前ここは `maxDiffPixelRatio: 0.002` で「アンチエイリアスの 1px 単位の
-      // ばらつきだけを吸収する狭い許容量」とコメントされていたが、これは誤りだった。
-      // 0.002 は 1280x720 で **約 1843px** を許容する。1px どころか 1843px である。
-      // この誤解のせいで、実際に 2 件の変更が検証をすり抜けた。
+      // The former `maxDiffPixelRatio: 0.002` allowed about 1,843 changed pixels at 1280x720.
+      // That threshold missed real regressions: changing one footer digit moved only 16-21 pixels,
+      // shifting an arrow by about 0.7px moved 1-21 pixels, and replacing an icon moved 123 pixels.
+      // Repeated renders on the same platform produce a measured difference of 0 pixels.
       //
-      // 1. Phase 3 がスライドを 1 枚追加して `total: 4` を `5` にしたとき、
-      //    02-layout-groups と 03-shapes-routing の footer は "2 / 4" -> "2 / 5" と
-      //    **正当に変わった**のに、差分が数字 1 文字分の **19px** しかないため比較を
-      //    通過し、ベースラインが Phase 1 世代のまま 2 フェーズにわたって残った。
-      //    その間「ベースラインに変更がない = 描画が変わっていない」という
-      //    読み方が成立していなかった。
-      // 2. アイコンのカタログでは、アイコン 1 個を丸ごと別の絵に描き替えても
-      //    **123px** しか動かず、閾値に遠く届かなかった。
+      // When `maxDiffPixels` and `maxDiffPixelRatio` are both set, Playwright applies the stricter
+      // limit. Keeping only a zero ratio avoids a misleading dead allowance.
       //
-      // 実測した差分の大きさ（1280x720、win32 / linux docker）。
-      //   - 同一プラットフォームでの再実行: **0px**
-      //     （px 数が 1 の位まで一致する。つまり描画は決定的で、揺れは存在しない）
-      //   - footer のページ番号が 1 文字変わる: 16-21px
-      //   - 矢印マーカーの refX を 9 -> 8.5（約 0.7px）ずらす: 1-21px
-      //   - アイコンのチェックマークを少しずらす: 11px
-      //   - アイコンを丸ごと別の図形に描き替える: 123px
-      // 上記はすべて 1843px より小さい。つまり旧設定ではどれも検出できなかった。
-      //
-      // 【重要】`maxDiffPixels` と `maxDiffPixelRatio` を併記すると、Playwright は
-      // **厳しいほうを採用する**（実測: `{ maxDiffPixels: 4, maxDiffPixelRatio: 0 }`
-      // の状態で 1px の差分がテストを失敗させた）。したがって 0 を書いた時点で
-      // `maxDiffPixels` の値は一切効かない。「4px までは許容される」と読めてしまう
-      // 死んだ指定を残さないために、ここでは `maxDiffPixelRatio: 0` だけを書く。
-      //
-      // 許容 0px で問題ないことの根拠: ベースラインはプラットフォームごとに分けて
-      // 保存しており、linux ベースラインは CI と同じ Playwright 公式 Docker イメージで
-      // 生成している。GitHub のランナー（ローカル Docker とは別ハードウェア）でも
-      // 実効 0px で通過することを確認済み。
-      //
-      // ここを割合に戻すと、上記のような「見た目は変わっているのに緑」を再び見逃す。
+      // Platform-specific baselines and the pinned Playwright container make zero tolerance stable
+      // across local Linux container runs and GitHub-hosted CI hardware.
       maxDiffPixelRatio: 0,
       animations: "disabled",
       caret: "hide",
@@ -64,10 +37,10 @@ export default defineConfig({
   },
   use: {
     ...devices["Desktop Chrome"],
-    // スライドと同じ 16:9。deviceScaleFactor を固定しないと DPI 差で画像が変わる。
+    // Match the 16:9 slide viewport and pin deviceScaleFactor to avoid DPI-dependent output.
     viewport: { width: 1280, height: 720 },
     deviceScaleFactor: 1,
-    // slides.css の `.deck{animation:fade}` は prefers-reduced-motion で無効化される。
+    // `slides.css` disables the deck fade animation when reduced motion is requested.
     reducedMotion: "reduce",
     trace: process.env.CI ? "retain-on-failure" : "off",
   },
@@ -82,24 +55,19 @@ export default defineConfig({
       testDir: "test/pdf",
       testMatch: /.*\.spec\.mjs/,
     },
-    // 編集ワークフローの振る舞い検証。スクリーンショット比較はしないので
-    // ベースラインを持たず、visual とは分けて実行できるようにしている。
+    // Behavioral editing tests do not use screenshot baselines.
     {
       name: "editing",
       testDir: "test/editing",
       testMatch: /.*\.spec\.mjs/,
     },
-    // アクセシビリティと出力の等価性。axe-core による自動チェックと、
-    // Chromium のアクセシビリティツリー（CDP）を根拠にした読み上げ順・
-    // 重複読み上げ・到達性の検証。こちらもベースライン画像は持たない。
+    // Accessibility and semantic equivalence tests use axe-core and the Chromium accessibility tree.
     {
       name: "a11y",
       testDir: "test/a11y",
       testMatch: /.*\.spec\.mjs/,
     },
-    // 描画コストのバジェット。DSL が受け付ける最大サイズの図を実測し、
-    // 「絶対時間の上限」と「要素数に対するスケーリング」の両方を固定する。
-    // 時間を測るので、他プロジェクトと並走させず単独ワーカーで実行する。
+    // Performance tests measure maximum-size diagrams and scaling behavior in isolation.
     {
       name: "perf",
       testDir: "test/perf",

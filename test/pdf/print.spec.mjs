@@ -1,12 +1,12 @@
-// PDF 回帰: `?print=1` の印刷モードを headless Chromium で PDF 化して検証する。
+// PDF regression: generate and verify PDF output from `?print=1` mode in headless Chromium.
 //
-// **生バイナリのスナップショット比較はしない**（環境差で必ず壊れるため）。見るのは
-//   1. ページ数がスライド数と一致するか
-//   2. ページサイズが 16:9（slides.css の @page = 13.333333in x 7.5in）か
-//   3. 描画された SVG の意味構造がモデルと一致するか
+// **Do not compare raw binary snapshots** because environment differences always break them. Verify:
+//   1. Page count matches slide count.
+//   2. Page size is 16:9 (slides.css @page = 13.333333in x 7.5in).
+//   3. Rendered SVG semantic structure matches the model.
 //
-// また印刷の **失敗シグナル**（data-print-error）も必ず見る。これを見ないと
-// 「空の PDF が出た」ことを成功と誤判定する。
+// Always check the print **failure signal** (data-print-error), or an empty PDF could be mistaken
+// for success.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -37,18 +37,18 @@ const SECTION_DECK = splitFixtureDeck(
 const STANDARD_TITLE_DECK = splitFixtureDeck(
   readFileSync(join(REPO_ROOT, "test", "fixtures", "standard-title.md"), "utf8"),
 );
-// 背表紙の手前に mermaid + architecture 混在スライドを差し込んだデッキ。
+// Deck with a mixed Mermaid + Architecture slide inserted before the back cover.
 const MIXED_DECK = [...ARCHITECTURE_DECK.slice(0, -1), MIXED_SLIDE, ...ARCHITECTURE_DECK.slice(-1)];
 
-// 回帰ガード（#11）: mermaid は描画時に <div class="mermaidTooltip"> を body 直下へ
-// 追加する。かつてこの要素が print CSS で消されず、ページ境界（7.5in = 720px）を
-// 6px はみ出して空白ページを 1 枚増やしていた。slides.css の
-// `body.print-mode .mermaidTooltip{display:none!important;}` で修正済み。
-// この規則が失われると下のページ数アサートが落ちる。
+// Regression guard (#11): Mermaid adds <div class="mermaidTooltip"> directly under body while
+// rendering. This element was once left visible by print CSS, extending 6px beyond the page boundary
+// (7.5in = 720px) and adding a blank page. The fix is
+// `body.print-mode .mermaidTooltip{display:none!important;}` in slides.css.
+// Removing that rule fails the page-count assertion below.
 
 const PDF_OPTIONS = { printBackground: true, preferCSSPageSize: true };
 
-/** 印刷モードの DOM から、スライドごとの意味構造を取り出す。 */
+/** Extract each slide's semantic structure from the print-mode DOM. */
 function readPrintStructure(page) {
   return page.evaluate(() =>
     [...document.querySelectorAll("#stage > .deck")].map((deck) => ({
@@ -66,15 +66,15 @@ function readPrintStructure(page) {
   );
 }
 
-/** 印刷モードを開いて ready まで待ち、意味構造と PDF を返す。 */
+/** Open print mode, wait until ready, and return semantic structure and PDF. */
 async function renderPrintDeck(page, harness) {
   await page.goto(`${harness.url}/?print=1&token=${encodeURIComponent(harness.printToken)}`, {
     waitUntil: "load",
   });
-  // 成功・失敗の両シグナルを監視する（失敗なら理由付きで throw される）。
+  // Monitor both success and failure signals; failure throws with a reason.
   await waitForPrintReady(page);
 
-  // renderer が実際に成功を報告したか、ハーネス側の記録で裏を取る。
+  // Confirm through the harness record that the renderer actually reported success.
   expect(harness.printReports).toHaveLength(1);
   expect(harness.printReports[0].status).toBe("ready");
   expect(harness.printReports[0].error).toBe("");
@@ -85,47 +85,47 @@ async function renderPrintDeck(page, harness) {
   };
 }
 
-/** スライド Markdown から期待される意味構造と、実際の DOM を突き合わせる。 */
+/** Compare semantic structure expected from slide Markdown with the actual DOM. */
 function assertStructureMatchesModel(structure, slides) {
   expect(structure).toHaveLength(slides.length);
   slides.forEach((markdown, index) => {
     const slide = structure[index];
-    expect(slide.errors, `スライド ${index + 1}: architecture のパースエラーがない`).toBe(0);
-    expect(slide.diagrams, `スライド ${index + 1}: 図の数と構造がモデルと一致する`).toEqual(
+    expect(slide.errors, `slide ${index + 1}: no Architecture parse errors`).toBe(0);
+    expect(slide.diagrams, `slide ${index + 1}: diagram count and structure match the model`).toEqual(
       expectedDiagramShapes(markdown),
     );
     if (hasMermaidBlock(markdown)) {
       expect(
         slide.mermaidSvgs,
-        `スライド ${index + 1}: mermaid が SVG になっている`,
+        `slide ${index + 1}: Mermaid rendered as SVG`,
       ).toBeGreaterThan(0);
     }
   });
 }
 
-/** 全ページが 16:9 であることを確認する。 */
+/** Verify that every page is 16:9. */
 function assertSixteenByNine(mediaBoxes) {
-  expect(mediaBoxes.length, "MediaBox を読み取れている").toBeGreaterThan(0);
+  expect(mediaBoxes.length, "MediaBox entries are readable").toBeGreaterThan(0);
   for (const box of mediaBoxes) {
     expect(
       isSixteenByNinePage(box),
-      `ページサイズが 16:9 (${EXPECTED_PAGE_WIDTH_PT}pt x ${EXPECTED_PAGE_HEIGHT_PT}pt) である: ${JSON.stringify(box)}`,
+      `page size is 16:9 (${EXPECTED_PAGE_WIDTH_PT}pt x ${EXPECTED_PAGE_HEIGHT_PT}pt): ${JSON.stringify(box)}`,
     ).toBe(true);
   }
 }
 
 for (const theme of ["dark", "light"]) {
-  test(`architecture のみのデッキは 1 スライド = 1 ページ (theme: ${theme})`, async ({ page }) => {
+  test(`an Architecture-only deck has one page per slide (theme: ${theme})`, async ({ page }) => {
     const harness = await startHarness({ slides: ARCHITECTURE_DECK, theme });
     try {
       const { structure, pdf } = await renderPrintDeck(page, harness);
 
       assertStructureMatchesModel(structure, ARCHITECTURE_DECK);
-      // フィクスチャが痩せて検証が空回りするのを防ぐ。
+      // Prevent fixture reduction from making the verification vacuous.
       expect(structure.filter((slide) => slide.diagrams.length > 0).length).toBeGreaterThan(0);
 
       const { pageCount, mediaBoxes } = inspectPdf(pdf);
-      expect(pageCount, "PDF のページ数がスライド数と一致する").toBe(ARCHITECTURE_DECK.length);
+      expect(pageCount, "PDF page count matches slide count").toBe(ARCHITECTURE_DECK.length);
       assertSixteenByNine(mediaBoxes);
     } finally {
       await harness.close();
@@ -133,7 +133,7 @@ for (const theme of ["dark", "light"]) {
   });
 }
 
-test("mermaid を含むデッキも 16:9 で出力される", async ({ page }) => {
+test("a deck containing Mermaid is also output at 16:9", async ({ page }) => {
   const harness = await startHarness({ slides: MIXED_DECK, theme: "dark" });
   try {
     const { structure, pdf } = await renderPrintDeck(page, harness);
@@ -141,18 +141,18 @@ test("mermaid を含むデッキも 16:9 で出力される", async ({ page }) =
     assertStructureMatchesModel(structure, MIXED_DECK);
     expect(
       structure.filter((slide) => slide.mermaidSvgs > 0).length,
-      "mermaid が実際に描画されている",
+      "Mermaid actually rendered",
     ).toBeGreaterThan(0);
 
     const { pageCount, mediaBoxes } = inspectPdf(pdf);
-    expect(pageCount, "mermaid を含んでも 1 スライド = 1 ページ").toBe(MIXED_DECK.length);
+    expect(pageCount, "a Mermaid deck still has one page per slide").toBe(MIXED_DECK.length);
     assertSixteenByNine(mediaBoxes);
   } finally {
     await harness.close();
   }
 });
 
-test("セクション区切りも背景付きの 16:9 ページとして出力される", async ({ page }) => {
+test("section dividers are output as 16:9 pages with backgrounds", async ({ page }) => {
   const harness = await startHarness({ slides: SECTION_DECK, theme: "microsoft" });
   try {
     const { structure, pdf } = await renderPrintDeck(page, harness);
@@ -164,14 +164,14 @@ test("セクション区切りも背景付きの 16:9 ページとして出力�
     }
 
     const { pageCount, mediaBoxes } = inspectPdf(pdf);
-    expect(pageCount, "セクション区切りも 1 スライド = 1 ページ").toBe(SECTION_DECK.length);
+    expect(pageCount, "section dividers also have one page per slide").toBe(SECTION_DECK.length);
     assertSixteenByNine(mediaBoxes);
   } finally {
     await harness.close();
   }
 });
 
-test("通常スライドのタイトルは印刷でも上部に固定される", async ({ page }) => {
+test("standard slide titles remain fixed at the top in print", async ({ page }) => {
   const harness = await startHarness({ slides: STANDARD_TITLE_DECK, theme: "microsoft" });
   try {
     const { pdf } = await renderPrintDeck(page, harness);
@@ -212,10 +212,10 @@ test("通常スライドのタイトルは印刷でも上部に固定される",
   }
 });
 
-test("印刷の失敗シグナルを検知できる", async ({ page }) => {
+test("print failure signals can be detected", async ({ page }) => {
   const harness = await startHarness({ slides: ARCHITECTURE_DECK });
   try {
-    // トークンが違うと ./export-data が 404 になり、renderer が失敗経路に入る。
+    // An incorrect token makes ./export-data return 404 and sends the renderer down the failure path.
     await page.goto(`${harness.url}/?print=1&token=wrong-token`, { waitUntil: "load" });
     await page.waitForFunction(
       () => document.documentElement.getAttribute("data-print-error") === "true",
@@ -224,19 +224,19 @@ test("印刷の失敗シグナルを検知できる", async ({ page }) => {
     );
 
     expect(await page.evaluate(() => window.__presentationPrintReady)).toBeUndefined();
-    // 失敗を「成功」と取り違えないこと自体を検証する。
+    // Explicitly verify that failure is not mistaken for success.
     await expect(waitForPrintReady(page, { timeout: 5_000 })).rejects.toThrow(/data-print-error/);
-    expect(harness.printReports, "トークン不一致なので成功報告は届かない").toHaveLength(0);
+    expect(harness.printReports, "a token mismatch must not produce a success report").toHaveLength(0);
   } finally {
     await harness.close();
   }
 });
 
-// 回帰ガード（#12）: initPrint はトークン欠落だけを try の **外側** で throw する。
-// 呼び出し側で受けないと未処理の Promise 拒否になるだけで data-print-error が立たず、
-// ブラウザーは exit 0 で白紙 1 ページの PDF を吐いて正常終了する。上のテスト
-// （トークン不一致）は initPrint 内部の catch を通るので、この経路は素通りする。
-test("トークンの無い印刷も失敗として観測できる", async ({ page }) => {
+// Regression guard (#12): initPrint throws a missing-token error **outside** its try block. If the
+// caller does not catch it, only an unhandled Promise rejection occurs; data-print-error is never
+// set, and the browser exits 0 after producing a one-page blank PDF. The test above (token mismatch)
+// passes through the catch inside initPrint and does not exercise this path.
+test("printing without a token is observable as a failure", async ({ page }) => {
   const harness = await startHarness({ slides: ARCHITECTURE_DECK });
   const consoleErrors = [];
   page.on("console", (message) => {
@@ -250,19 +250,19 @@ test("トークンの無い印刷も失敗として観測できる", async ({ pa
       { timeout: 30_000 },
     );
 
-    // veil が残ったままだと PDF が真っ白になるので、外れていることも見る。
+    // A remaining veil makes the PDF blank, so verify it is removed.
     expect(
       await page.evaluate(() => document.body.classList.contains("mermaid-loading")),
-      "失敗時に mermaid-loading の覆いを残さない",
+      "do not retain the mermaid-loading veil after failure",
     ).toBe(false);
-    expect(harness.printReports, "トークンが無いので成功報告は届かない").toHaveLength(0);
-    expect(consoleErrors.join("\n"), "理由が console に残る").toMatch(/token/i);
+    expect(harness.printReports, "a missing token must not produce a success report").toHaveLength(0);
+    expect(consoleErrors.join("\n"), "the reason remains in the console").toMatch(/token/i);
   } finally {
     await harness.close();
   }
 });
 
-/** EventSource の生成数と ./state のポーリング数を数える計測器を仕掛ける。 */
+/** Instrument counts for EventSource construction and ./state polling. */
 async function instrumentLiveUpdates(page) {
   await page.addInitScript(() => {
     window.__eventSourceCount = 0;
@@ -284,14 +284,13 @@ async function instrumentLiveUpdates(page) {
   };
 }
 
-// ポーリング間隔（renderer.js の setInterval）の 2 周ぶん。
+// Two polling intervals (renderer.js setInterval).
 const QUIESCENCE_WAIT_MS = 4_500;
 
-// 回帰ガード（#12）: `--print-to-pdf` は「ページが静止すること」を完了条件にする。
-// init() の印刷分岐が早期 return しなくなると、閉じない SSE と 2 秒間隔のポーリングが
-// 動き続け、ブラウザーは **永久に終了しない**（実測: 120 秒でも終わらない）。
-// Node 側の 60 秒タイムアウトで殺されるまで PDF は 1 バイトも出ない。
-test("印刷モードは SSE も定期ポーリングも起動しない", async ({ page }) => {
+// Regression guard (#12): `--print-to-pdf` completes when the page becomes idle. If init() no longer
+// returns early in the print branch, persistent SSE and two-second polling continue and the browser
+// **never exits** (observed beyond 120 seconds). No PDF bytes appear before Node kills it at 60s.
+test("print mode starts neither SSE nor periodic polling", async ({ page }) => {
   const harness = await startHarness({ slides: ARCHITECTURE_DECK });
   try {
     const live = await instrumentLiveUpdates(page);
@@ -301,26 +300,26 @@ test("印刷モードは SSE も定期ポーリングも起動しない", async 
     await waitForPrintReady(page);
     await page.waitForTimeout(QUIESCENCE_WAIT_MS);
 
-    expect(await live.eventSourceCount(), "印刷モードは SSE を張らない").toBe(0);
-    expect(live.statePolls, "印刷モードは /state をポーリングしない").toHaveLength(0);
+    expect(await live.eventSourceCount(), "print mode does not open SSE").toBe(0);
+    expect(live.statePolls, "print mode does not poll /state").toHaveLength(0);
   } finally {
     await harness.close();
   }
 });
 
-// 上のテストが「計測器が動いていないだけ」で緑にならないことの裏取り。
-// 通常表示では SSE もポーリングも必ず動くので、同じ計測器が非ゼロを返す。
-test("通常表示は SSE と定期ポーリングを起動する", async ({ page }) => {
+// Confirm that the test above does not pass merely because instrumentation is inactive. Normal view
+// always runs SSE and polling, so the same instrumentation must return nonzero values.
+test("normal view starts SSE and periodic polling", async ({ page }) => {
   const harness = await startHarness({ slides: ARCHITECTURE_DECK });
   try {
     const live = await instrumentLiveUpdates(page);
     await page.goto(`${harness.url}/`, { waitUntil: "load" });
     await page.waitForTimeout(QUIESCENCE_WAIT_MS);
 
-    expect(await live.eventSourceCount(), "通常表示は SSE を張る").toBeGreaterThan(0);
+    expect(await live.eventSourceCount(), "normal view opens SSE").toBeGreaterThan(0);
     expect(
       live.statePolls.length,
-      "通常表示は /state を繰り返し取得する",
+      "normal view repeatedly fetches /state",
     ).toBeGreaterThan(1);
   } finally {
     await harness.close();

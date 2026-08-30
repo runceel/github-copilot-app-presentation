@@ -5,9 +5,9 @@ page: 1
 total: 1
 ---
 
-## 編集ワークフローの回帰用フィクスチャ
+## Editing workflow regression fixture
 
-`client` は自由に動かせるノード、`zone` は layout が位置を決める group
+`client` is a freely movable node; the layout determines the position of group `zone`
 
 ```architecture
 {

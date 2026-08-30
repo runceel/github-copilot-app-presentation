@@ -1,163 +1,163 @@
 ---
-title: presentation canvas サンプル
+title: MarkdStage Sample
 theme: dark
-deck: presentation canvas サンプル
+deck: MarkdStage Sample
 layout: title
 ---
 
-# presentation canvas
-## Markdown でスライドを作る
+# MarkdStage
+## Markdown, ready for the stage.
 
-このファイルを読みながら、canvas の操作とスライドの書き方を紹介します。
+This deck introduces canvas controls and slide authoring.
 
 <!--
-**スピーカーノート 1 / 16**
+**Speaker notes 1 / 16**
 
-この表紙では、Markdown だけで作成から発表まで進められることを紹介します。
+Use this title slide to explain that Markdown supports the entire workflow from authoring to presenting.
 -->
 
 ---
 
-## まずは canvas を操作する
+## Start with the canvas controls
 
-- **▶ / ◀**: 次のスライド、前のスライドへ移動
-- **矢印キー**: `→` で次へ、`←` で前へ
-- **☰**: スライド一覧を開いて、見たいページへジャンプ
-- **⛶**: 1280x720 の外部ウィンドウでプレゼンを開始（Windows では `F11` で全画面化）
-- **印刷アイコン**: デッキを 16:9 の PDF として保存
+- **▶ / ◀**: Move to the next or previous slide
+- **Arrow keys**: Press `→` for next or `←` for previous
+- **☰**: Open the slide list and jump to any slide
+- **⛶**: Start presenting in a 1280x720 external window (press `F11` for full screen on Windows)
+- **Print icon**: Save the deck as a 16:9 PDF
 
-ページ送りは canvas 側で行われます。チャットから「3枚目へ」と指定することもできます。
+Navigation happens in the canvas. You can also request "Go to slide 3" in chat.
 
 <!--
-**スピーカーノート 2 / 16**
+**Speaker notes 2 / 16**
 
-下部の操作バーとキーボードの両方を実際に試します。
+Try both the bottom control bar and keyboard navigation.
 -->
 
 ---
 
-## スライドは `---` で区切る
+## Separate slides with `---`
 
-1つの Markdown ファイルに、複数のスライドを書けます。
+One Markdown file can contain multiple slides.
 
-スライドの終わりに、行頭から `---` だけを書きます。
+At the end of a slide, add a line containing only `---`.
 
 ```markdown
-# 1枚目のタイトル
+# First slide title
 
-最初のスライドです。
+This is the first slide.
 
 ---
 
-## 2枚目の見出し
+## Second slide heading
 
-- ここから次のスライド
+- The next slide starts here
 ```
 
-コードブロック内の `---` は、スライドの区切りとして扱われません。
+The `---` inside a code block is not treated as a slide separator.
 
 <!--
-**スピーカーノート 3 / 16**
+**Speaker notes 3 / 16**
 
-コード例の中にある区切り線は、新しいスライドを作らない点を強調します。
+Emphasize that the separator in the code example does not create another slide.
 -->
 
 ---
 
-## front matter で見た目を整える
+## Configure appearance with front matter
 
-スライドの先頭に、`---` で囲んだ設定を書けます。
+At the start of a slide, place settings between `---` lines.
 
 ```markdown
 ---
-deck: はじめてのプレゼン
+deck: First presentation
 kicker: Getting started
 page: 2
 total: 6
 ---
-## スライドの見出し
+## Slide heading
 
-- ページ番号がフッターに表示されます
+- The page number appears in the footer
 ```
 
-- `deck`: フッターに表示するデッキ名
-- `kicker`: 見出しの上に表示するラベル
-- `page` / `total`: ページ番号と総ページ数
-- 先頭スライドに `layout: title` を付けると表紙になります
+- `deck`: Deck name shown in the footer
+- `kicker`: Label shown above the heading
+- `page` / `total`: Current page number and total page count
+- Add `layout: title` to the first slide to make it a title slide
 
 <!--
-**スピーカーノート 4 / 16**
+**Speaker notes 4 / 16**
 
-front matter は見た目とメタデータだけを担当し、本文は通常の Markdown のままです。
+Front matter controls only appearance and metadata; the body remains standard Markdown.
 -->
 
 ---
 
-## Markdown をそのまま活用する
+## Use Markdown directly
 
-見出し、箇条書き、強調、リンク、表を組み合わせます。
+Combine headings, lists, emphasis, links, and tables.
 
-| 記法 | 用途 |
+| Syntax | Purpose |
 | --- | --- |
-| `## 見出し` | スライドの主題 |
-| `- 項目` | 要点の整理 |
-| `**太字**` | 重要語の強調 |
-| `` `code` `` | コードや設定値 |
+| `## Heading` | Slide topic |
+| `- Item` | Organize key points |
+| `**Bold**` | Emphasize important terms |
+| `` `code` `` | Code or configuration values |
 
-文章を詰め込みすぎず、1枚につき1つの主題にすると読みやすくなります。
+Keep slides readable by avoiding dense prose and presenting one topic per slide.
 
 <!--
-**スピーカーノート 5 / 16**
+**Speaker notes 5 / 16**
 
-表、強調、インラインコードが同じテーマで統一されていることを確認します。
+Confirm that tables, emphasis, and inline code use consistent theme styling.
 -->
 
 ---
 
-## コードや図も表示できる
+## Display code and diagrams
 
-コードブロックには言語名を付けると、シンタックスハイライトされます。
+Add a language name to a code block to enable syntax highlighting.
 
 ```javascript
 const slides = ["learn", "write", "present"];
 console.log(slides);
 ```
 
-Mermaid のコードブロックは、図としてレンダリングされます。
+Mermaid code blocks render as diagrams.
 
 ```mermaid
 flowchart LR
-    A[Markdownを書く] --> B[canvasで確認]
-    B --> C[発表する]
+    A[Write Markdown] --> B[Review in canvas]
+    B --> C[Present]
 ```
 
 <!--
-**スピーカーノート 6 / 16**
+**Speaker notes 6 / 16**
 
-コードのシンタックスハイライトと Mermaid の描画を順に示します。
+Demonstrate code syntax highlighting, then Mermaid rendering.
 -->
 
 ---
 
-## v1.1.0: Architecture DSL の図
+## v1.1.0: Architecture DSL diagrams
 
-`architecture` コードフェンスに JSON を書くと、配置を固定した構成図を表示できます。
+Write JSON in an `architecture` code fence to render a diagram with fixed placement.
 
-- レイアウト: `row` / `column` / `grid` / `layered`
-- 図形とスタイル: `rect` / `rounded-rect` / `ellipse`
-- 経路: `straight` / `orthogonal` / `polyline`
+- Layouts: `row` / `column` / `grid` / `layered`
+- Shapes and styles: `rect` / `rounded-rect` / `ellipse`
+- Routes: `straight` / `orthogonal` / `polyline`
 
 <!--
-**スピーカーノート 7 / 16**
+**Speaker notes 7 / 16**
 
-ここから Architecture DSL のサンプルに入ることを案内します。
+Introduce the Architecture DSL examples that follow.
 -->
 
 ---
 
-## レイアウト駆動の構成図
+## Layout-driven architecture diagram
 
-子要素の座標を個別に書かず、group のレイアウトで整列します。
+Align child elements with a group layout instead of assigning each child explicit coordinates.
 
 ```architecture
 {
@@ -216,16 +216,16 @@ flowchart LR
 ```
 
 <!--
-**スピーカーノート 8 / 16**
+**Speaker notes 8 / 16**
 
-group のレイアウトだけで子要素が整列している点に注目します。
+Point out that the group layout alone aligns the child elements.
 -->
 
 ---
 
-## 図形・スタイル・経路
+## Shapes, styles, and routes
 
-図形の種類、style、connector の routing を1枚で確認できます。
+Review shape types, styles, and connector routing on one slide.
 
 ```architecture
 {
@@ -293,16 +293,16 @@ group のレイアウトだけで子要素が整列している点に注目し�
 ```
 
 <!--
-**スピーカーノート 9 / 16**
+**Speaker notes 9 / 16**
 
-3種類の図形と経路、ラベルの前後関係を見比べます。
+Compare the three shapes, route types, and label layering.
 -->
 
 ---
 
-## 密な構成図の自動ルーティング
+## Automatic routing in a dense diagram
 
-依存関係だけを宣言し、複数の経路が交差する図も自動配線できます。
+Declare only the dependencies and let automatic routing handle diagrams with crossing paths.
 
 ```architecture
 {
@@ -329,16 +329,16 @@ group のレイアウトだけで子要素が整列している点に注目し�
 ```
 
 <!--
-**スピーカーノート 10 / 16**
+**Speaker notes 10 / 16**
 
-手動の中継点なしでも、密な接続が自動配線されることを説明します。
+Explain that dense connections route automatically without manual waypoints.
 -->
 
 ---
 
-## カスタム画像を Architecture DSL に組み込む
+## Add custom images to Architecture DSL
 
-standalone image と node icon は、同じ `assets/` の画像を参照できます。
+Standalone images and node icons can reference the same image under `assets/`.
 
 ```architecture
 {
@@ -352,7 +352,7 @@ standalone image と node icon は、同じ `assets/` の画像を参照でき�
       "id": "image-sample",
       "src": "assets/architecture-image-sample.svg",
       "fit": "contain",
-      "ariaLabel": "Architecture DSL のカスタム画像サンプル",
+      "ariaLabel": "Architecture DSL custom image example",
       "x": 80,
       "y": 160,
       "width": 900,
@@ -383,45 +383,45 @@ standalone image と node icon は、同じ `assets/` の画像を参照でき�
 ```
 
 <!--
-**スピーカーノート 11 / 16**
+**Speaker notes 11 / 16**
 
-standalone image と node icon が同じローカル asset を共有しています。
+The standalone image and node icon share the same local asset.
 -->
 
 ---
 
-## 画像とリンクを追加する
+## Add images and links
 
-画像は `assets/` フォルダーに置き、絶対パスで参照します。
+Place images in the `assets/` folder and reference them with absolute paths.
 
-![Architecture DSL のカスタム画像サンプル](/assets/architecture-image-sample.svg)
+![Architecture DSL custom image example](/assets/architecture-image-sample.svg)
 
-外部ページへのリンクも Markdown の記法で書けます。
+Use standard Markdown syntax for links to external pages.
 
 ```markdown
-[presentation canvas のリポジトリ](https://github.com/runceel/github-copilot-app-presentation)
+[MarkdStage repository](https://github.com/runceel/markdstage)
 ```
 
-画像には、表示できないときにも意味が伝わる説明文を付けます。
+Give images descriptive alternative text that remains meaningful when the image cannot be displayed.
 
 <!--
-**スピーカーノート 12 / 16**
+**Speaker notes 12 / 16**
 
-画像の代替テキストとリンクが通常の Markdown 記法で書けることを確認します。
+Confirm that image alternative text and links use standard Markdown syntax.
 -->
 
 ---
 
-## テーマとサイズを選ぶ
+## Choose a theme and size
 
-デッキ全体のテーマは、canvas を開くときに指定します。
+Select the deck-wide theme when opening the canvas.
 
-- `dark`: 落ち着いたダークテーマ（既定）
-- `light`: 明るく中立的なテーマ
-- `microsoft`: Fluent 配色
-- `custom`: CSS カスタムプロパティで独自の配色や表紙を定義
+- `dark`: Subdued dark theme (default)
+- `light`: Bright, neutral theme
+- `microsoft`: Fluent color palette
+- `custom`: Define custom colors and title-slide styling with CSS custom properties
 
-カスタムテーマは、Markdown からテーマファイルを指定します。
+Specify a custom theme file from Markdown.
 
 ```markdown
 ---
@@ -431,67 +431,67 @@ theme-file: ./themes/brand/theme.css
 ```
 
 <!--
-**スピーカーノート 13 / 16**
+**Speaker notes 13 / 16**
 
-今回は既定の dark テーマで表示し、テーマ指定の選択肢だけ紹介します。
+This deck uses the default dark theme while introducing the available theme options.
 -->
 
 ---
 
-## スライドのサイズを調整する
+## Adjust slide size
 
-特に強調したいページには、本文の先頭へ指定を追加できます。
+Add a directive at the start of the body for slides that need extra emphasis.
 
 ```markdown
 <!-- slide-size: large -->
 
-## 大きく見せたいスライド
+## Slide to display larger
 ```
 
 <!--
-**スピーカーノート 14 / 16**
+**Speaker notes 14 / 16**
 
-`slide-size` コメントは表示用ディレクティブなので、スピーカーノートには現れません。
+The `slide-size` comment is a display directive, so it does not appear in speaker notes.
 -->
 
 ---
 
-## 最小構成で始める
+## Start with the minimum structure
 
 ```markdown
-# 私のプレゼン
+# My presentation
 
 ---
 
-## 今日伝えたいこと
+## Today's key points
 
-- 要点を1つ
-- 要点を2つ
-- 最後に次のアクション
+- First key point
+- Second key point
+- Next action
 ```
 
-**書く → canvas で確認する → ページを送って発表する**。これだけで始められます。
+**Write → review in the canvas → navigate and present.** That is all you need to get started.
 
 <!--
-**スピーカーノート 15 / 16**
+**Speaker notes 15 / 16**
 
-最小構成はタイトルと要点だけで十分だと伝えます。
+Explain that a title and key points are enough for a minimal deck.
 -->
 
 ---
 
-## まとめ
+## Summary
 
-- Markdown のファイルを `---` でスライドに分ける
-- front matter でデッキ名、ラベル、ページ番号を設定する
-- 箇条書き、コード、表、Mermaid、画像を組み合わせる
-- canvas のボタンやキーボードで発表する
-- 印刷アイコンから、プレゼン全体を PDF に書き出せる
+- Split a Markdown file into slides with `---`
+- Configure the deck name, label, and page numbers in front matter
+- Combine lists, code, tables, Mermaid, and images
+- Present with canvas buttons or the keyboard
+- Export the full presentation to PDF with the print icon
 
-まずはこのファイルをコピーして、自分のタイトルと要点に置き換えてみましょう。
+Copy this file and replace its title and key points with your own.
 
 <!--
-**スピーカーノート 16 / 16**
+**Speaker notes 16 / 16**
 
-最後に発表者ビューを開き、各ページでノートが切り替わることを確認します。
+Finally, open presenter view and confirm that the notes change on each slide.
 -->

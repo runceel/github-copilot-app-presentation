@@ -1,16 +1,16 @@
-// PDF の最小限の検査ユーティリティ。
+// Minimal PDF inspection utilities.
 //
-// 生バイナリのスナップショット比較は環境差で必ず壊れるので行わない。ここで見るのは
-// **ページ数**と**ページサイズ**だけ。内容の検証は DOM から取った意味構造で行う。
+// Do not snapshot raw binary data because environment differences always break those comparisons.
+// Inspect only the **page count** and **page size**. Validate content through semantic structure
+// read from the DOM.
 //
-// 依存を増やさないため Node 標準の zlib だけで実装する。Chromium は相互参照や
-// オブジェクトを FlateDecode の object stream に格納することがあるため、
-// 素の本文に加えて展開済みストリームも検索対象に含める。
+// Use only Node's built-in zlib to avoid adding dependencies. Chromium may store cross-references
+// and objects in FlateDecode object streams, so search both raw content and inflated streams.
 
 import { inflateSync } from "node:zlib";
 
-// PDF のユーザー空間は 1/72 インチ。slides.css の `@page{size:13.333333in 7.5in}` は
-// 960pt x 540pt（= 16:9）に相当する。
+// PDF user space is 1/72 inch. The `@page{size:13.333333in 7.5in}` rule in slides.css corresponds
+// to 960pt x 540pt (= 16:9).
 export const EXPECTED_PAGE_WIDTH_PT = 13.333333 * 72;
 export const EXPECTED_PAGE_HEIGHT_PT = 7.5 * 72;
 
@@ -26,7 +26,7 @@ function inflateStreams(raw) {
     try {
       parts.push(inflateSync(slice).toString("latin1"));
     } catch (_) {
-      // 非圧縮 / 別フィルターのストリームは読み飛ばす。
+      // Skip uncompressed streams and streams that use another filter.
     }
     pattern.lastIndex = end;
   }
@@ -34,9 +34,9 @@ function inflateStreams(raw) {
 }
 
 /**
- * PDF のページ数とページサイズを取り出す。
+ * Extract page count and page sizes from a PDF.
  *
- * @param {Buffer} buffer page.pdf() が返したバイト列
+ * @param {Buffer} buffer Bytes returned by page.pdf()
  * @returns {{ pageCount: number, mediaBoxes: Array<{width:number,height:number}> }}
  */
 export function inspectPdf(buffer) {
@@ -50,7 +50,7 @@ export function inspectPdf(buffer) {
   const raw = buffer.toString("latin1");
   const corpus = [raw, ...inflateStreams(raw)].join("\n");
 
-  // /Type /Pages の /Count を優先し、無ければ /Type /Page の出現数を数える。
+  // Prefer /Count under /Type /Pages; otherwise count occurrences of /Type /Page.
   let pageCount = 0;
   const countMatch = corpus.match(/\/Type\s*\/Pages\b[^>]*?\/Count\s+(\d+)/);
   if (countMatch) {
@@ -71,7 +71,7 @@ export function inspectPdf(buffer) {
   return { pageCount, mediaBoxes };
 }
 
-/** 16:9（960pt x 540pt）とみなせるか。丸め誤差は許容する。 */
+/** Return whether a page is effectively 16:9 (960pt x 540pt), allowing rounding error. */
 export function isSixteenByNinePage({ width, height }, tolerancePt = 2) {
   return (
     Math.abs(width - EXPECTED_PAGE_WIDTH_PT) <= tolerancePt &&

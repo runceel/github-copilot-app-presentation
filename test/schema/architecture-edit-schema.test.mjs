@@ -1,16 +1,15 @@
-// 「layout 解除」がリポジトリ内の実データ全部で安全かを検証する。
+// Verify that releasing layouts is safe for all real repository data.
 //
-// 背景: layout を持つ group の子は x/y を書いても黙って無視される。
-// リポジトリ内の実データではノードの約 68% がこれに該当するため、
-// 編集機能は「動かせない」と拒否したうえで、明示操作で layout を座標へ
-// 焼き出す（release）という逃げ道を用意している。
+// Background: children of a group with a layout silently ignore explicit x/y values.
+// About 68% of nodes in real repository data are in this state, so editing first refuses to move
+// them and provides an explicit release operation that materializes the layout as coordinates.
 //
-// この release が壊れていないことを、玩具の fixture ではなく実データで固定する。
-//   1. 解除後の DSL が JSON Schema を通る（Flow→Fixed へ変わるので x/y/w/h が全部必要）
-//   2. 解除後も parseArchitecture を通る
-//   3. 解除の前後で図の幾何が完全一致する（1px も動かない）
+// Lock down this release behavior with real data rather than a toy fixture.
+//   1. Released DSL passes JSON Schema (Flow becomes Fixed, requiring x/y/w/h)
+//   2. Released DSL still passes parseArchitecture
+//   3. Diagram geometry is identical before and after release (not even a 1px shift)
 //
-// 実行: node --test test/schema/architecture-edit-schema.test.mjs
+// Run: node --test test/schema/architecture-edit-schema.test.mjs
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -21,11 +20,11 @@ import { fileURLToPath } from "node:url";
 import {
   architectureSemanticSnapshot,
   parseArchitecture,
-} from "../../.github/extensions/presentation/renderer/architecture.mjs";
+} from "../../.github/extensions/markdstage/renderer/architecture.mjs";
 import {
   createArchitectureEditSession,
   describePlacement,
-} from "../../.github/extensions/presentation/renderer/architecture-edit.mjs";
+} from "../../.github/extensions/markdstage/renderer/architecture-edit.mjs";
 import { extractArchitectureSources } from "../utils/architecture.mjs";
 import { schemaCheckSource } from "./validator.mjs";
 
@@ -34,7 +33,7 @@ const examplesDir = path.join(
   repoRoot,
   ".github",
   "extensions",
-  "presentation",
+  "markdstage",
   "schema",
   "examples",
 );
@@ -59,7 +58,7 @@ async function collectMarkdownFiles(directory) {
   return found;
 }
 
-/** リポジトリ内の architecture ソースを Markdown と examples の両方から集める。 */
+/** Collect repository architecture sources from Markdown and examples. */
 async function collectSources() {
   const collected = [];
   for (const file of await collectMarkdownFiles(repoRoot)) {
@@ -80,14 +79,14 @@ async function collectSources() {
 
 const sources = await collectSources();
 
-/** 図の中の「layout を持つ group」の id を列挙する。 */
+/** List IDs for groups with layouts in a diagram. */
 function layoutGroups(model) {
   return model.elements
     .filter((element) => element.type === "group" && element.layout)
     .map((element) => element.id);
 }
 
-/** 幾何の比較用。connector は端点がノード位置から導出されるので併せて見る。 */
+/** Geometry comparison data. Include connectors because endpoints derive from node positions. */
 function geometry(model) {
   return model.elements.map((element) => ({
     id: element.id,
@@ -99,16 +98,15 @@ function geometry(model) {
   }));
 }
 
-// layout の計算結果は 378.79999999999995 のような二進浮動小数になる。
-// DSL は人が読み書きするファイルなので書き戻す際に丸めており、
-// 解除の前後で座標がビット単位で一致することはない。
-// 丸め幅は 1/10000 canvas 単位、入れ子の解除でも高々 4 段なので、
-// 「見えない差」の上限としてこの値を使う（canvas 4000px 換算で 0.001px）。
+// Layout calculations produce binary floating-point values such as 378.79999999999995.
+// Because DSL files are human-authored, values are rounded when written back, so coordinates cannot
+// match bit-for-bit across a release. Rounding is 1/10000 canvas unit and nesting is at most four
+// levels, so use this as the upper bound for an invisible difference (0.001px on a 4000px canvas).
 const INVISIBLE = 1e-3;
 
-/** 数値だけ許容誤差つきで、それ以外は厳密に比較する。 */
+/** Compare numbers with tolerance and all other values exactly. */
 function assertGeometryClose(actual, expected, label) {
-  assert.equal(actual.length, expected.length, `${label}: 要素数が変わった`);
+  assert.equal(actual.length, expected.length, `${label}: element count changed`);
   for (let i = 0; i < actual.length; i += 1) {
     for (const key of Object.keys(expected[i])) {
       const a = actual[i][key];
@@ -116,7 +114,7 @@ function assertGeometryClose(actual, expected, label) {
       if (typeof a === "number" && typeof b === "number") {
         assert.ok(
           Math.abs(a - b) <= INVISIBLE,
-          `${label}: ${expected[i].id ?? expected[i].type}.${key} が ${b} から ${a} へずれた`,
+          `${label}: ${expected[i].id ?? expected[i].type}.${key} shifted from ${b} to ${a}`,
         );
       } else {
         assert.deepEqual(a, b, `${label}: ${expected[i].id ?? expected[i].type}.${key}`);
@@ -126,13 +124,13 @@ function assertGeometryClose(actual, expected, label) {
 }
 
 /**
- * 折れ線から「隣の 2 点を結ぶ直線上に載っているだけの点」を落とす。
+ * Remove points that merely lie on the line between their two neighbors.
  *
- * ルーターは連続点の重複と共線を 0.001 の閾値で畳んでいる（architecture.mjs）。
- * ところが layout の計算結果は 696.5999999999999 のような値になり、
- * 696.6 との差が閾値未満でも「別の値」なので角として残ってしまう。
- * 座標を丸めるとこの幽霊の角が消えて点が 1 つ減るが、線の形は同じ。
- * ここでは形だけを比べたいので、両者を同じ規則で正規化してから突き合わせる。
+ * The router collapses duplicate and collinear consecutive points at a 0.001 threshold
+ * (architecture.mjs). Layout calculations can produce values such as 696.5999999999999. Although
+ * that differs from 696.6 by less than the threshold, it remains a distinct value and survives as
+ * a corner. Rounding coordinates removes this ghost corner and one point, but the line shape is
+ * unchanged. Normalize both sides with the same rule because only the shape matters here.
  */
 function canonicalPoints(points) {
   const kept = [];
@@ -152,7 +150,7 @@ function canonicalPoints(points) {
         (kept[i].x - previous.x) * (next.y - previous.y) -
         (kept[i].y - previous.y) * (next.x - previous.x);
       const span = Math.hypot(next.x - previous.x, next.y - previous.y);
-      // previous→next の直線までの距離が見えない範囲なら、この点は不要。
+      // This point is unnecessary when its distance from the previous-to-next line is invisible.
       if (span > 0 && Math.abs(cross) / span <= INVISIBLE) continue;
     }
     result.push(kept[i]);
@@ -160,7 +158,7 @@ function canonicalPoints(points) {
   return result;
 }
 
-/** connector の points を正規化した意味構造スナップショット。 */
+/** Semantic structure snapshot with normalized connector points. */
 function canonicalSnapshot(model) {
   const snapshot = architectureSemanticSnapshot(model);
   return {
@@ -173,22 +171,22 @@ function canonicalSnapshot(model) {
   };
 }
 
-/** 意味構造スナップショット（座標を含む）を同じ許容誤差で比較する。 */
+/** Compare semantic structure snapshots, including coordinates, with the same tolerance. */
 function assertSnapshotClose(actual, expected, label) {
   const walk = (a, b, at) => {
     if (typeof a === "number" && typeof b === "number") {
-      assert.ok(Math.abs(a - b) <= INVISIBLE, `${label}: ${at} が ${b} から ${a} へずれた`);
+      assert.ok(Math.abs(a - b) <= INVISIBLE, `${label}: ${at} shifted from ${b} to ${a}`);
       return;
     }
     if (Array.isArray(b)) {
-      assert.ok(Array.isArray(a), `${label}: ${at} が配列でない`);
-      assert.equal(a.length, b.length, `${label}: ${at} の要素数が変わった`);
+      assert.ok(Array.isArray(a), `${label}: ${at} is not an array`);
+      assert.equal(a.length, b.length, `${label}: ${at} element count changed`);
       b.forEach((value, index) => walk(a[index], value, `${at}[${index}]`));
       return;
     }
     if (b !== null && typeof b === "object") {
-      assert.ok(a !== null && typeof a === "object", `${label}: ${at} がオブジェクトでない`);
-      assert.deepEqual(Object.keys(a).sort(), Object.keys(b).sort(), `${label}: ${at} のキー`);
+      assert.ok(a !== null && typeof a === "object", `${label}: ${at} is not an object`);
+      assert.deepEqual(Object.keys(a).sort(), Object.keys(b).sort(), `${label}: ${at} keys`);
       for (const key of Object.keys(b)) walk(a[key], b[key], `${at}.${key}`);
       return;
     }
@@ -197,8 +195,8 @@ function assertSnapshotClose(actual, expected, label) {
   walk(actual, expected, "snapshot");
 }
 
-test("実データに layout 管理下のノードが実在する（このテスト自体が空振りしていない）", () => {
-  assert.ok(sources.length > 0, "architecture ソースが 1 つも集まっていない");
+test("real data contains layout-managed nodes, so this test is not vacuous", () => {
+  assert.ok(sources.length > 0, "no architecture sources were collected");
 
   let managed = 0;
   let total = 0;
@@ -213,22 +211,22 @@ test("実データに layout 管理下のノードが実在する（このテス
     }
   }
 
-  // 実測値そのものを固定すると図の追加で落ちるので、「無視できない割合で存在する」ことだけ固定する。
-  assert.ok(groups > 0, "layout を持つ group が 1 つも無い");
+  // Exact counts would break whenever diagrams are added; require only a meaningful proportion.
+  assert.ok(groups > 0, "no groups have layouts");
   assert.ok(
     managed / total > 0.4,
-    `layout 管理下の割合が想定より低い: ${managed}/${total}`,
+    `layout-managed proportion is lower than expected: ${managed}/${total}`,
   );
 });
 
-test("layout を解除しても図の幾何は 1px も変わらない（実データ全件）", () => {
+test("releasing a layout does not move diagram geometry by even 1px for all real data", () => {
   let released = 0;
   for (const { label, source } of sources) {
     const baseline = parseArchitecture(source);
     for (const groupId of layoutGroups(baseline)) {
       const session = createArchitectureEditSession(source);
       const result = session.releaseLayout(groupId);
-      assert.equal(result.ok, true, `${label} / ${groupId}: 解除に失敗 (${result.reason})`);
+      assert.equal(result.ok, true, `${label} / ${groupId}: release failed (${result.reason})`);
       released += 1;
 
       assertGeometryClose(geometry(session.model), geometry(baseline), `${label} / ${groupId}`);
@@ -239,10 +237,10 @@ test("layout を解除しても図の幾何は 1px も変わらない（実デ�
       );
     }
   }
-  assert.ok(released > 0, "解除対象が 1 つも無かった");
+  assert.ok(released > 0, "there were no layouts to release");
 });
 
-test("layout を解除した DSL は JSON Schema を通る（Flow→Fixed の箱が全部埋まる）", () => {
+test("DSL passes JSON Schema after layout release because every Flow-to-Fixed box is populated", () => {
   for (const { label, source } of sources) {
     for (const groupId of layoutGroups(parseArchitecture(source))) {
       const session = createArchitectureEditSession(source);
@@ -253,37 +251,37 @@ test("layout を解除した DSL は JSON Schema を通る（Flow→Fixed の箱
   }
 });
 
-test("入れ子の layout を外側から順に全部解除しても両検証器を通る", () => {
+test("releasing every nested layout from the outside in passes both validators", () => {
   for (const { label, source } of sources) {
     const session = createArchitectureEditSession(source);
     const baseline = parseArchitecture(source);
 
-    // 解除するたびにモデルが変わるので、その都度残りを数え直す。
+    // Recount remaining layouts after each release because every release changes the model.
     let guard = 0;
     for (;;) {
       const remaining = layoutGroups(session.model);
       if (remaining.length === 0) break;
-      assert.ok((guard += 1) < 64, `${label}: 解除が収束しない`);
+      assert.ok((guard += 1) < 64, `${label}: release did not converge`);
       assert.equal(session.releaseLayout(remaining[0]).ok, true);
     }
 
     if (guard === 0) continue;
-    assertGeometryClose(geometry(session.model), geometry(baseline), `${label}: 全解除`);
+    assertGeometryClose(geometry(session.model), geometry(baseline), `${label}: release all`);
     const verdict = schemaCheckSource(session.source);
-    assert.equal(verdict.ok, true, `${label}: 全解除後に schema 違反 - ${verdict.message}`);
-    // 全部外したので、以降はどのノードも自由に動かせる。
+    assert.equal(verdict.ok, true, `${label}: schema violation after releasing all - ${verdict.message}`);
+    // With every layout released, every node can now move freely.
     for (const element of session.model.elements) {
       if (element.type !== "node" && element.type !== "group") continue;
       assert.equal(
         session.describe(element.id).movable,
         true,
-        `${label}: ${element.id} が解除後も動かせない`,
+        `${label}: ${element.id} remains immovable after release`,
       );
     }
   }
 });
 
-test("移動を書き戻した DSL も JSON Schema を通る（実データ全件・動かせる要素のみ）", () => {
+test("DSL with written-back moves passes JSON Schema for every movable element in real data", () => {
   for (const { label, source } of sources) {
     const session = createArchitectureEditSession(source);
     let moved = 0;
@@ -291,11 +289,11 @@ test("移動を書き戻した DSL も JSON Schema を通る（実データ全�
       if (element.type !== "node" && element.type !== "group") continue;
       if (!describePlacement(session.model, element.id).movable) continue;
       const result = session.move(element.id, 10, -10);
-      assert.equal(result.ok, true, `${label}: ${element.id} の移動に失敗 (${result.reason})`);
+      assert.equal(result.ok, true, `${label}: failed to move ${element.id} (${result.reason})`);
       moved += 1;
     }
     if (moved === 0) continue;
     const verdict = schemaCheckSource(session.source);
-    assert.equal(verdict.ok, true, `${label}: 移動後に schema 違反 - ${verdict.message}`);
+    assert.equal(verdict.ok, true, `${label}: schema violation after move - ${verdict.message}`);
   }
 });

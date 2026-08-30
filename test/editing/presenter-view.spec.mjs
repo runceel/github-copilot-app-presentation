@@ -15,7 +15,7 @@ test("presenter view provides presentation controls and returns to the slide", a
     await page.goto(harness.url, { waitUntil: "load" });
     await waitForSlideReady(page);
 
-    await page.getByRole("button", { name: "発表者ビュー" }).click();
+    await page.getByRole("button", { name: "Presenter view" }).click();
     await expect(page.locator("#presenterView")).toBeVisible();
     await expect(page.locator("#presenterCurrent")).toHaveAttribute(
       "src",
@@ -39,12 +39,12 @@ test("presenter view provides presentation controls and returns to the slide", a
 
     await page.locator("#presenterToggleButton").click();
     await expect.poll(() => harness.presenterRunning).toBe(true);
-    await expect(page.locator("#presenterToggleButton")).toHaveText("プレゼンを終了");
+    await expect(page.locator("#presenterToggleButton")).toHaveText("End presentation");
     await page.locator("#presenterToggleButton").click();
     await expect.poll(() => harness.presenterRunning).toBe(false);
-    await expect(page.locator("#presenterToggleButton")).toHaveText("プレゼンを開始");
+    await expect(page.locator("#presenterToggleButton")).toHaveText("Start presentation");
 
-    await page.getByRole("button", { name: "スライド表示に戻る" }).click();
+    await page.getByRole("button", { name: "Return to slide view" }).click();
     await expect(page.locator("#presenterView")).toBeHidden();
     await expect(page.locator("#stage")).toBeVisible();
   } finally {
@@ -60,7 +60,7 @@ test("speaker notes do not leak into slide overview titles", async ({ page }) =>
     await page.goto(harness.url, { waitUntil: "load" });
     await waitForSlideReady(page);
 
-    await page.getByRole("button", { name: "スライド一覧" }).click();
+    await page.getByRole("button", { name: "Slide list" }).click();
     await expect(page.getByRole("button", { name: "1 Public body line" })).toBeVisible();
     await expect(page.getByText("Internal talking point")).toHaveCount(0);
   } finally {

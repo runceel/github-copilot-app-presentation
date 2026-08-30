@@ -1,55 +1,54 @@
-// renderer 専用の薄い静的サーバー（テストハーネス）。
+// Thin static server dedicated to the renderer (test harness).
 //
-// 本番の `extension.mjs` は Copilot SDK (`@github/copilot-sdk/extension`) に依存する
-// ため CI では起動できない。ここでは **renderer が必要とする最小のエンドポイントだけ**
-// を実装する。SDK 側の状態管理・永続化・presenter 起動・PDF 生成といったロジックは
-// 一切写経しない（二重メンテを避けるため）。
+// Production `extension.mjs` depends on the Copilot SDK (`@github/copilot-sdk/extension`) and cannot
+// run in CI. Implement **only the minimum endpoints required by the renderer**. Do not duplicate SDK
+// logic for state management, persistence, presenter launch, or PDF generation.
 //
-// 唯一 extension.mjs と共有するのは vendor アセットの復元処理で、これは
-// `scripts/vendor-assets.mjs` の `reconstructAsset` をそのまま import して使う。
+// The only logic shared with extension.mjs is vendor asset reconstruction, imported directly as
+// `reconstructAsset` from `scripts/vendor-assets.mjs`.
 //
-// 実装するエンドポイント（renderer.js が実際に叩くもの）:
+// Implemented endpoints (those actually called by renderer.js):
 //   GET  /                      → renderer/index.html
-//   GET  /state                 → 現在のスライド（ポーリングの主系）
-//   GET  /deck                  → デッキ全体（スライド一覧用）
-//   GET  /events                → SSE（version 変更の通知）
-//   GET  /export-data?token=    → 印刷モードのデッキ供給（?print=1 で必須）
-//   POST /export-status?token=  → 印刷モードの完了報告（200 を返さないと renderer が throw）
-//   POST /navigate              → ページ送り（index / delta）
-//   POST /edit                  → Architecture 図の書き戻し（編集モード時のみ）
-//   POST /present, /export      → 未対応を返すだけのスタブ
-//   GET  /markdown-files        → workspace 内の Markdown 一覧（インポート用）
-//   POST /import                → Markdown を読み込み、分割してデッキを差し替える
-//   GET  /vendor/mermaid.min.js → 分割チャンクから復元（ファイルとしては存在しない）
-//   GET  /renderer/*, /vendor/* → 拡張ディレクトリからの静的配信
-//   GET  /assets/*              → Markdown 隣接 assets/、次にリポジトリ直下 assets/
+//   GET  /state                 → current slide (primary polling path)
+//   GET  /deck                  → full deck (for the slide list)
+//   GET  /events                → SSE notifications for version changes
+//   GET  /export-data?token=    → deck data for print mode (required by ?print=1)
+//   POST /export-status?token=  → print-mode completion report (renderer throws without a 200)
+//   POST /navigate              → slide navigation (index / delta)
+//   POST /edit                  → Architecture diagram writeback (edit mode only)
+//   POST /present, /export      → stubs that return unsupported
+//   GET  /markdown-files        → workspace Markdown list (for import)
+//   POST /import                → load and split Markdown, then replace the deck
+//   GET  /vendor/mermaid.min.js → reconstruct from split chunks (no complete file exists)
+//   GET  /renderer/*, /vendor/* → static files from the Extension directory
+//   GET  /assets/*              → assets/ adjacent to Markdown, then root repository assets/
 
 import { createServer } from "node:http";
 import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve, normalize, sep, extname, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { reconstructAsset } from "../../.github/extensions/presentation/scripts/vendor-assets.mjs";
+import { reconstructAsset } from "../../.github/extensions/markdstage/scripts/vendor-assets.mjs";
 import {
   replaceArchitectureBlock,
   replaceImportedArchitectureBlock,
-} from "../../.github/extensions/presentation/scripts/markdown-blocks.mjs";
+} from "../../.github/extensions/markdstage/scripts/markdown-blocks.mjs";
 import {
   isMarkdownPath,
   listMarkdownFiles,
-} from "../../.github/extensions/presentation/scripts/markdown-files.mjs";
-import { buildDeckSlides } from "../../.github/extensions/presentation/markdown-deck.mjs";
-import { createMarkdownWatcher } from "../../.github/extensions/presentation/scripts/markdown-watcher.mjs";
-import { resolveAssetFile } from "../../.github/extensions/presentation/scripts/asset-paths.mjs";
+} from "../../.github/extensions/markdstage/scripts/markdown-files.mjs";
+import { buildDeckSlides } from "../../.github/extensions/markdstage/markdown-deck.mjs";
+import { createMarkdownWatcher } from "../../.github/extensions/markdstage/scripts/markdown-watcher.mjs";
+import { resolveAssetFile } from "../../.github/extensions/markdstage/scripts/asset-paths.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(HERE, "..", "..");
-export const EXT_DIR = join(REPO_ROOT, ".github", "extensions", "presentation");
+export const EXT_DIR = join(REPO_ROOT, ".github", "extensions", "markdstage");
 const VENDOR_DIR = join(EXT_DIR, "vendor");
 const VENDOR_MANIFEST = join(VENDOR_DIR, "vendor-assets.lock.json");
 
-// 分割配布されている vendor アセット。素の静的配信にフォールバックすると 404 になり、
-// mermaid が読めず `mermaid-loading` が永久に外れないので必ず先に処理する。
+// Vendor assets distributed in chunks. Process these first because static-file fallback returns 404,
+// preventing Mermaid from loading and leaving `mermaid-loading` set forever.
 const CHUNKED_VENDOR_ASSETS = new Set(["mermaid.min.js"]);
 
 const MIME = {
@@ -71,7 +70,7 @@ function mimeFor(path) {
   return MIME[extname(path).toLowerCase()] || "application/octet-stream";
 }
 
-// rootDir の外へ出る相対パスを弾く（パストラバーサル対策）。
+// Reject relative paths that escape rootDir to prevent path traversal.
 function safeJoin(rootDir, rel) {
   const cleaned = rel.replace(/^[/\\]+/, "");
   const abs = normalize(join(rootDir, cleaned));
@@ -118,13 +117,13 @@ async function readJsonBody(req, limit = 1_000_000) {
 }
 
 /**
- * ハーネスを起動する。
+ * Start the harness.
  *
  * @param {object} options
- * @param {string[]} options.slides   スライド 1 枚分の Markdown 断片の配列
+ * @param {string[]} options.slides   Array of Markdown fragments, one per slide
  * @param {string}  [options.theme]   dark | light | microsoft | custom
- * @param {number}  [options.index]   初期表示スライド（0 始まり）
- * @param {string}  [options.printToken] 印刷モードで使うトークン
+ * @param {number}  [options.index]   Initially displayed slide (zero-based)
+ * @param {string}  [options.printToken] Token used in print mode
  */
 export async function startHarness({
   slides,
@@ -138,8 +137,8 @@ export async function startHarness({
     throw new Error("startHarness requires a non-empty slides array");
   }
 
-  // 起動時に一度だけ復元してメモリに保持する（チャンク／結合後の両方で SHA-256 検証
-  // 済みなので、ここを通った時点で内容の正しさは保証される）。
+  // Reconstruct once at startup and retain in memory. SHA-256 has been verified for both chunks and
+  // combined output, so content is guaranteed correct at this point.
   const chunkedAssets = new Map();
   for (const name of CHUNKED_VENDOR_ASSETS) {
     chunkedAssets.set(name, await reconstructAsset(VENDOR_DIR, name, VENDOR_MANIFEST));
@@ -151,10 +150,10 @@ export async function startHarness({
     slides: slides.slice(),
     index: Math.min(Math.max(index, 0), slides.length - 1),
     theme,
-    // Architecture 図の編集モード。本番の extension.mjs では canvas アクションで
-    // 切り替わるが、ハーネスでは起動時のオプションで固定する。
+    // Architecture diagram edit mode. Production extension.mjs toggles this with a canvas action;
+    // the harness fixes it through a startup option.
     architectureEdit: Boolean(architectureEdit),
-    // インポートされた Markdown の相対パス（未インポートなら空）。
+    // Relative path of imported Markdown, or empty when nothing has been imported.
     sourceName: "",
     sourceWriteback: false,
     sourceWritebackSnapshot: "",
@@ -164,9 +163,9 @@ export async function startHarness({
     sourceWatcher: null,
     presenterRunning: false,
   };
-  // renderer が POST してきた印刷結果。テスト側が "ready" を確認するために保持する。
+  // Print results posted by the renderer, retained so tests can verify "ready".
   const printReports = [];
-  // renderer が POST してきた図の編集結果。テスト側が書き戻しを確認するために保持する。
+  // Diagram edit results posted by the renderer, retained so tests can verify writeback.
   const editReports = [];
   const sseClients = new Set();
 
@@ -322,7 +321,7 @@ export async function startHarness({
       return;
     }
 
-    // 印刷モードは /deck ではなく /export-data からデッキを受け取る。
+    // Print mode receives its deck from /export-data rather than /deck.
     if (pathname === "/export-data") {
       if (requestUrl.searchParams.get("token") !== printToken) {
         sendText(res, 404, "Export snapshot not found");
@@ -332,7 +331,7 @@ export async function startHarness({
       return;
     }
 
-    // renderer は response.ok でなければ throw するので必ず 2xx を返す。
+    // The renderer throws unless response.ok, so always return 2xx.
     if (pathname === "/export-status") {
       if (req.method !== "POST") {
         res.setHeader("Allow", "POST");
@@ -399,8 +398,8 @@ export async function startHarness({
       return;
     }
 
-    // 編集モードの切り替え。本番同様、サーバー状態を唯一の真実にするための経路。
-    // `?architectureEdit=1` で開かれた renderer もここを叩く。
+    // Toggle edit mode through this path so server state remains the single source of truth, as in
+    // production. A renderer opened with `?architectureEdit=1` also calls this endpoint.
     if (pathname === "/edit-mode") {
       if (req.method !== "POST") {
         res.setHeader("Allow", "POST");
@@ -424,8 +423,8 @@ export async function startHarness({
       return;
     }
 
-    // Architecture 図の書き戻し。本番と同じ共有ユーティリティで n 番目の
-    // ```architecture フェンスを差し替える（フェンス走査を写経しないため）。
+    // Write back an Architecture diagram by replacing the nth ```architecture fence with the same
+    // shared utility used in production, rather than duplicating fence scanning.
     if (pathname === "/edit") {
       if (req.method !== "POST") {
         res.setHeader("Allow", "POST");
@@ -521,8 +520,8 @@ export async function startHarness({
       return;
     }
 
-    // Markdown インポート（canvas の 📂 ボタン）。走査と分割は本番と同じ共有
-    // モジュールを使い、ここではデッキの差し替えだけを行う。
+    // Markdown import (the canvas 📂 button). Use the same shared scanning and splitting modules as
+    // production; this harness only replaces the deck.
     if (pathname === "/markdown-files") {
       if (req.method !== "GET") {
         res.setHeader("Allow", "GET");
@@ -658,7 +657,7 @@ export async function startHarness({
       return;
     }
 
-    // PDF 書き出しは SDK / 外部ブラウザ側の責務なのでスタブに留める。
+    // PDF export belongs to the SDK / external browser, so keep this as a stub.
     if (pathname === "/export") {
       if (req.method !== "POST") {
         res.setHeader("Allow", "POST");
@@ -732,22 +731,22 @@ export async function startHarness({
     printToken,
     slides: state.slides,
     theme: state.theme,
-    /** renderer が POST してきた印刷完了報告（{ status, error } の配列）。 */
+    /** Print completion reports posted by the renderer (array of { status, error }). */
     printReports,
-    /** renderer が POST してきた図の編集（{ index, block, source } の配列）。 */
+    /** Diagram edits posted by the renderer (array of { index, block, source }). */
     editReports,
-    /** 表示中スライドの番号（0 始まり）。 */
+    /** Currently displayed slide number (zero-based). */
     get index() {
       return state.index;
     },
-    /** サーバー側の編集モード。URL パラメーター経由の有効化を検証するために公開する。 */
+    /** Server-side edit mode, exposed to verify activation through URL parameters. */
     get architectureEdit() {
       return state.architectureEdit;
     },
     get presenterRunning() {
       return state.presenterRunning;
     },
-    /** インポート済み Markdown の相対パス（未インポートなら空）。 */
+    /** Relative path of imported Markdown, or empty when nothing has been imported. */
     get sourceName() {
       return state.sourceName;
     },
@@ -757,11 +756,11 @@ export async function startHarness({
     get sourceWatchStatus() {
       return state.sourceWatchStatus;
     },
-    /** 現在のスライド枚数（インポートで増減する）。 */
+    /** Current slide count, which can change on import. */
     get total() {
       return state.slides.length;
     },
-    /** 現在のスライド本文（書き戻しの検証用）。 */
+    /** Current slide content, used to verify writeback. */
     slideAt(i) {
       return state.slides[i];
     },

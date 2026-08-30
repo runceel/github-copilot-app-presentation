@@ -1,11 +1,12 @@
-// スキーマ (形状検証) と parseArchitecture (意味検証) の判定一致を固定するコーパス。
+// Corpus that locks down agreement between schema structural validation and parseArchitecture
+// semantic validation.
 //
-// 既定は「両方が同じ判定を返す」こと。実装とスキーマがどうしても一致しない箇所は
-// `divergence` を明示しないとテストが落ちる。つまり黙った乖離は必ず検出される。
+// By default, both validators must return the same verdict. If implementation and schema cannot
+// agree, the case must declare `divergence` or the test fails. Silent divergence is always detected.
 //
-//   expect      : parseArchitecture と（既定では）スキーマの期待判定
-//   divergence  : スキーマ側だけ判定が違う場合に、判定と理由を明示する
-//   parserMessage: パーサーが「意図した理由で」落ちていることを固定する任意の正規表現
+//   expect       : Expected parseArchitecture verdict and, by default, schema verdict
+//   divergence   : Explicit schema-only verdict and reason when it differs
+//   parserMessage: Optional regular expression proving the parser failed for the intended reason
 
 const node = (over = {}) => ({
   type: "node",
@@ -43,13 +44,13 @@ const connector = (over = {}) => ({ type: "connector", from: "a", to: "b", ...ov
 
 const doc = (elements, over = {}) => JSON.stringify({ elements, ...over });
 
-/** a→b を張れる最小の 2 ノード。connector の参照整合性はパーサーだけが検証する。 */
+/** Minimal pair of nodes that can support a→b. Only the parser validates connector references. */
 const twoNodes = () => [node({ id: "a" }), node({ id: "b", x: 300 })];
 
 const withConnector = (over = {}) => doc([...twoNodes(), connector(over)]);
 
 const nest = (depth) => {
-  // depth 段の group 入れ子を作る。depth=1 なら group 1 つ。
+  // Create `depth` nested group levels. depth=1 creates one group.
   let current = node({ id: "leaf", x: 10, y: 10, width: 40, height: 20 });
   for (let level = depth; level >= 1; level -= 1) {
     current = group({ id: `g${level}`, children: [current] });
@@ -59,13 +60,13 @@ const nest = (depth) => {
 
 const repeat = (count, char = "x") => char.repeat(count);
 const dashOfLength = (length) => {
-  // "1 1 1 ..." は数字 k 個で長さ 2k-1。
+  // "1 1 1 ..." with k digits has length 2k-1.
   const digits = (length + 1) / 2;
   return Array.from({ length: digits }, () => "1").join(" ");
 };
 
 export const corpus = [
-  // ---------------------------------------------------------------- 受理される
+  // ---------------------------------------------------------------- Accepted
   { name: "minimal document", expect: "accept", source: doc([]) },
   { name: "version omitted", expect: "accept", source: doc([node()]) },
   { name: "version 1", expect: "accept", source: doc([node()], { version: 1 }) },
@@ -132,7 +133,7 @@ export const corpus = [
   {
     name: "every icon",
     expect: "accept",
-    // 組み込みアイコンの全数。ICONS との一致は architecture-schema.test.mjs が検証する。
+    // Complete built-in icon set. architecture-schema.test.mjs verifies equality with ICONS.
     source: doc(
       [
         "cloud",
@@ -153,7 +154,7 @@ export const corpus = [
     name: "asset icon in every allowed format",
     expect: "accept",
     source: doc(
-      ["assets/sample.svg", "assets/logo.png", "assets/logo.webp", "assets/profile.jpg", "assets/photo.jpeg"].map(
+      ["assets/sample.svg", "assets/logo.png", "assets/logo.webp", "assets/sample-profile.jpg", "assets/photo.jpeg"].map(
         (icon, index) => node({ id: `a${index}`, icon, x: index * 160 }),
       ),
     ),
@@ -272,9 +273,9 @@ export const corpus = [
       node({ style: { fill: "surface", stroke: "border", textColor: "fg" } }),
     ]),
   },
-  // LITERAL_COLORS には /i フラグが付いており、パーサーは大文字も受理する。
-  // JSON Schema の pattern にはフラグが無いので、スキーマ側は大小両方の文字クラスを
-  // 手で書き下している（意図的に .source と表現が異なる唯一の箇所）。
+  // LITERAL_COLORS has an /i flag, so the parser accepts uppercase input. JSON Schema patterns have
+  // no flags, so the schema spells out both uppercase and lowercase character classes manually.
+  // This is the only place where .source intentionally differs.
   {
     name: "uppercase hex color (#ABC) — /i flag equivalence",
     expect: "accept",
@@ -509,7 +510,7 @@ export const corpus = [
     ),
   },
 
-  // ---------------------------------------------------------------- 両方が拒否
+  // ---------------------------------------------------------------- Rejected by both
   {
     name: "unknown root key",
     expect: "reject",
@@ -626,7 +627,7 @@ export const corpus = [
   {
     name: "icon escaping the assets folder",
     expect: "reject",
-    source: doc([node({ icon: "assets/../.github/extensions/presentation/extension.mjs" })]),
+    source: doc([node({ icon: "assets/../.github/extensions/markdstage/extension.mjs" })]),
     parserMessage: /elements\[0\]\.icon: must be a built-in icon name/,
   },
   {
@@ -971,16 +972,16 @@ export const corpus = [
     ),
   },
 
-  // ---------------------------------------------------------------- 既知の乖離
+  // ---------------------------------------------------------------- Known divergences
   {
     name: "non-numeric x on a layout child",
     expect: "accept",
     divergence: {
       schema: "reject",
       reason:
-        "layout 配下では normalizeBox が placement を優先するため、パーサーは x/y の値を" +
-        "一切検証せずに黙って捨てる。スキーマは型を検査するので拒否する。" +
-        "スキーマが厳しすぎる方向の乖離であり、著者にとって有益な警告になる。",
+        "Under a layout, normalizeBox prioritizes placement, so the parser silently discards x/y " +
+        "without validating their values. The schema checks types and rejects this input. " +
+        "This divergence makes the schema stricter and provides a useful warning to authors.",
     },
     source: doc([
       group({
@@ -994,7 +995,8 @@ export const corpus = [
     expect: "accept",
     divergence: {
       schema: "reject",
-      reason: "上記 x と同じ理由。layout 配下の y も検証されず黙って捨てられる。",
+      reason:
+        "For the same reason as x above, y under a layout is silently discarded without validation.",
     },
     source: doc([
       group({

@@ -1,7 +1,7 @@
 # User-specific
 *.user
 
-# Node / テスト基盤（配布物には含めません）
+# Node test infrastructure (not included in distributions)
 node_modules/
 
 # Playwright

@@ -3,7 +3,7 @@ layout: section
 title: Section divider H1
 ---
 
-# GitHub Copilot の主な機能
+# Key GitHub Copilot features
 
 <!-- slide -->
 
@@ -16,4 +16,4 @@ total: 2
 title: Section divider H2
 ---
 
-## 開発ワークフローを変える
+## Transform the development workflow

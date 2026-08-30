@@ -5,7 +5,7 @@ page: 4
 total: 5
 ---
 
-## Mermaid と Architecture DSL の共存
+## Mermaid and Architecture DSL together
 
 ```mermaid
 flowchart LR

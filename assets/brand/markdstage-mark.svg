@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">MarkdStage</title>
+  <desc id="desc">A Markdown hash mark illuminated by an amber stage spotlight.</desc>
+  <defs>
+    <linearGradient id="ink" x1="128" y1="96" x2="896" y2="944" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#151B2F"/>
+      <stop offset="1" stop-color="#0B1020"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="738" y1="114" x2="486" y2="856" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD77A" stop-opacity=".96"/>
+      <stop offset=".48" stop-color="#FFB547" stop-opacity=".46"/>
+      <stop offset="1" stop-color="#FFB547" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="pool" cx="0" cy="0" r="1" gradientTransform="translate(512 790) scale(348 112)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD77A" stop-opacity=".72"/>
+      <stop offset="1" stop-color="#FFB547" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect x="56" y="56" width="912" height="912" rx="216" fill="url(#ink)"/>
+  <path d="M742 88h170L650 822H292L742 88Z" fill="url(#beam)"/>
+  <ellipse cx="512" cy="790" rx="348" ry="112" fill="url(#pool)"/>
+  <g fill="none" stroke="#F7F4ED" stroke-width="72" stroke-linecap="round">
+    <path d="M382 300 330 724"/>
+    <path d="M620 300 568 724"/>
+    <path d="M268 440h430"/>
+    <path d="M244 590h430"/>
+  </g>
+  <path d="M620 300 568 724" fill="none" stroke="#FFD77A" stroke-width="72" stroke-linecap="round"/>
+</svg>

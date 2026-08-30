@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Application
+    x:Class="MarkdStageApp.App"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MarkdStageApp">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="BrandTitleBarBackgroundBrush" Color="#F7F4ED" />
+                    <SolidColorBrush x:Key="BrandTitleBarForegroundBrush" Color="#0B1020" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="BrandTitleBarBackgroundBrush" Color="#151B2F" />
+                    <SolidColorBrush x:Key="BrandTitleBarForegroundBrush" Color="#F7F4ED" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush
+                        x:Key="BrandTitleBarBackgroundBrush"
+                        Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush
+                        x:Key="BrandTitleBarForegroundBrush"
+                        Color="{ThemeResource SystemColorWindowTextColor}" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+            <ResourceDictionary.MergedDictionaries>
+                <XamlControlsResources xmlns="using:Microsoft.UI.Xaml.Controls" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

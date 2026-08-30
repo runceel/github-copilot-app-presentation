@@ -18,17 +18,17 @@ const SPECIAL_LAYOUTS = [
   {
     className: "title-slide",
     heading: "h1",
-    markdown: ["---", "layout: title", "---", "# 表紙"].join("\n"),
+    markdown: ["---", "layout: title", "---", "# Title slide"].join("\n"),
   },
   {
     className: "section-slide",
     heading: "h2",
-    markdown: ["---", "layout: section", "---", "## セクション区切り"].join("\n"),
+    markdown: ["---", "layout: section", "---", "## Section divider"].join("\n"),
   },
   {
     className: "backcover-slide",
     heading: "h1",
-    markdown: ["---", "layout: backcover", "---", "# 背表紙"].join("\n"),
+    markdown: ["---", "layout: backcover", "---", "# Back cover"].join("\n"),
   },
 ];
 
@@ -41,12 +41,12 @@ const CENTER_SLIDE = [
   "total: 1",
   "---",
   "",
-  "## 上下中央のタイトル",
+  "## Vertically centered title",
   "",
-  "- 短い本文",
+  "- Short body",
 ].join("\n");
 
-test("セクション区切りフィクスチャとスナップショット名が一致する", () => {
+test("section-divider fixture matches snapshot names", () => {
   expect(SLIDES).toHaveLength(SLIDE_NAMES.length);
   expect(STANDARD_SLIDES).toHaveLength(4);
 });
@@ -91,7 +91,7 @@ for (const theme of THEMES) {
           expect(layout.backgroundImage).not.toBe("none");
 
           await expect(page).toHaveScreenshot(`${theme}-${name}.png`);
-          expect(consoleErrors, "renderer がコンソールエラーを出していない").toEqual([]);
+          expect(consoleErrors, "renderer produced no console errors").toEqual([]);
         } finally {
           await harness.close();
         }
@@ -100,7 +100,7 @@ for (const theme of THEMES) {
   });
 }
 
-test("通常スライドのタイトルは本文量にかかわらず上部の同じ位置に固定される", async ({ page }) => {
+test("regular slide titles stay at the same top position regardless of body length", async ({ page }) => {
   const harness = await startHarness({ slides: STANDARD_SLIDES, theme: "dark" });
   try {
     await page.goto(`${harness.url}/`, { waitUntil: "load" });
@@ -126,7 +126,7 @@ test("通常スライドのタイトルは本文量にかかわらず上部の�
     expect(shortBody.titleBottom).toBeLessThanOrEqual(shortBody.bodyTop);
 
     await page.locator("#navNext").click();
-    await expect(page.locator(".body")).toContainText("6 つ目の要点");
+    await expect(page.locator(".body")).toContainText("Sixth key point");
     await waitForSlideReady(page);
     const denseBody = await readLayout();
 
@@ -137,7 +137,7 @@ test("通常スライドのタイトルは本文量にかかわらず上部の�
   }
 });
 
-test("通常スライドでは先頭の H1/H2 だけをタイトル領域へ移す", async ({ page }) => {
+test("regular slides move only a leading H1 or H2 into the title region", async ({ page }) => {
   const harness = await startHarness({ slides: STANDARD_SLIDES, theme: "light", index: 2 });
   try {
     await page.goto(`${harness.url}/`, { waitUntil: "load" });
@@ -147,7 +147,7 @@ test("通常スライドでは先頭の H1/H2 だけをタイトル領域へ移�
     await expect(page.locator(".deck > .body > h1")).toHaveCount(0);
 
     await page.locator("#navNext").click();
-    await expect(page.locator(".body")).toContainText("本文中の見出し");
+    await expect(page.locator(".body")).toContainText("Heading within the body");
     await waitForSlideReady(page);
 
     await expect(page.locator(".deck.has-slide-title")).toHaveCount(0);
@@ -157,7 +157,7 @@ test("通常スライドでは先頭の H1/H2 だけをタイトル領域へ移�
   }
 });
 
-test("通常スライドの本文はタイトル直下から上寄せで始まる", async ({ page }) => {
+test("regular slide bodies start top-aligned directly below the title", async ({ page }) => {
   const harness = await startHarness({ slides: STANDARD_SLIDES, theme: "dark" });
   try {
     await page.goto(`${harness.url}/`, { waitUntil: "load" });
@@ -173,14 +173,14 @@ test("通常スライドの本文はタイトル直下から上寄せで始ま�
     });
 
     expect(metrics.justifyContent).toBe("flex-start");
-    // 短い本文でも先頭要素が本文領域の上端に接している（中央へ落ちない）。
+    // Even a short body begins at the top of the body region rather than becoming centered.
     expect(metrics.gapAboveContent).toBeLessThan(1);
   } finally {
     await harness.close();
   }
 });
 
-test("layout: center は見出しと本文をまとめて上下中央に置く", async ({ page }) => {
+test("layout: center vertically centers the heading and body together", async ({ page }) => {
   const harness = await startHarness({ slides: [CENTER_SLIDE], theme: "dark" });
   try {
     await page.goto(`${harness.url}/`, { waitUntil: "load" });
@@ -203,10 +203,10 @@ test("layout: center は見出しと本文をまとめて上下中央に置く",
       };
     });
 
-    // 見出し＋本文のかたまりが上下中央に置かれる（上下の余白がほぼ等しい）。
+    // The heading/body block is vertically centered with nearly equal space above and below.
     expect(Math.abs(metrics.spaceAbove - metrics.spaceBelow)).toBeLessThan(1);
     expect(metrics.spaceAbove).toBeGreaterThan(metrics.padding);
-    // フッターは中央寄せの基準をずらさないよう下端に固定する。
+    // Pin the footer to the bottom so it does not shift the centering reference.
     expect(metrics.footerPosition).toBe("absolute");
     expect(Math.abs(metrics.footerGap - metrics.padding)).toBeLessThan(1);
   } finally {
@@ -215,7 +215,7 @@ test("layout: center は見出しと本文をまとめて上下中央に置く",
 });
 
 for (const { className, heading, markdown } of SPECIAL_LAYOUTS) {
-  test(`${className} の見出し配置は変更しない`, async ({ page }) => {
+  test(`${className} preserves heading placement`, async ({ page }) => {
     const harness = await startHarness({ slides: [markdown] });
     try {
       await page.goto(`${harness.url}/`, { waitUntil: "load" });

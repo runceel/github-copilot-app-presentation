@@ -1,23 +1,23 @@
-// Chromium のアクセシビリティツリー（CDP: Accessibility.getFullAXTree）を読むヘルパー。
+// Helper for reading Chromium's accessibility tree (CDP: Accessibility.getFullAXTree).
 //
-// なぜ DOM の属性ではなくアクセシビリティツリーを見るのか:
-//   aria-label や role を DOM で確認しても「支援技術に何が届くか」は分からない。
-//   実際に起きていた不具合（可視 <text> がアクセシブル名と**二重に**読み上げられる）は、
-//   DOM 属性だけを見ていると絶対に検出できない。ブラウザーが計算した後の結果を見る。
+// Why inspect the accessibility tree rather than DOM attributes:
+//   Checking aria-label or role in the DOM does not reveal what reaches assistive technology.
+//   A real bug where visible <text> was announced **twice** with the accessible name could not be
+//   detected from DOM attributes alone. Inspect the browser's computed result.
 //
-// 実スクリーンリーダー（NVDA / JAWS / ナレーター）の読み上げそのものは CI で取得できない。
-// アクセシビリティツリーは「スクリーンリーダーが読む入力」であって読み上げ結果ではないため、
-// ここで固定できるのは **ブラウザーが AT に渡す内容** までである。この限界は README に明記し、
-// ロールの妥当性そのもの（例: connector の role="group"）はここでは判断しない。
+// CI cannot capture actual output from screen readers (NVDA / JAWS / Narrator). The accessibility
+// tree is input to a screen reader, not its spoken result, so these tests only guarantee **what the
+// browser passes to AT**. README documents this limitation; role suitability itself (for example,
+// role="group" on a connector) is not evaluated here.
 
 import { expect } from "@playwright/test";
 
 /**
- * ページ全体のアクセシビリティツリーを取得し、扱いやすい木に組み直す。
+ * Retrieve the full-page accessibility tree and rebuild it into a convenient structure.
  *
- * `ignored`（AT に露出しないノード）は落とすが、その子は親へ引き上げる。
- * 落としたまま子まで捨てると DOM の器（div など）が消えた拍子に中身まで消えて、
- * 「AT から見えていない」という誤検出になる。
+ * Remove `ignored` nodes (not exposed to AT), but promote their children to the parent. Discarding
+ * children as well would make content disappear with a DOM container such as a div and falsely
+ * report that it is invisible to AT.
  */
 export async function accessibilityTree(page) {
   const cdp = await page.context().newCDPSession(page);
@@ -43,7 +43,7 @@ export async function accessibilityTree(page) {
   }
 }
 
-/** 木を平坦化して `{depth, role, name}` の並びにする（読み上げ順の比較用）。 */
+/** Flatten a tree into `{depth, role, name}` entries for comparing announcement order. */
 export function flatten(nodes, depth = 0, out = []) {
   for (const node of nodes) {
     out.push({ depth, role: node.role, name: node.name });
@@ -53,10 +53,10 @@ export function flatten(nodes, depth = 0, out = []) {
 }
 
 /**
- * アクセシビリティツリーから architecture 図の部分木を取り出す。
+ * Extract an Architecture diagram subtree from the accessibility tree.
  *
- * 図のルートは `<svg role="group" aria-labelledby="{title} {desc}">` なので、
- * 「アクセシブル名が図のタイトルで始まる group」で特定できる。
+ * The diagram root is `<svg role="group" aria-labelledby="{title} {desc}">`, so identify it as a
+ * group whose accessible name starts with the diagram title.
  */
 export function findDiagram(nodes, title) {
   const queue = [...nodes];
@@ -69,11 +69,11 @@ export function findDiagram(nodes, title) {
 }
 
 /**
- * 図の意味構造をページから読み出す。
+ * Read a diagram's semantic structure from the page.
  *
- * canvas / presenter / 印刷の 3 経路で「同じ意味の出力になっているか」を比べるための正規形。
- * 座標は経路ごとに違って当然（印刷は用紙サイズに合わせて縮む）なので **含めない**。
- * 逆に、ここに含めたものが 1 つでもずれたら出力の等価性が壊れている。
+ * This canonical form compares whether canvas, presenter, and print paths produce equivalent
+ * semantics. Coordinates naturally differ by path (print scales to paper), so they are **excluded**.
+ * Any difference among included properties breaks output equivalence.
  */
 export async function readDiagramSemantics(page, title) {
   return page.evaluate((wantedTitle) => {
@@ -102,7 +102,7 @@ export async function readDiagramSemantics(page, title) {
   }, title);
 }
 
-/** 図の DOM 順（= 描画順 = 支援技術の読み上げ順）に並んだ要素 id。 */
+/** Element IDs in diagram DOM order (= paint order = assistive-technology announcement order). */
 export async function domOrder(page, title) {
   const order = await page.evaluate((wantedTitle) => {
     const svg = [...document.querySelectorAll("svg.architecture-svg")].find(

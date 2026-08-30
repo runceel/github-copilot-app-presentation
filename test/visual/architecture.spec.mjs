@@ -1,13 +1,13 @@
-// ビジュアル回帰: 3 テーマ x 代表的な architecture 図のスクリーンショット比較。
+// Visual regression: screenshot comparisons for three themes and representative architecture diagrams.
 //
-// 決定論性のために次を守る。
-//   - 固定 sleep は使わず renderer の ready シグナル（mermaid-loading の除去）で待つ
-//   - viewport / deviceScaleFactor を固定（playwright.config.mjs）
-//   - reducedMotion: 'reduce' + CSS でアニメーションと操作 UI を無効化
-//   - テーマとスライドの組み合わせごとにハーネスを起動し、状態を持ち越さない
+// Preserve determinism:
+//   - Wait for the renderer's ready signal (removal of mermaid-loading), not a fixed sleep
+//   - Pin viewport / deviceScaleFactor (playwright.config.mjs)
+//   - Disable animation and control UI with reducedMotion: 'reduce' plus CSS
+//   - Start a harness for each theme/slide combination without carrying state forward
 //
-// ベースラインは OS ごとにフォントのラスタライズが異なるため、
-// playwright.config.mjs の snapshotPathTemplate でプラットフォーム別に保存する。
+// Font rasterization differs by OS, so snapshotPathTemplate in playwright.config.mjs stores a
+// separate baseline for each platform.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -23,7 +23,7 @@ const THEMES = ["dark", "light", "microsoft"];
 const FIXTURE = join(REPO_ROOT, "test", "fixtures", "architecture-visual.md");
 const SLIDES = splitFixtureDeck(readFileSync(FIXTURE, "utf8"));
 
-// スナップショット名。フィクスチャのスライド構成と 1:1 で対応させる。
+// Snapshot names map one-to-one to the fixture slides.
 const SLIDE_NAMES = [
   "01-cover",
   "02-layout-groups",
@@ -32,8 +32,8 @@ const SLIDE_NAMES = [
   "05-backcover",
 ];
 
-// アイコンのカタログは別デッキにしてある。既存デッキへ差し込むと footer の
-// `page / total` が変わり、無関係なベースラインまで一斉に更新することになるため。
+// Keep the icon catalog in a separate deck. Inserting it into the existing deck would change the
+// footer `page / total` and force unrelated baseline updates.
 const ICON_FIXTURE = join(REPO_ROOT, "test", "fixtures", "architecture-icons.md");
 const ICON_SLIDES = splitFixtureDeck(readFileSync(ICON_FIXTURE, "utf8"));
 const ICON_SLIDE_NAMES = ["01-icon-catalog"];
@@ -41,13 +41,13 @@ const IMAGE_FIXTURE = join(REPO_ROOT, "test", "fixtures", "architecture-images.m
 const IMAGE_SLIDES = splitFixtureDeck(readFileSync(IMAGE_FIXTURE, "utf8"));
 const IMAGE_SLIDE_NAMES = ["01-image-fit-modes"];
 
-test("フィクスチャのスライド数がスナップショット名と一致する", () => {
+test("fixture slide counts match snapshot names", () => {
   expect(SLIDES).toHaveLength(SLIDE_NAMES.length);
   expect(ICON_SLIDES).toHaveLength(ICON_SLIDE_NAMES.length);
   expect(IMAGE_SLIDES).toHaveLength(IMAGE_SLIDE_NAMES.length);
 });
 
-/** 1 デッキ分のテーマ x スライドのスクリーンショット比較を登録する。 */
+/** Register theme-by-slide screenshot comparisons for one deck. */
 function registerDeck(slides, names, prefix = "") {
   for (const theme of THEMES) {
     test.describe(`theme: ${theme}${prefix ? ` (${prefix})` : ""}`, () => {
@@ -64,15 +64,14 @@ function registerDeck(slides, names, prefix = "") {
             await waitForSlideReady(page);
             await page.addStyleTag({ content: DETERMINISTIC_CSS });
 
-            // 意図したテーマ・スライドが出ていることを先に確認する
-            // （取り違えたまま「一致した」と判定しないため）。
+            // First verify the intended theme and slide to avoid declaring a mismatched case equal.
             await expect(page.locator("html")).toHaveAttribute("data-theme", theme);
             await expect(page.locator("#stage .deck")).toHaveCount(1);
             expect(await page.locator(".architecture-error").count()).toBe(0);
 
             await expect(page).toHaveScreenshot(`${theme}-${name}.png`);
 
-            expect(consoleErrors, "renderer がコンソールエラーを出していない").toEqual([]);
+            expect(consoleErrors, "renderer produced no console errors").toEqual([]);
           } finally {
             await harness.close();
           }
@@ -82,10 +81,10 @@ function registerDeck(slides, names, prefix = "") {
   }
 }
 
-// スクリーンショットの比較条件は playwright.config.mjs で一括指定している
-// （maxDiffPixelRatio: 0 = 許容 0px）。デッキごとに上書きしないのは、新しいデッキを
-// 足した人が指定を忘れた瞬間に緩い既定値へ戻ってしまうため。
-// なぜ許容 0px なのかの実測根拠は playwright.config.mjs のコメントを参照。
+// Screenshot comparison settings are centralized in playwright.config.mjs
+// (maxDiffPixelRatio: 0 means 0px tolerance). Do not override them per deck; otherwise a new deck
+// could silently return to permissive defaults. See the playwright.config.mjs comments for the
+// measured rationale behind 0px tolerance.
 registerDeck(SLIDES, SLIDE_NAMES);
 registerDeck(ICON_SLIDES, ICON_SLIDE_NAMES, "icons");
 registerDeck(IMAGE_SLIDES, IMAGE_SLIDE_NAMES, "images");

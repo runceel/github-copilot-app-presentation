@@ -61,7 +61,7 @@ async function screenPoint(page, x, y) {
   }, { x, y });
 }
 
-test("変更は draft に留まり、保存ボタンで初めて Markdown へ反映される", async ({ page }) => {
+test("changes remain in the draft until the save button writes them to Markdown", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     await expect(page.locator('[data-action="save"]')).toBeDisabled();
@@ -72,7 +72,7 @@ test("変更は draft に留まり、保存ボタンで初めて Markdown へ反
     expect(harness.markdown).not.toContain('"id": "node"');
 
     await page.locator('[data-action="save"]').click();
-    await expect(page.locator("#status")).toContainText("保存しました");
+    await expect(page.locator("#status")).toContainText("Saved");
     expect(harness.saves).toHaveLength(1);
     expect(harness.markdown).toContain('"id": "node"');
     await expect(page.locator('[data-action="save"]')).toBeDisabled();
@@ -81,7 +81,7 @@ test("変更は draft に留まり、保存ボタンで初めて Markdown へ反
   }
 });
 
-test("connector label の重なりを箱の手前と後ろから選べる", async ({ page }) => {
+test("connector label overlap can be placed in front of or behind boxes", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     await page.locator('[data-ref="elements[2]"].tree-item').click();
@@ -113,7 +113,7 @@ test("connector label の重なりを箱の手前と後ろから選べる", asyn
   }
 });
 
-test("選択、キーボード移動、リサイズ、Undo/Redo を同じ draft で扱う", async ({ page }) => {
+test("selection, keyboard movement, resizing, and undo/redo share one draft", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     const client = page.locator('[data-editor-ref="client"]');
@@ -145,14 +145,14 @@ test("選択、キーボード移動、リサイズ、Undo/Redo を同じ draft 
   }
 });
 
-test("大きい図を横スクロールとパンで端まで移動し、全体表示では中央へ収める", async ({ page }) => {
+test("large diagrams scroll and pan to the edges, then fit centered in the viewport", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 720 });
   const harness = await openEditor(page);
   try {
     const viewport = page.locator("#viewport");
     const surface = page.locator("#canvasSurface");
     const diagram = page.locator(".architecture-diagram");
-    await expect(page.locator("#status")).toContainText("図を選択して編集できます");
+    await expect(page.locator("#status")).toContainText("Select the diagram to edit it");
     await page.locator('[data-action="zoom-in"]').click();
     await page.locator('[data-action="zoom-in"]').click();
     await page.locator('[data-action="zoom-in"]').click();
@@ -220,7 +220,7 @@ test("大きい図を横スクロールとパンで端まで移動し、全体�
   }
 });
 
-test("コネクター追加と node 削除で参照整合性を保つ", async ({ page }) => {
+test("adding connectors and deleting nodes preserves reference integrity", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     await page.locator('[data-action="add-connector"]').click();
@@ -237,21 +237,21 @@ test("コネクター追加と node 削除で参照整合性を保つ", async ({
   }
 });
 
-test("asset picker から standalone image と node icon を編集できる", async ({ page }) => {
+test("the asset picker edits standalone images and node icons", async ({ page }) => {
   const harness = await openEditor(page);
   try {
-    await page.getByRole("button", { name: "画像", exact: true }).click();
-    const dialog = page.getByRole("dialog", { name: "画像を追加" });
+    await page.getByRole("button", { name: "Image", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Add image" });
     await expect(dialog).toBeVisible();
     await dialog.getByRole("option", { name: "assets/existing.svg" }).click();
-    await dialog.getByRole("button", { name: "選択", exact: true }).click();
+    await dialog.getByRole("button", { name: "Select", exact: true }).click();
 
     await expect(page.locator('[data-ref="existing"].tree-item')).toBeVisible();
     await expect(page.locator('[data-editor-ref="existing"]')).toHaveAttribute(
       "data-architecture-type",
       "image",
     );
-    await page.getByLabel("表示方法").selectOption("cover");
+    await page.getByLabel("Display mode").selectOption("cover");
     await expect
       .poll(
         () =>
@@ -261,15 +261,15 @@ test("asset picker から standalone image と node icon を編集できる", as
       .toBe("cover");
 
     await page.locator('[data-ref="existing"].tree-item').click({ button: "right" });
-    await page.getByRole("menuitem", { name: "ここからコネクター" }).click();
+    await page.getByRole("menuitem", { name: "Start connector here" }).click();
     await page.locator('[data-editor-ref="api"]').click();
     await expect(page.locator('[data-architecture-type="connector"]')).toHaveCount(2);
 
     await page.locator('[data-ref="client"].tree-item').click();
-    await page.getByRole("button", { name: "assets/ から画像を選択" }).click();
-    await expect(page.getByRole("dialog", { name: "ノードの画像を選択" })).toBeVisible();
+    await page.getByRole("button", { name: "Select image from assets/" }).click();
+    await expect(page.getByRole("dialog", { name: "Select node image" })).toBeVisible();
     await page.getByRole("option", { name: "assets/existing.svg" }).click();
-    await page.getByRole("button", { name: "選択", exact: true }).click();
+    await page.getByRole("button", { name: "Select", exact: true }).click();
     await expect
       .poll(
         () =>
@@ -282,21 +282,21 @@ test("asset picker から standalone image と node icon を編集できる", as
   }
 });
 
-test("PC からの画像取り込みは同名を採番し、diagram の undo では asset を消さない", async ({
+test("importing an image from the computer numbers duplicate names and diagram undo keeps the asset", async ({
   page,
 }) => {
   const harness = await openEditor(page);
   try {
-    await page.getByRole("button", { name: "画像", exact: true }).click();
+    await page.getByRole("button", { name: "Image", exact: true }).click();
     await page.locator("#assetFileInput").setInputFiles({
       name: "existing.svg",
       mimeType: "image/svg+xml",
       buffer: Buffer.from(EXISTING_SVG),
     });
     await expect(page.locator("#assetDialogStatus")).toContainText(
-      "assets/existing-2.svg として取り込みました",
+      "Imported as assets/existing-2.svg",
     );
-    await page.getByRole("button", { name: "選択", exact: true }).click();
+    await page.getByRole("button", { name: "Select", exact: true }).click();
     await expect(page.locator('[data-ref="existing-2"].tree-item')).toBeVisible();
     expect(harness.assets.has("assets/existing-2.svg")).toBe(true);
 
@@ -309,14 +309,14 @@ test("PC からの画像取り込みは同名を採番し、diagram の undo で
       position: { x: 40, y: 400 },
     });
     await expect(
-      page.getByRole("menuitem", { name: "画像を追加", exact: true }),
+      page.getByRole("menuitem", { name: "Add image", exact: true }),
     ).toBeVisible();
   } finally {
     await harness.close();
   }
 });
 
-test("外部変更との競合は Markdown を上書きせず画面に残す", async ({ page }) => {
+test("external-change conflicts remain visible without overwriting Markdown", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     await page.locator('[data-action="add-node"]').click();
@@ -331,7 +331,7 @@ test("外部変更との競合は Markdown を上書きせず画面に残す", a
   }
 });
 
-test("未保存 draft を再読み込みした後も revision を継続して編集できる", async ({ page }) => {
+test("editing can continue with the current revision after reloading an unsaved draft", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     await page.locator('[data-action="add-node"]').click();
@@ -342,14 +342,14 @@ test("未保存 draft を再読み込みした後も revision を継続して編
     await page.locator('[data-action="add-node"]').click();
     await expect(page.locator(".tree-item")).toHaveCount(5);
     await page.locator('[data-action="save"]').click();
-    await expect(page.locator("#status")).toContainText("保存しました");
+    await expect(page.locator("#status")).toContainText("Saved");
     expect(JSON.parse(harness.saves[0]).elements).toHaveLength(5);
   } finally {
     await harness.close();
   }
 });
 
-test("元 Markdown の reload は古い generation の draft を引き継がない", async ({ page }) => {
+test("reloading source Markdown does not carry over a draft from the old generation", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     await page.locator('[data-action="add-node"]').click();
@@ -361,7 +361,7 @@ test("元 Markdown の reload は古い generation の draft を引き継がな�
 
     await page.locator('[data-action="add-node"]').click();
     await page.locator('[data-action="save"]').click();
-    await expect(page.locator("#status")).toContainText("保存しました");
+    await expect(page.locator("#status")).toContainText("Saved");
     expect(harness.markdown).toContain("Reloaded client");
     expect(harness.markdown).toContain('"id": "node"');
   } finally {
@@ -369,7 +369,7 @@ test("元 Markdown の reload は古い generation の draft を引き継がな�
   }
 });
 
-test("遅れて届いた古い state 応答で reload 後の generation を巻き戻さない", async ({ page }) => {
+test("a delayed stale state response does not roll back the generation after reload", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     harness.delayNextState(300);
@@ -383,14 +383,14 @@ test("遅れて届いた古い state 応答で reload 後の generation を巻�
 
     await page.locator('[data-action="add-node"]').click();
     await page.locator('[data-action="save"]').click();
-    await expect(page.locator("#status")).toContainText("保存しました");
+    await expect(page.locator("#status")).toContainText("Saved");
     expect(harness.markdown).toContain("Reloaded client");
   } finally {
     await harness.close();
   }
 });
 
-test("保存中の追加編集を保存済みにせず dirty のまま保持する", async ({ page }) => {
+test("edits made during save remain dirty instead of being marked saved", async ({ page }) => {
   const harness = await startArchitectureEditorHarness({
     source: SOURCE,
     saveDelay: 300,
@@ -400,23 +400,23 @@ test("保存中の追加編集を保存済みにせず dirty のまま保持す�
     await expect(page.locator(".tree-item")).toHaveCount(3);
     await page.locator('[data-action="add-node"]').click();
     await page.locator('[data-action="save"]').click();
-    await expect(page.locator("#status")).toContainText("保存中");
+    await expect(page.locator("#status")).toContainText("Saving");
 
     await page.locator('[data-action="add-node"]').click();
     await expect(page.locator(".tree-item")).toHaveCount(5);
-    await expect(page.locator("#status")).toContainText("未保存");
+    await expect(page.locator("#status")).toContainText("still unsaved");
     await expect(page.locator('[data-action="save"]')).toBeEnabled();
     expect(JSON.parse(harness.saves[0]).elements).toHaveLength(4);
 
     await page.locator('[data-action="save"]').click();
-    await expect(page.locator("#status")).toContainText("保存しました");
+    await expect(page.locator("#status")).toContainText("Saved");
     expect(JSON.parse(harness.saves[1]).elements).toHaveLength(5);
   } finally {
     await harness.close();
   }
 });
 
-test("保存サーバーへの通信失敗を画面に表示する", async ({ page }) => {
+test("save server communication failures appear in the UI", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     await page.locator('[data-action="add-node"]').click();
@@ -424,44 +424,44 @@ test("保存サーバーへの通信失敗を画面に表示する", async ({ pa
     await page.route("**/save", (route) => route.abort("connectionfailed"));
 
     await page.locator('[data-action="save"]').click();
-    await expect(page.locator("#status")).toContainText("接続できませんでした");
+    await expect(page.locator("#status")).toContainText("Could not connect");
     await expect(page.locator('[data-action="save"]')).toBeEnabled();
   } finally {
     await harness.close();
   }
 });
 
-test("作図面と要素ツリーの右クリックから対象別の編集操作を実行できる", async ({ page }) => {
+test("context menus on the canvas and element tree expose target-specific edit actions", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     const menu = page.locator("#contextMenu");
     await page.locator('[data-editor-ref="client"]').click({ button: "right" });
     await expect(menu).toBeVisible();
     await expect(menu).toHaveAttribute("aria-label", /client/);
-    await menu.getByRole("menuitem", { name: "ここからコネクター" }).click();
+    await menu.getByRole("menuitem", { name: "Start connector here" }).click();
     await expect(page.locator(".connector-source")).toHaveCount(1);
     await page.locator('[data-editor-ref="api"]').click();
     await expect(page.locator(".tree-item")).toHaveCount(4);
 
     await page.locator('[data-ref="api"].tree-item').click({ button: "right" });
-    await menu.getByRole("menuitem", { name: "複製" }).click();
+    await menu.getByRole("menuitem", { name: "Duplicate" }).click();
     await expect(page.locator('[data-ref="api-copy"].tree-item')).toHaveCount(1);
 
     await page.locator('[data-ref="api-copy"].tree-item').click({ button: "right" });
-    await menu.getByRole("menuitem", { name: "削除" }).click();
+    await menu.getByRole("menuitem", { name: "Delete" }).click();
     await expect(page.locator('[data-ref="api-copy"].tree-item')).toHaveCount(0);
   } finally {
     await harness.close();
   }
 });
 
-test("余白の右クリック位置へ追加し、group 内では親相対座標へ変換する", async ({ page }) => {
+test("adds at a blank-area context-menu position and converts to parent-relative coordinates in groups", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     const menu = page.locator("#contextMenu");
     const groupPoint = await screenPoint(page, 1200, 650);
     await page.mouse.click(groupPoint.x, groupPoint.y, { button: "right" });
-    await menu.getByRole("menuitem", { name: "グループをここに追加" }).click();
+    await menu.getByRole("menuitem", { name: "Add group here" }).click();
     await expect(page.locator('[data-ref="group"].tree-item')).toHaveCount(1);
     await expect.poll(() => JSON.parse(harness.draftSource).elements.find(
       (element) => element.id === "group",
@@ -469,8 +469,8 @@ test("余白の右クリック位置へ追加し、group 内では親相対座�
 
     const childPoint = await screenPoint(page, 1100, 600);
     await page.mouse.click(childPoint.x, childPoint.y, { button: "right" });
-    await expect(menu.getByRole("menuitem", { name: "子ノードをここに追加" })).toBeVisible();
-    await menu.getByRole("menuitem", { name: "子ノードをここに追加" }).click();
+    await expect(menu.getByRole("menuitem", { name: "Add child node here" })).toBeVisible();
+    await menu.getByRole("menuitem", { name: "Add child node here" }).click();
     await expect(page.locator('[data-ref="node"].tree-item')).toHaveCount(1);
     await expect.poll(() => {
       const group = JSON.parse(harness.draftSource).elements.find(
@@ -483,40 +483,40 @@ test("余白の右クリック位置へ追加し、group 内では親相対座�
   }
 });
 
-test("右クリックメニューから並び順、connector 複製、Undo、保存を操作できる", async ({ page }) => {
+test("context menus support ordering, connector duplication, undo, and save", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     const menu = page.locator("#contextMenu");
     await page.locator('[data-ref="client"].tree-item').click({ button: "right" });
-    await menu.getByRole("menuitem", { name: "前面へ" }).click();
+    await menu.getByRole("menuitem", { name: "Bring forward" }).click();
     await expect.poll(() => JSON.parse(harness.draftSource).elements[1].id).toBe("client");
     await page.locator('[data-ref="client"].tree-item').click({ button: "right" });
-    await menu.getByRole("menuitem", { name: "背面へ" }).click();
+    await menu.getByRole("menuitem", { name: "Send backward" }).click();
     await expect.poll(() => JSON.parse(harness.draftSource).elements[0].id).toBe("client");
 
     await page.locator(".tree-item").filter({ hasText: "client → api" }).click({ button: "right" });
-    await expect(menu.getByRole("menuitem", { name: "ここからコネクター" })).toHaveCount(0);
-    await menu.getByRole("menuitem", { name: "複製" }).click();
+    await expect(menu.getByRole("menuitem", { name: "Start connector here" })).toHaveCount(0);
+    await menu.getByRole("menuitem", { name: "Duplicate" }).click();
     await expect(page.locator('[data-architecture-type="connector"]')).toHaveCount(2);
 
     const panel = page.locator(".element-panel");
     await panel.click({ button: "right", position: { x: 40, y: 400 } });
-    await menu.getByRole("menuitem", { name: "元に戻す" }).click();
+    await menu.getByRole("menuitem", { name: "Undo" }).click();
     await expect(page.locator('[data-architecture-type="connector"]')).toHaveCount(1);
     await panel.click({ button: "right", position: { x: 40, y: 400 } });
-    await menu.getByRole("menuitem", { name: "やり直す" }).click();
+    await menu.getByRole("menuitem", { name: "Redo" }).click();
     await expect(page.locator('[data-architecture-type="connector"]')).toHaveCount(2);
 
     await panel.click({ button: "right", position: { x: 40, y: 400 } });
-    await menu.getByRole("menuitem", { name: "Markdown に保存" }).click();
-    await expect(page.locator("#status")).toContainText("保存しました");
+    await menu.getByRole("menuitem", { name: "Save to Markdown" }).click();
+    await expect(page.locator("#status")).toContainText("Saved");
     expect(harness.saves).toHaveLength(1);
   } finally {
     await harness.close();
   }
 });
 
-test("要素ツリーの余白では既定位置への追加操作を表示する", async ({ page }) => {
+test("blank space in the element tree offers add actions at default positions", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     const menu = page.locator("#contextMenu");
@@ -524,11 +524,11 @@ test("要素ツリーの余白では既定位置への追加操作を表示す�
       button: "right",
       position: { x: 40, y: 400 },
     });
-    await expect(menu.getByRole("menuitem", { name: "ノードを追加", exact: true })).toBeVisible();
-    await expect(menu.getByRole("menuitem", { name: "元に戻す" })).toBeDisabled();
-    await expect(menu.getByRole("menuitem", { name: "Markdown に保存" })).toBeDisabled();
+    await expect(menu.getByRole("menuitem", { name: "Add node", exact: true })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Undo" })).toBeDisabled();
+    await expect(menu.getByRole("menuitem", { name: "Save to Markdown" })).toBeDisabled();
 
-    await menu.getByRole("menuitem", { name: "ノードを追加", exact: true }).click();
+    await menu.getByRole("menuitem", { name: "Add node", exact: true }).click();
     await expect(page.locator('[data-ref="node"].tree-item')).toHaveCount(1);
     await expect.poll(() => JSON.parse(harness.draftSource).elements.find(
       (element) => element.id === "node",
@@ -538,7 +538,7 @@ test("要素ツリーの余白では既定位置への追加操作を表示す�
   }
 });
 
-test("レイアウト操作は group の右クリックサブメニューだけに表示する", async ({ page }) => {
+test("layout actions appear only in the group context submenu", async ({ page }) => {
   const source = `${JSON.stringify(
     {
       version: 1,
@@ -574,21 +574,21 @@ test("レイアウト操作は group の右クリックサブメニューだけ�
     await page.goto(harness.url, { waitUntil: "load" });
     const menu = page.locator("#contextMenu");
     await page.locator('[data-ref="api"].tree-item').click({ button: "right" });
-    await expect(menu.getByRole("menuitem", { name: "レイアウト", exact: true })).toHaveCount(0);
-    await expect(menu.getByRole("menuitem", { name: "レイアウト解除" })).toHaveCount(0);
+    await expect(menu.getByRole("menuitem", { name: "Layout", exact: true })).toHaveCount(0);
+    await expect(menu.getByRole("menuitem", { name: "Release layout" })).toHaveCount(0);
     await expect(page.locator('[data-action="release-layout"]')).toBeDisabled();
 
     await page.locator('[data-ref="zone"].tree-item').click({ button: "right" });
-    const layoutTrigger = menu.getByRole("menuitem", { name: "レイアウト", exact: true });
+    const layoutTrigger = menu.getByRole("menuitem", { name: "Layout", exact: true });
     await expect(layoutTrigger).toHaveAttribute("aria-haspopup", "menu");
     await layoutTrigger.hover();
-    const submenu = page.getByRole("menu", { name: "zone のレイアウト" });
+    const submenu = page.getByRole("menu", { name: "Layout for zone" });
     await expect(submenu).toBeVisible();
     await expect(submenu.getByRole("menuitemradio", { name: "grid" })).toHaveAttribute(
       "aria-checked",
       "true",
     );
-    await expect(page.getByLabel("列数")).toBeVisible();
+    await expect(page.getByLabel("Columns")).toBeVisible();
     await submenu.getByRole("menuitemradio", { name: "layered" }).click();
 
     await expect.poll(() => JSON.parse(harness.draftSource).elements[0].layout).toEqual({
@@ -598,14 +598,14 @@ test("レイアウト操作は group の右クリックサブメニューだけ�
       columnGap: 36,
       padding: 40,
     });
-    await page.getByLabel("方向").selectOption("right");
+    await page.getByLabel("Direction").selectOption("right");
     await expect.poll(
       () => JSON.parse(harness.draftSource).elements[0].layout.direction,
     ).toBe("right");
-    await expect(page.getByLabel("列数")).toHaveCount(0);
+    await expect(page.getByLabel("Columns")).toHaveCount(0);
 
     await page.locator('[data-ref="zone"].tree-item').click({ button: "right" });
-    await menu.getByRole("menuitem", { name: "レイアウト", exact: true }).hover();
+    await menu.getByRole("menuitem", { name: "Layout", exact: true }).hover();
     await submenu.getByRole("menuitemradio", { name: "column" }).click();
     await expect.poll(() => JSON.parse(harness.draftSource).elements[0].layout).toEqual({
       type: "column",
@@ -614,11 +614,11 @@ test("レイアウト操作は group の右クリックサブメニューだけ�
       columnGap: 36,
       padding: 40,
     });
-    await expect(page.getByLabel("方向")).toHaveCount(0);
+    await expect(page.getByLabel("Direction")).toHaveCount(0);
 
     await page.locator('[data-ref="zone"].tree-item').click({ button: "right" });
-    await menu.getByRole("menuitem", { name: "レイアウト", exact: true }).hover();
-    await submenu.getByRole("menuitemradio", { name: "なし" }).click();
+    await menu.getByRole("menuitem", { name: "Layout", exact: true }).hover();
+    await submenu.getByRole("menuitemradio", { name: "None" }).click();
     await expect.poll(
       () => JSON.parse(harness.draftSource).elements[0].layout,
     ).toBeUndefined();
@@ -627,7 +627,7 @@ test("レイアウト操作は group の右クリックサブメニューだけ�
     expect(child.y).toEqual(expect.any(Number));
 
     await page.locator('[data-ref="zone"].tree-item').click({ button: "right" });
-    await menu.getByRole("menuitem", { name: "レイアウト", exact: true }).hover();
+    await menu.getByRole("menuitem", { name: "Layout", exact: true }).hover();
     await submenu.getByRole("menuitemradio", { name: "row" }).click();
     await expect.poll(() => JSON.parse(harness.draftSource).elements[0].layout).toEqual({
       type: "row",
@@ -641,7 +641,7 @@ test("レイアウト操作は group の右クリックサブメニューだけ�
   }
 });
 
-test("group のレイアウトサブメニューを左右矢印で往復し Escape で対象へ戻る", async ({ page }) => {
+test("group layout submenu supports left/right arrows and Escape returns focus to the target", async ({ page }) => {
   const source = `${JSON.stringify(
     {
       version: 1,
@@ -668,12 +668,12 @@ test("group のレイアウトサブメニューを左右矢印で往復し Esca
     const group = page.locator('[data-ref="zone"].tree-item');
     await group.focus();
     await page.keyboard.press("Shift+F10");
-    const trigger = page.getByRole("menuitem", { name: "レイアウト", exact: true });
+    const trigger = page.getByRole("menuitem", { name: "Layout", exact: true });
     await trigger.focus();
     await page.keyboard.press("ArrowRight");
-    const submenu = page.getByRole("menu", { name: "zone のレイアウト" });
+    const submenu = page.getByRole("menu", { name: "Layout for zone" });
     await expect(submenu).toBeVisible();
-    await expect(submenu.getByRole("menuitemradio", { name: "なし" })).toBeFocused();
+    await expect(submenu.getByRole("menuitemradio", { name: "None" })).toBeFocused();
 
     await page.keyboard.press("ArrowDown");
     await expect(submenu.getByRole("menuitemradio", { name: "row" })).toBeFocused();
@@ -696,7 +696,7 @@ test("group のレイアウトサブメニューを左右矢印で往復し Esca
         }),
       );
     });
-    await page.getByRole("menuitem", { name: "レイアウト", exact: true }).hover();
+    await page.getByRole("menuitem", { name: "Layout", exact: true }).hover();
     const bounds = await submenu.boundingBox();
     const viewport = await page.evaluate(() => ({
       width: window.innerWidth,
@@ -711,7 +711,7 @@ test("group のレイアウトサブメニューを左右矢印で往復し Esca
   }
 });
 
-test("コンテキストメニューをキーボード操作し、閉じたら対象へフォーカスを戻す", async ({ page }) => {
+test("keyboard controls the context menu and closing returns focus to the target", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     const api = page.locator('[data-ref="api"].tree-item');
@@ -719,12 +719,12 @@ test("コンテキストメニューをキーボード操作し、閉じたら�
     await page.keyboard.press("Shift+F10");
     const menu = page.locator("#contextMenu");
     await expect(menu).toBeVisible();
-    await expect(menu.getByRole("menuitem", { name: "ここからコネクター" })).toBeFocused();
+    await expect(menu.getByRole("menuitem", { name: "Start connector here" })).toBeFocused();
 
     await page.keyboard.press("ArrowDown");
-    await expect(menu.getByRole("menuitem", { name: "複製" })).toBeFocused();
+    await expect(menu.getByRole("menuitem", { name: "Duplicate" })).toBeFocused();
     await page.keyboard.press("End");
-    await expect(menu.getByRole("menuitem", { name: "削除" })).toBeFocused();
+    await expect(menu.getByRole("menuitem", { name: "Delete" })).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(menu).toBeHidden();
     await expect(page.locator('[data-ref="api"].tree-item')).toBeFocused();
@@ -740,7 +740,7 @@ test("コンテキストメニューをキーボード操作し、閉じたら�
   }
 });
 
-test("インスペクター入力中の Ctrl+S は変更を確定して保存する", async ({ page }) => {
+test("Ctrl+S while editing an inspector field commits and saves the change", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     await page.locator('[data-ref="client"].tree-item').click();
@@ -748,7 +748,7 @@ test("インスペクター入力中の Ctrl+S は変更を確定して保存す
     await text.fill("Updated client");
     await page.keyboard.press("Control+S");
 
-    await expect(page.locator("#status")).toContainText("保存しました");
+    await expect(page.locator("#status")).toContainText("Saved");
     expect(harness.saves).toHaveLength(1);
     expect(JSON.parse(harness.saves[0]).elements[0].text).toBe("Updated client");
   } finally {

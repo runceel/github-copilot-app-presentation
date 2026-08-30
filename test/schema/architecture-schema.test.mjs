@@ -1,12 +1,12 @@
-// Architecture DSL v1 の JSON Schema と parseArchitecture の整合性テスト。
+// Consistency tests for the Architecture DSL v1 JSON Schema and parseArchitecture.
 //
-// 4 層で検証する。
-//   1. スキーマ自体が draft 2020-12 として妥当で、ajv でコンパイルできる
-//   2. リポジトリ内の全 architecture ブロックと examples が「両方」を通る
-//   3. 適合コーパスで両検証器の判定が一致する（乖離は明示しないと落ちる）
-//   4. スキーマが焼き込む定数が実装の export と一致する
+// Validate four layers:
+//   1. The schema itself is valid draft 2020-12 and compiles with ajv
+//   2. Every repository architecture block and example passes both validators
+//   3. Both validators agree on the conformance corpus (divergences must be explicit)
+//   4. Constants encoded in the schema match implementation exports
 //
-// 実行: node --test test/schema/architecture-schema.test.mjs
+// Run: node --test test/schema/architecture-schema.test.mjs
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -14,7 +14,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import * as architecture from "../../.github/extensions/presentation/renderer/architecture.mjs";
+import * as architecture from "../../.github/extensions/markdstage/renderer/architecture.mjs";
 import { extractArchitectureSources } from "../utils/architecture.mjs";
 import {
   schema,
@@ -31,7 +31,7 @@ const examplesDir = path.join(
   repoRoot,
   ".github",
   "extensions",
-  "presentation",
+  "markdstage",
   "schema",
   "examples",
 );
@@ -66,7 +66,7 @@ function parserCheck(source) {
   }
 }
 
-// --------------------------------------------------------------- 1. スキーマ自体
+// --------------------------------------------------------------- 1. Schema itself
 
 test("schema is a valid draft 2020-12 document", () => {
   const result = validateAgainstMetaSchema();
@@ -76,7 +76,7 @@ test("schema is a valid draft 2020-12 document", () => {
 });
 
 test("schema rejects unknown keys everywhere an object is defined", () => {
-  // rejectUnknownKeys に対応するため additionalProperties: false が必須。
+  // additionalProperties: false is required to match rejectUnknownKeys.
   const missing = [];
   const walk = (subschema, pointer) => {
     if (!subschema || typeof subschema !== "object") return;
@@ -98,10 +98,10 @@ test("schema rejects unknown keys everywhere an object is defined", () => {
     }
   };
   walk(schema, "#");
-  // if/then/else のオーバーレイと、type で分岐するだけのラッパー（elementFixedL* /
-  // elementFlowL*）は除外する。実際のキー制限は nodeBase / groupBase / connector が
-  // 持っており、ラッパー側に additionalProperties: false を置くと allOf の中身が
-  // 見えないため正しい要素まで拒否してしまう。
+  // Exclude if/then/else overlays and wrappers that only branch on type (elementFixedL* /
+  // elementFlowL*). nodeBase, groupBase, and connector enforce the actual key restrictions.
+  // Setting additionalProperties: false on wrappers would hide allOf contents and reject valid
+  // elements.
   const offenders = missing.filter(
     (pointer) =>
       !/\/(?:then|else|if)(?:\/|$)/.test(pointer) &&
@@ -110,7 +110,7 @@ test("schema rejects unknown keys everywhere an object is defined", () => {
   assert.deepEqual(offenders, []);
 });
 
-// ------------------------------------------------- 2. リポジトリ内の実サンプル
+// ------------------------------------------------- 2. Real repository samples
 
 test("every architecture block in the repository passes both validators", async () => {
   const markdownFiles = await collectMarkdownFiles(repoRoot);
@@ -125,8 +125,8 @@ test("every architecture block in the repository passes both validators", async 
   assert.ok(blocks.length >= 5, `expected repository samples, found ${blocks.length}`);
 
   for (const block of blocks) {
-    // 空フェンスは Markdown の省略記法なので、厳密な JSON Schema へ渡す前に
-    // renderer と同じ canonical な空ドキュメントへ展開する。
+    // An empty fence is Markdown shorthand. Expand it to the same canonical empty document used by
+    // the renderer before passing it to strict JSON Schema validation.
     const normalized = architecture.normalizeArchitectureSource(block.source);
     const schemaResult = schemaCheckSource(normalized);
     assert.equal(schemaResult.ok, true, `${block.label} failed schema: ${schemaResult.message}`);
@@ -147,7 +147,7 @@ test("every schema example passes both validators and points at the schema", asy
     const source = await readFile(file, "utf8");
     const document = JSON.parse(source);
 
-    // $schema は相対パスで書く。マージ前・フォーク・オフラインでもエディター検証が効くため。
+    // Keep $schema relative so editor validation works before merge, in forks, and offline.
     assert.ok(
       typeof document.$schema === "string" && document.$schema.startsWith("."),
       `${entry}: $schema must be a relative path, got ${document.$schema}`,
@@ -160,7 +160,7 @@ test("every schema example passes both validators and points at the schema", asy
   }
 });
 
-// ------------------------------------------------------------- 3. 適合コーパス
+// ------------------------------------------------------------- 3. Conformance corpus
 
 test("corpus case names are unique", () => {
   const names = corpus.map((entry) => entry.name);
@@ -211,9 +211,9 @@ for (const entry of corpus) {
 }
 
 test("literal colour pattern is behaviourally equivalent to LITERAL_COLORS", () => {
-  // LITERAL_COLORS には /i フラグがあるが JSON Schema の pattern にフラグは無い。
-  // そこでスキーマは大小両方の文字クラスを手で展開している。ここでは .source の
-  // 文字列比較ではなく「同じ入力に同じ判定を返すか」で等価性を確かめる。
+  // LITERAL_COLORS has an /i flag, but JSON Schema patterns have no flags. The schema therefore
+  // expands both uppercase and lowercase character classes manually. Test behavioral equivalence
+  // with matching verdicts rather than comparing .source strings.
   const schemaPattern = new RegExp(schema.$defs.literalColor.pattern);
   const probes = [
     "#abc",
@@ -249,7 +249,7 @@ test("literal colour pattern is behaviourally equivalent to LITERAL_COLORS", () 
   }
 });
 
-// ----------------------------------------------------------- 4. 定数の同期
+// ----------------------------------------------------------- 4. Constant synchronization
 
 const enumSyncCases = [
   ["SHAPES", architecture.SHAPES, schema.$defs.nodeBase.properties.shape.enum],
@@ -281,26 +281,26 @@ test("schema pattern matches ID_PATTERN", () => {
 });
 
 test("schema pattern matches asset path patterns", () => {
-  // `/` は RegExp.prototype.source が必ず `\/` へ正規化するので、スキーマ側は
-  // 読みやすい素の `/` で書き、比較の前に同じ正規化を通す。
+  // RegExp.prototype.source always normalizes `/` to `\/`. Keep readable bare slashes in the
+  // schema and apply the same normalization before comparing.
   assert.equal(
     new RegExp(schema.$defs.assetPath.pattern).source,
     architecture.ASSET_PATH_PATTERN.source,
   );
-  // フラグを付けると `pattern` へ写した瞬間に大小文字の扱いがずれるので固定する。
+  // A flag would change case handling when copied to `pattern`, so require no flags.
   assert.equal(architecture.ICON_ASSET_PATTERN.flags, "");
   assert.equal(architecture.ASSET_PATH_PATTERN.flags, "");
   assert.equal(architecture.ICON_ASSET_PATTERN, architecture.ASSET_PATH_PATTERN);
 });
 
 test("asset path pattern is behaviourally equivalent between schema and parser", () => {
-  // .source が一致していれば挙動は同じだが、「どの入力を受理する意図なのか」を
-  // ここに列挙して固定しておく。拒否側が緩むと即座に落ちる。
+  // Equal .source values imply equal behavior, but enumerate intended accepted inputs here so any
+  // relaxation of rejected inputs fails immediately.
   const schemaPattern = new RegExp(schema.$defs.assetPath.pattern);
   const accepted = [
     "assets/sample.svg",
-    "assets/profile.jpg",
-    "assets/kazuki-san-post.png",
+    "assets/sample-profile.jpg",
+    "assets/sample-photo.png",
     "assets/icons/logo.webp",
     "assets/a/b/c/deep.jpeg",
     "assets/UPPER.SVG",
@@ -360,8 +360,8 @@ test("asset path pattern is behaviourally equivalent between schema and parser",
 });
 
 test("the corpus exercises every built-in icon", () => {
-  // 組み込みアイコンを増やしたのにコーパスへ足し忘れると、そのアイコンは
-  // スキーマとパーサーの判定一致を一度も確かめられないまま出荷されてしまう。
+  // If a built-in icon is added but omitted from the corpus, it could ship without ever checking
+  // agreement between schema and parser verdicts.
   const entry = corpus.find((candidate) => candidate.name === "every icon");
   assert.ok(entry, "corpus must keep an 'every icon' case");
   const used = JSON.parse(entry.source).elements.map((element) => element.icon);
@@ -369,17 +369,17 @@ test("the corpus exercises every built-in icon", () => {
 });
 
 test("built-in icon names follow the naming convention", () => {
-  // 命名規則: 小文字 kebab-case の一般名詞。ベンダー名や大文字混じりを混ぜると
-  // DSL の公開語彙が一貫しなくなるので、ここで固定する。
+  // Naming convention: generic lowercase kebab-case nouns. Vendor names or uppercase characters
+  // would make the DSL's public vocabulary inconsistent.
   const convention = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
   for (const name of architecture.ICONS) {
     assert.match(name, convention, `built-in icon name ${JSON.stringify(name)}`);
   }
-  // 組み込み名がアセットパスとしても解釈できると受理集合が曖昧になる。
+  // A built-in name that also parses as an asset path would make the accepted set ambiguous.
   for (const name of architecture.ICONS) {
     assert.equal(architecture.ICON_ASSET_PATTERN.test(name), false);
   }
-  // v1 で公開済みの名前は改名・削除しない（schema/README.md のポリシー）。
+  // Do not rename or remove names already published in v1 (schema/README.md policy).
   for (const name of ["cloud", "database", "api", "user", "server"]) {
     assert.ok(architecture.ICONS.has(name), `${name} is part of the v1 public vocabulary`);
   }
@@ -406,21 +406,21 @@ test("schema nesting chain matches MAX_DEPTH", () => {
   }
   assert.equal(schema.$defs[`elementFixedL${depth + 1}`], undefined);
 
-  // 最下層では group を許可しない（parseArchitecture が depth 超過で落ちるため）。
+  // Do not allow groups at the deepest level because parseArchitecture rejects excess depth.
   const deepest = schema.$defs[`elementFixedL${depth}`].properties.type.enum;
   assert.deepEqual([...deepest].sort(), ["connector", "image", "node"]);
   const deepestFlow = schema.$defs[`elementFlowL${depth}`].properties.type.enum;
   assert.deepEqual([...deepestFlow].sort(), ["connector", "image", "node"]);
 
-  // 1 段上では group を許可する。
+  // Allow groups one level above the deepest level.
   const inner = schema.$defs[`elementFixedL${depth - 1}`].properties.type.enum;
   assert.ok(inner.includes("group"));
 });
 
 test("every exported constant is classified as schema-encoded, parser-only, or renderer-only", () => {
-  // スキーマが焼き込む定数と、意味検証だけが持つ定数、描画時にしか効かない定数を
-  // 明示的に分類する。新しい定数を export したときにここが落ちるので、
-  // 同期テストの網から漏れない。
+  // Explicitly classify constants encoded by the schema, used only for semantic validation, or used
+  // only during rendering. Exporting a new constant fails here so it cannot evade synchronization
+  // tests.
   const schemaEncoded = new Set([
     "DSL_VERSION",
     "ICONS",
@@ -442,11 +442,11 @@ test("every exported constant is classified as schema-encoded, parser-only, or r
     "SHAPES",
     "THEME_TOKENS",
   ]);
-  // JSON Schema では表現できない（flatten 後の集計・パース前の文字列長）。
+  // Cannot be expressed in JSON Schema: post-flatten totals and pre-parse string length.
   const parserOnly = new Set(["MAX_CONNECTORS", "MAX_SOURCE_LENGTH", "MAX_TOTAL_TEXT"]);
-  // DSL の入力を一切制約しない。経路探索の打ち切り予算と、打ち切り理由の語彙、
-  // それにラベルのピルを線から逃がす判定に使う描画時の寸法。
-  // ソースには現れないのでスキーマ側に対応物が存在しない。
+  // These do not constrain DSL input. They define route-search budgets, fallback-reason vocabulary,
+  // and rendering dimensions used to keep label pills clear of lines. They never appear in source,
+  // so the schema has no corresponding values.
   const rendererOnly = new Set([
     "CONNECTOR_LABEL_CLEARANCE",
     "MAX_ROUTE_REFINEMENT_PASSES",
@@ -472,7 +472,7 @@ test("every exported constant is classified as schema-encoded, parser-only, or r
     assert.ok(exported.includes(name), `${name} must be exported from architecture.mjs`);
   }
 
-  // renderer-only はスキーマに現れてはいけない。現れたなら分類が誤っている。
+  // Renderer-only constants must not appear in the schema; if they do, the classification is wrong.
   const schemaText = JSON.stringify(schema);
   for (const name of rendererOnly) {
     assert.ok(

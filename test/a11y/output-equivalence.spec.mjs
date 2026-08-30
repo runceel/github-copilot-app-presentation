@@ -1,15 +1,15 @@
-// 出力の等価性: canvas（通常表示）・presenter・印刷（PDF 経路）で
-// **同じ図が同じ意味で出る**ことを固定する。
+// Output equivalence: ensure that canvas (normal view), presenter, and print (PDF path)
+// produce **the same diagram with the same semantics**.
 //
-// 3 経路は同じ renderer を通るが、通る分岐は別々である。
-//   通常表示 : init() が fetchState / connectEvents を回す
-//   presenter: body.presenter-mode が付く
-//   印刷     : initPrint() が全スライドを一度に描く（早期 return するので上の分岐を通らない）
-// さらに印刷だけ slides.css の `body.print-mode` 側の規則を浴びる。
-// 分岐が別なら壊れ方も別なので、経路ごとに出力が食い違っていないかを見る必要がある。
+// All three paths use the same renderer but different branches:
+//   normal view: init() runs fetchState / connectEvents
+//   presenter:   body.presenter-mode is added
+//   print:       initPrint() renders every slide at once (an early return bypasses the branches above)
+// Print alone also receives `body.print-mode` rules from slides.css. Separate branches fail in
+// separate ways, so output must be compared across paths.
 //
-// 座標や実寸は経路ごとに違って当然（印刷は用紙サイズへ収める）ので比較対象にしない。
-// 比べるのは「意味」— 要素の同一性・種別・ロール・アクセシブル名・宣言順。
+// Coordinates and physical sizes naturally differ by path (print fits the paper) and are excluded.
+// Compare semantics: element identity, type, role, accessible name, and declaration order.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -34,10 +34,10 @@ const MIXED_TITLE = "Print regression diagram";
 const SVG = "svg.architecture-svg";
 
 // slides.css: `body.print-mode .architecture-svg{max-height:5.25in;}`
-// 1in = 96 CSS px。この上限を超えて描かれていたら print CSS が効いていない。
+// 1in = 96 CSS px. Rendering above this limit means print CSS is not applied.
 const PRINT_MAX_HEIGHT_PX = 5.25 * 96;
 
-/** 通常表示 / presenter で開く。 */
+/** Open normal view or presenter. */
 async function openLive(page, { present = false, slides = EDITING_DECK } = {}) {
   const harness = await startHarness({ slides });
   await page.goto(`${harness.url}/${present ? "?present=1" : ""}`, { waitUntil: "load" });
@@ -46,13 +46,12 @@ async function openLive(page, { present = false, slides = EDITING_DECK } = {}) {
 }
 
 /**
- * 印刷モード（PDF が焼かれるのと同じ DOM）で開く。
+ * Open print mode, which uses the same DOM as PDF generation.
  *
- * **print メディアをエミュレートすること。** Playwright の既定は screen なので、
- * 何もしないと slides.css の `@media print { ... }` が丸ごと適用されない。
- * `body.print-mode` クラス自体は付くので一見それらしく描かれるが、実際の PDF とは
- * 別物になる（図の箱の高さが実測で 403px 対 504px と 2 割以上ずれる）。
- * ここを外すと print 側の CSS 規則は 1 行もテストされない。
+ * **Emulate print media.** Playwright defaults to screen, so otherwise none of slides.css
+ * `@media print { ... }` applies. The `body.print-mode` class still makes the result look plausible,
+ * but it differs from an actual PDF (measured diagram-box heights differ by over 20%: 403px vs
+ * 504px). Without emulation, not one print CSS rule is tested.
  */
 async function openPrint(page, { slides = EDITING_DECK } = {}) {
   await page.emulateMedia({ media: "print" });
@@ -62,7 +61,7 @@ async function openPrint(page, { slides = EDITING_DECK } = {}) {
   return harness;
 }
 
-/** 図の実描画サイズ。`meet` により縦横比は保たれるので、実際に描かれた矩形を計算する。 */
+/** Actual diagram size. Because `meet` preserves aspect ratio, calculate the rendered rectangle. */
 function measureDiagram(page, title) {
   return page.evaluate((wantedTitle) => {
     const svg = [...document.querySelectorAll("svg.architecture-svg")].find(
@@ -71,8 +70,8 @@ function measureDiagram(page, title) {
     if (!svg) return null;
     const rect = svg.getBoundingClientRect();
     const [, , viewWidth, viewHeight] = svg.getAttribute("viewBox").split(/\s+/).map(Number);
-    // preserveAspectRatio="xMidYMid meet" は要素の箱の中に図を収めて余白を作る。
-    // したがって「箱の縦横比」は図の縦横比と一致しない。見るべきは収まった後の矩形。
+    // preserveAspectRatio="xMidYMid meet" fits the diagram inside its box and adds whitespace.
+    // Therefore the box aspect ratio differs from the diagram; inspect the fitted rectangle.
     const scale = Math.min(rect.width / viewWidth, rect.height / viewHeight);
     return {
       box: { width: Math.round(rect.width), height: Math.round(rect.height) },
@@ -81,8 +80,8 @@ function measureDiagram(page, title) {
   }, title);
 }
 
-test.describe("canvas / presenter / 印刷の等価性", () => {
-  test("presenter は通常表示と同じ意味構造を出す", async ({ page }) => {
+test.describe("canvas / presenter / print equivalence", () => {
+  test("presenter produces the same semantic structure as normal view", async ({ page }) => {
     const live = await openLive(page);
     let liveSemantics;
     try {
@@ -101,7 +100,7 @@ test.describe("canvas / presenter / 印刷の等価性", () => {
     }
   });
 
-  test("印刷は通常表示と同じ意味構造を出す", async ({ page }) => {
+  test("print produces the same semantic structure as normal view", async ({ page }) => {
     const live = await openLive(page);
     let liveSemantics;
     try {
@@ -113,18 +112,18 @@ test.describe("canvas / presenter / 印刷の等価性", () => {
     const print = await openPrint(page);
     try {
       await expect(page.locator("body.print-mode")).toHaveCount(1);
-      // 印刷では全スライドが同時に DOM にある。それでも 1 枚の図の意味は変わらない。
+      // Print puts every slide in the DOM at once, but an individual diagram's semantics stay intact.
       expect(await readDiagramSemantics(page, DIAGRAM_TITLE)).toEqual(liveSemantics);
     } finally {
       await print.close();
     }
   });
 
-  test("印刷でも可視テキストは支援技術から隠れたままになる", async ({ page }) => {
+  test("visible text remains hidden from assistive technology in print", async ({ page }) => {
     const print = await openPrint(page);
     try {
-      // PDF/UA を満たすわけではないが、印刷用 DOM だけ a11y 属性が抜け落ちる
-      // （= 経路ごとに別処理が入り込む）ことを防ぐ。
+      // This does not guarantee PDF/UA, but prevents a11y attributes from disappearing only in the
+      // print DOM, which would indicate path-specific processing.
       const texts = await page.$$eval(`${SVG} text`, (nodes) =>
         nodes.map((node) => node.getAttribute("aria-hidden")),
       );
@@ -135,7 +134,7 @@ test.describe("canvas / presenter / 印刷の等価性", () => {
     }
   });
 
-  test("印刷でも図は歪まず、紙の高さに収まる", async ({ page }) => {
+  test("the diagram remains undistorted and fits the page height in print", async ({ page }) => {
     const live = await openLive(page);
     let liveMeasure;
     try {
@@ -152,31 +151,31 @@ test.describe("canvas / presenter / 印刷の等価性", () => {
       const printMeasure = await measureDiagram(page, DIAGRAM_TITLE);
       expect(printMeasure).not.toBeNull();
 
-      // 画面と紙で図の**形**が同じであること。実寸は用紙に合わせて変わってよいが、
-      // 縦横比が変われば図は歪んでおり、画面で確認したものとは別物になる。
+      // The diagram **shape** must match on screen and paper. Physical size may change to fit the
+      // page, but a different aspect ratio would distort the diagram.
       const liveRatio = liveMeasure.drawn.width / liveMeasure.drawn.height;
       const printRatio = printMeasure.drawn.width / printMeasure.drawn.height;
       expect(printRatio).toBeCloseTo(liveRatio, 2);
 
-      // 図が箱からはみ出さない（はみ出すと PDF で切れる）。
+      // The diagram must not overflow its box, which would clip it in the PDF.
       expect(printMeasure.drawn.width).toBeLessThanOrEqual(printMeasure.box.width);
       expect(printMeasure.drawn.height).toBeLessThanOrEqual(printMeasure.box.height);
 
-      // print CSS の高さ上限が効いていること。1 ページ 7.5in のうち 5.25in までに
-      // 抑えて、見出しと本文の場所を残す。ここが緩むと図が次ページを押し出す。
+      // Verify the print CSS height limit. Restricting the diagram to 5.25in of a 7.5in page leaves
+      // room for the heading and body. Relaxing this can push the diagram onto the next page.
       expect(printMeasure.box.height).toBeLessThanOrEqual(PRINT_MAX_HEIGHT_PX + 1);
-      // かつ、実際にこの上限で決まっていること（screen 側の 56vh に負けていない）。
-      // 上の <= だけだと print CSS が丸ごと効いていなくても通ってしまう。
+      // Also verify that this limit actually determines the size rather than screen's 56vh.
+      // The <= assertion alone could pass even if print CSS were entirely inactive.
       expect(printMeasure.box.height).toBeGreaterThan(liveMeasure.box.height);
     } finally {
       await print.close();
     }
   });
 
-  // kickoff で名指しされた出力等価性の危険箇所。いずれも画面には要るが紙には出したくない
-  // 要素で、print CSS が効かなくなると PDF に混入する（mermaid のツールチップは実測で
-  // 末尾に空白ページを 1 枚増やす）。
-  test("印刷では画面用の UI が PDF に混入しない", async ({ page }) => {
+  // Output-equivalence risk areas identified at kickoff. These are needed on screen but not on
+  // paper, and leak into the PDF if print CSS stops applying. Mermaid's tooltip was observed adding
+  // a blank final page.
+  test("screen-only UI does not leak into the PDF in print", async ({ page }) => {
     const print = await openPrint(page, { slides: [MIXED_SLIDE] });
     try {
       const state = await page.evaluate(() => {
@@ -185,7 +184,7 @@ test.describe("canvas / presenter / 印刷の等価性", () => {
             (node) => getComputedStyle(node).display !== "none",
           ).length;
         return {
-          // mermaid は描画のたびに <body> 直下へツールチップ用の div を足す。
+          // Mermaid adds a tooltip div directly under <body> on every render.
           tooltips: document.querySelectorAll(".mermaidTooltip").length,
           shownTooltips: shown(".mermaidTooltip"),
           navs: document.querySelectorAll(".nav").length,
@@ -194,8 +193,8 @@ test.describe("canvas / presenter / 印刷の等価性", () => {
         };
       });
 
-      // 隠す対象が DOM に存在することを先に確かめる。存在しない要素を「隠れている」と
-      // 数えても意味がない（規則を消しても通ってしまう）。
+      // First verify the targets exist in the DOM. Treating absent elements as hidden would make the
+      // test pass even after removing the rule.
       expect(state.tooltips).toBeGreaterThan(0);
       expect(state.navs).toBeGreaterThan(0);
 
@@ -207,12 +206,12 @@ test.describe("canvas / presenter / 印刷の等価性", () => {
     }
   });
 
-  test("印刷では図の編集ツールバーが隠れる", async ({ page }) => {
+  test("the diagram editing toolbar is hidden in print", async ({ page }) => {
     const print = await openPrint(page);
     try {
-      // 編集ツールバーは `?architectureEdit=1` でしか生えず、印刷経路の DOM には
-      // 実物が存在しない（実測 0 個）。存在しない要素を数えても規則の検証にならないので、
-      // 同じクラスの要素を図の隣に差し込んで print スタイルシート自体を確かめる。
+      // The editing toolbar only exists with `?architectureEdit=1` and is absent from the print DOM.
+      // Counting absent elements does not test the rule, so insert an element with the same class
+      // beside the diagram to verify the print stylesheet itself.
       const display = await page.evaluate(() => {
         const probe = document.createElement("div");
         probe.className = "architecture-editor-toolbar";
@@ -229,14 +228,14 @@ test.describe("canvas / presenter / 印刷の等価性", () => {
   });
 });
 
-test.describe("Mermaid との共存", () => {
+test.describe("coexistence with Mermaid", () => {
   const MIXED_DECK = [MIXED_SLIDE];
 
-  test("同じスライドに mermaid があっても図の意味構造は変わらない", async ({ page }) => {
+  test("Mermaid on the same slide does not change diagram semantics", async ({ page }) => {
     const live = await openLive(page, { slides: MIXED_DECK });
     let liveSemantics;
     try {
-      // mermaid が描けていることを先に確かめる（描けていなければ共存の検証にならない）。
+      // First verify Mermaid rendered; otherwise this does not test coexistence.
       await expect(page.locator("pre.mermaid svg, .mermaid svg")).toHaveCount(1);
       liveSemantics = await readDiagramSemantics(page, MIXED_TITLE);
       expect(liveSemantics).not.toBeNull();
@@ -254,13 +253,13 @@ test.describe("Mermaid との共存", () => {
     }
   });
 
-  test("mermaid が同居しても図の読み上げは 1 回ずつのままになる", async ({ page }) => {
+  test("diagram content remains announced once when Mermaid coexists", async ({ page }) => {
     const live = await openLive(page, { slides: MIXED_DECK });
     try {
-      // mermaid はラベルを <text> ではなく <foreignObject> の HTML で描く。
-      // つまり architecture 側で <text> に aria-hidden を付けても mermaid には触れない。
-      // ここが 0 になったら mermaid の描画方式が変わったということなので、
-      // 「mermaid には手を出していない」という前提を見直すこと。
+      // Mermaid renders labels as HTML in <foreignObject>, not <text>. Therefore aria-hidden on
+      // Architecture <text> does not affect Mermaid. If this becomes zero, Mermaid's rendering
+      // method changed and the assumption that Architecture handling does not touch it must be
+      // revisited.
       const mermaidLabels = await page.$$eval(
         ".mermaid svg foreignObject, pre.mermaid svg foreignObject",
         (nodes) => nodes.length,
@@ -268,20 +267,20 @@ test.describe("Mermaid との共存", () => {
       expect(mermaidLabels).toBeGreaterThan(0);
       expect(await page.$$eval(".mermaid svg text, pre.mermaid svg text", (n) => n.length)).toBe(0);
 
-      // architecture の属性が mermaid 側へ漏れていない。
+      // Architecture attributes do not leak into Mermaid.
       const leaked = await page.$$eval(
         ".mermaid svg [data-architecture-order], pre.mermaid svg [data-architecture-order]",
         (nodes) => nodes.length,
       );
       expect(leaked).toBe(0);
 
-      // 両方の図がアクセシビリティツリーに載り、architecture 側は重複しない。
+      // Both diagrams appear in the accessibility tree without Architecture duplication.
       const tree = await accessibilityTree(page);
       const diagram = findDiagram(tree, MIXED_TITLE);
-      expect(diagram, "architecture の図が AT から見えていない").not.toBeNull();
+      expect(diagram, "the Architecture diagram is not visible to AT").not.toBeNull();
       expect(flatten(diagram.children).filter((node) => node.role === "StaticText")).toEqual([]);
 
-      // mermaid のラベルは AT に残っている（共存であって片方潰しではない）。
+      // Mermaid labels remain exposed to AT; coexistence does not suppress one diagram.
       const spoken = flatten(tree)
         .map((node) => node.name)
         .join("\n");

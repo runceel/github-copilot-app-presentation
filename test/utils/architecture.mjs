@@ -1,14 +1,14 @@
-// スライド Markdown から ```architecture ブロックを取り出し、拡張機能本体の
-// パーサーで解析する。PDF 回帰の「意味構造」検証で、DOM に出た図が
-// モデルどおりかを突き合わせるために使う。
+// Extract ```architecture blocks from slide Markdown and parse them with the Extension parser.
+// PDF regression tests use this to compare the diagram rendered in the DOM with the model's
+// semantic structure.
 //
-// パーサーは再実装せず `renderer/architecture.mjs` の parseArchitecture をそのまま使う。
+// Do not reimplement the parser; use parseArchitecture from `renderer/architecture.mjs` directly.
 
-import { parseArchitecture } from "../../.github/extensions/presentation/renderer/architecture.mjs";
+import { parseArchitecture } from "../../.github/extensions/markdstage/renderer/architecture.mjs";
 
 const ARCHITECTURE_BLOCK = /^```architecture[^\S\r\n]*\r?\n([\s\S]*?)^```[^\S\r\n]*$/gm;
 
-/** Markdown 断片に含まれる architecture ブロックのソース文字列を返す。 */
+/** Return source strings for architecture blocks in a Markdown fragment. */
 export function extractArchitectureSources(markdown) {
   const sources = [];
   ARCHITECTURE_BLOCK.lastIndex = 0;
@@ -20,8 +20,8 @@ export function extractArchitectureSources(markdown) {
 }
 
 /**
- * スライド 1 枚分の期待値（図ごとの group / node / connector 数と viewBox）。
- * DOM 側から取得した構造と比較する。
+ * Expected values for one slide: each diagram's group, node, and connector counts and viewBox.
+ * These are compared with the structure read from the DOM.
  */
 export function expectedDiagramShapes(markdown) {
   return extractArchitectureSources(markdown).map((source) => {
@@ -36,7 +36,7 @@ export function expectedDiagramShapes(markdown) {
   });
 }
 
-/** Markdown 断片に mermaid ブロックが含まれるか。 */
+/** Return whether a Markdown fragment contains a Mermaid block. */
 export function hasMermaidBlock(markdown) {
   return /^```mermaid[^\S\r\n]*$/m.test(markdown);
 }

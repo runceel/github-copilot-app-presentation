@@ -1,22 +1,22 @@
-# テスト用フィクスチャ
+# Test fixtures
 
-`test/harness/deck.mjs` が読み込むデッキです。
+These decks are loaded by `test/harness/deck.mjs`.
 
-## 形式
+## Format
 
-拡張機能が受け取るのは「スライド 1 枚分の Markdown 断片の配列」で、元 Markdown を断片へ
-分割するのは Skill 側（生成 AI）の仕事です。テストはその分割ルールを再実装せず、拡張機能に
-渡るのと同じ断片をそのまま記述します。
+The Extension accepts an array of Markdown fragments, one per slide. Splitting the original
+Markdown into fragments is the Skill's responsibility (the generative AI). Tests do not reimplement
+those splitting rules; they specify the same fragments passed to the Extension.
 
-断片自身が `---` で囲んだフロントマターを持つため、スライドの区切りには衝突しない
-`<!-- slide -->` の行を使います。
+Because fragments can contain front matter delimited by `---`, use a nonconflicting
+`<!-- slide -->` line to separate slides.
 
 ```markdown
 ---
 layout: title
 ---
 
-# 表紙
+# Title slide
 
 <!-- slide -->
 
@@ -25,17 +25,17 @@ page: 2
 total: 2
 ---
 
-## 2 枚目
+## Second slide
 ```
 
-## ファイル
+## Files
 
-| ファイル | 用途 |
+| File | Purpose |
 | --- | --- |
-| `architecture-visual.md` | ビジュアル回帰用。ピクセル比較を安定させるため architecture DSL のみで構成し、mermaid は含めない |
-| `layout-visual.md` | `layout: section` の H1/H2、任意の kicker／フッター、テーマ別背景、PDF 出力の回帰用 |
-| `standard-title.md` | 通常スライド先頭の H1/H2 を上部タイトル領域へ固定する DOM・座標・PDF 回帰用 |
-| `print-mixed.md` | PDF 回帰用。mermaid と architecture DSL を 1 枚に混在させたスライド断片（区切りなしの単一断片） |
+| `architecture-visual.md` | Visual regression fixture. Contains only Architecture DSL, without Mermaid, to stabilize pixel comparisons |
+| `layout-visual.md` | Regression fixture for H1/H2 in `layout: section`, optional kicker/footer, theme backgrounds, and PDF output |
+| `standard-title.md` | DOM, coordinate, and PDF regression fixture that pins a regular slide's leading H1/H2 to the top title region |
+| `print-mixed.md` | PDF regression fixture with Mermaid and Architecture DSL on one slide (a single fragment without separators) |
 
-PDF 回帰スイートは `architecture-visual.md` の背表紙の手前に `print-mixed.md` を差し込んだ
-デッキを組み立て、mermaid と architecture DSL が同居した状態の印刷結果を検証します。
+The PDF regression suite inserts `print-mixed.md` before the back cover in
+`architecture-visual.md`, then verifies print output with Mermaid and Architecture DSL together.

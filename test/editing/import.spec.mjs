@@ -1,13 +1,12 @@
-// Markdown インポート（canvas の 📂 ボタン）のブラウザ回帰。
+// Browser regression tests for Markdown import through the canvas 📂 button.
 //
-// 検証したいのは 4 点。
-//   1. ボタンから一覧が開き、workspace の Markdown が並ぶ
-//   2. 選ぶと拡張機能側で分割され、デッキが差し替わる（agent を経由しない）
-//   3. 絞り込みと Esc が効く
-//   4. presenter では導線が出ない（プレゼン中に誤爆しない）
+// Verify four points:
+//   1. The button opens a list of workspace Markdown files
+//   2. Selecting a file makes the Extension split and replace the deck without involving an agent
+//   3. Filtering and Escape work
+//   4. Presenter mode hides the entry point to prevent accidental activation during a presentation
 //
-// 分割そのものの正しさは markdown-deck の単体テストが担当するので、ここでは
-// 「UI から末端まで繋がっていること」だけを見る。
+// markdown-deck unit tests verify splitting itself. This suite verifies only end-to-end UI wiring.
 
 import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -19,13 +18,13 @@ import { expect, test } from "@playwright/test";
 import { REPO_ROOT, startHarness } from "../harness/server.mjs";
 import { splitFixtureDeck } from "../harness/deck.mjs";
 import { waitForSlideReady } from "../utils/ready.mjs";
-import { findArchitectureBlocks } from "../../.github/extensions/presentation/scripts/markdown-blocks.mjs";
+import { findArchitectureBlocks } from "../../.github/extensions/markdstage/scripts/markdown-blocks.mjs";
 
 const FIXTURES = join(REPO_ROOT, "test", "fixtures");
 const SLIDES = splitFixtureDeck(readFileSync(join(FIXTURES, "standard-title.md"), "utf8"));
 const EDITABLE_SOURCE = readFileSync(join(FIXTURES, "architecture-editing.md"), "utf8");
 
-/** インポート可能なハーネスを起動して描画完了まで待つ。 */
+/** Start an import-capable harness and wait for rendering to finish. */
 async function openCanvas(page, query = "") {
   const harness = await startHarness({ slides: SLIDES, markdownRoot: FIXTURES });
   await page.goto(`${harness.url}/${query}`, { waitUntil: "load" });
@@ -33,8 +32,8 @@ async function openCanvas(page, query = "") {
   return harness;
 }
 
-test.describe("Markdown インポート", () => {
-  test("ボタンから一覧を開き、選んだ Markdown がデッキになる", async ({ page }) => {
+test.describe("Markdown import", () => {
+  test("opens the list from the button and uses the selected Markdown as the deck", async ({ page }) => {
     const harness = await openCanvas(page);
     try {
       await page.locator("#navImport").click();
@@ -50,17 +49,17 @@ test.describe("Markdown インポート", () => {
       await expect(page.locator("#importPicker")).toBeHidden();
       await expect.poll(() => harness.sourceName).toBe("import-source.md");
       expect(harness.sourceMode).toBe("snapshot");
-      // 表紙 + 通常 3 枚。背表紙の自動追加はハーネスでは行わない。
+      // Title slide plus three regular slides. The harness does not append a back cover.
       expect(harness.total).toBe(4);
 
       await waitForSlideReady(page);
-      await expect(page.locator(".deck")).toContainText("インポートのテスト");
+      await expect(page.locator(".deck")).toContainText("Import test");
     } finally {
       await harness.close();
     }
   });
 
-  test("絞り込みで一覧が減り、Esc で閉じる", async ({ page }) => {
+  test("filters the list and closes it with Escape", async ({ page }) => {
     const harness = await openCanvas(page);
     try {
       await page.locator("#navImport").click();
@@ -77,7 +76,7 @@ test.describe("Markdown インポート", () => {
     }
   });
 
-  test("Markdown 隣接 assets を優先し、workspace assets へフォールバックする", async ({
+  test("prefers assets adjacent to Markdown and falls back to workspace assets", async ({
     page,
   }) => {
     const harness = await openCanvas(page);
@@ -102,7 +101,7 @@ test.describe("Markdown インポート", () => {
     }
   });
 
-  test("presenter では読み込みボタンが表示されない", async ({ page }) => {
+  test("hides the import button in presenter mode", async ({ page }) => {
     const harness = await openCanvas(page, "?present=1");
     try {
       await expect(page.locator("#navImport")).toBeHidden();
@@ -111,7 +110,7 @@ test.describe("Markdown インポート", () => {
     }
   });
 
-  test("live を選んで保存を追従し、途中で固定表示へ切り替えられる", async ({ page }) => {
+  test("tracks saves in live mode and can switch to a fixed snapshot", async ({ page }) => {
     const root = await mkdtemp(join(tmpdir(), "presentation-import-live-"));
     const sourcePath = join(root, "live.md");
     const initial = "# First\n\n---\n\n## Current\n\nBefore\n";
@@ -159,7 +158,7 @@ test.describe("Markdown インポート", () => {
     }
   });
 
-  test("固定表示から live へ切り替えた時点で最新版を読み込む", async ({ page }) => {
+  test("loads the latest content when switching from snapshot to live mode", async ({ page }) => {
     const root = await mkdtemp(join(tmpdir(), "presentation-import-switch-"));
     const sourcePath = join(root, "switch.md");
     await writeFile(sourcePath, "# Snapshot\n", "utf8");
@@ -183,7 +182,7 @@ test.describe("Markdown インポート", () => {
     }
   });
 
-  test("空の architecture フェンスを空の図として認識する", async ({ page }) => {
+  test("recognizes an empty architecture fence as an empty diagram", async ({ page }) => {
     const root = await mkdtemp(join(tmpdir(), "presentation-import-empty-architecture-"));
     await writeFile(join(root, "empty.md"), "# Empty\n\n```architecture\n```\n", "utf8");
     const harness = await startHarness({ slides: SLIDES, markdownRoot: root });
@@ -204,7 +203,7 @@ test.describe("Markdown インポート", () => {
     }
   });
 
-  test("インポートした図の編集は元ファイルへ保存され、編集モード再開後も残る", async ({
+  test("saves imported diagram edits to the source file and preserves them after reopening edit mode", async ({
     page,
   }) => {
     const root = await mkdtemp(join(tmpdir(), "presentation-import-edit-"));
@@ -226,7 +225,7 @@ test.describe("Markdown インポート", () => {
       await page.keyboard.press("ArrowDown");
       const saveState = page.locator('[data-architecture-save-state="saved"]');
       await expect(saveState).toBeVisible();
-      await expect(saveState).toContainText("元 Markdown に保存しました");
+      await expect(saveState).toContainText("Saved to the source Markdown.");
 
       const saved = await readFile(sourcePath, "utf8");
       const savedDsl = JSON.parse(findArchitectureBlocks(saved)[0].body);
@@ -246,7 +245,7 @@ test.describe("Markdown インポート", () => {
     }
   });
 
-  test("インポート元が外部変更されたら保存を拒否してファイルを上書きしない", async ({
+  test("rejects saves after an external source change without overwriting the file", async ({
     page,
   }) => {
     const root = await mkdtemp(join(tmpdir(), "presentation-import-conflict-"));
@@ -269,7 +268,7 @@ test.describe("Markdown インポート", () => {
 
       const failure = page.locator('[data-architecture-save-state="failed"]');
       await expect(failure).toBeVisible();
-      await expect(failure).toContainText("外部で変更されています");
+      await expect(failure).toContainText("modified externally");
       const unchanged = await readFile(sourcePath, "utf8");
       expect(JSON.parse(findArchitectureBlocks(unchanged)[0].body).elements[0].y).toBe(777);
     } finally {

@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/MarkdStage.App/MarkdStage.App.csproj" />
+    <Project Path="src/MarkdStage.Core/MarkdStage.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/MarkdStage.Core.Tests/MarkdStage.Core.Tests.csproj" />
+  </Folder>
+</Solution>

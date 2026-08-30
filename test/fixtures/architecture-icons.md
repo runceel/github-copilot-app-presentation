@@ -5,9 +5,9 @@ page: 1
 total: 1
 ---
 
-## アイコンのカタログと assets/ 参照
+## Icon catalog and assets/ references
 
-組み込みアイコンはテーマのテキスト色を継承し、`assets/` のアイコンはそのまま描かれる
+Built-in icons inherit the theme text color; icons under `assets/` render unchanged
 
 ```architecture
 {
@@ -50,8 +50,8 @@ total: 1
       "layout": { "type": "column", "gap": 40, "padding": 44 },
       "children": [
         { "type": "node", "id": "a-svg", "text": "sample.svg", "icon": "assets/sample.svg" },
-        { "type": "node", "id": "a-png", "text": "kazuki-san-post.png", "icon": "assets/kazuki-san-post.png" },
-        { "type": "node", "id": "a-jpg", "text": "profile.jpg", "icon": "assets/profile.jpg" }
+        { "type": "node", "id": "a-wide", "text": "architecture-image-sample.svg", "icon": "assets/architecture-image-sample.svg" },
+        { "type": "node", "id": "a-brand", "text": "markdstage-mark.svg", "icon": "assets/brand/markdstage-mark.svg" }
       ]
     }
   ]

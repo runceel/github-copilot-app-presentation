@@ -1,13 +1,13 @@
-// Architecture 図の編集ワークフローのブラウザ回帰。
+// Browser regression tests for the architecture diagram editing workflow.
 //
-// 検証したいのは 4 点。
-//   1. ドラッグでノードが動き、**connector が引き直される**
-//      （旧 PoC は transform だけを当てていたので線が置き去りになっていた）
-//   2. キーボードだけで一通り操作できる（選択・移動・layout 解除・undo/redo）
-//   3. 編集結果が /edit でデッキの Markdown 断片へ書き戻り、再描画後も残る
-//   4. presenter / 印刷では編集 UI が **DOM に存在しない**
+// Verify four points:
+//   1. Dragging moves a node and **reroutes connectors**
+//      (the old proof of concept applied only a transform and left lines behind)
+//   2. The full workflow works with the keyboard (select, move, release layout, undo/redo)
+//   3. /edit writes results back to the deck's Markdown fragment and they survive rerendering
+//   4. Editing UI is **absent from the DOM** in presenter and print modes
 //
-// スクリーンショット比較はしない（ここは振る舞いの検証で、見た目は visual が担当）。
+// Do not compare screenshots here; this suite verifies behavior and visual tests cover appearance.
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -46,7 +46,7 @@ const MIXED_CASE_ARCHITECTURE_SLIDE = [
   "```",
 ].join("\n");
 
-/** 編集モードのハーネスを起動して描画完了まで待つ。 */
+/** Start the harness in edit mode and wait for rendering to finish. */
 async function openEditor(page, options = {}) {
   const harness = await startHarness({ slides: SLIDES, architectureEdit: true, ...options });
   await page.goto(`${harness.url}/`, { waitUntil: "load" });
@@ -55,14 +55,14 @@ async function openEditor(page, options = {}) {
   return harness;
 }
 
-/** 図の中の connector の経路（引き直しの有無を見るため）。 */
+/** Connector paths in the diagram, used to detect rerouting. */
 function connectorPaths(page) {
   return page.$$eval("[data-architecture-connector] path", (nodes) =>
     nodes.map((node) => node.getAttribute("d")),
   );
 }
 
-/** ノードの現在位置（描画結果から読む）。 */
+/** Current node position read from rendered output. */
 function nodeBox(page, id) {
   return page.$eval(`[data-architecture-id="${id}"]`, (node) => {
     const rect = node.getBBox();
@@ -70,7 +70,7 @@ function nodeBox(page, id) {
   });
 }
 
-test("Architecture フェンス名は大文字小文字を区別せず編集対象になる", async ({ page }) => {
+test("Architecture fence names are editable regardless of case", async ({ page }) => {
   const harness = await startHarness({
     slides: [MIXED_CASE_ARCHITECTURE_SLIDE],
     architectureEdit: true,
@@ -85,8 +85,8 @@ test("Architecture フェンス名は大文字小文字を区別せず編集対�
   }
 });
 
-test.describe("編集モード", () => {
-  test("ドラッグでノードが動き、connector が引き直される", async ({ page }) => {
+test.describe("edit mode", () => {
+  test("dragging moves a node and reroutes connectors", async ({ page }) => {
     const harness = await openEditor(page);
     try {
       const before = await connectorPaths(page);
@@ -100,15 +100,15 @@ test.describe("編集モード", () => {
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 - 120, { steps: 8 });
       await page.mouse.up();
 
-      // 編集は図全体の再描画を伴うので、位置が確定するまで待つ。
+      // Editing rerenders the entire diagram, so wait for the position to settle.
       await expect.poll(async () => (await nodeBox(page, "client")).y).not.toBe(beforeBox.y);
 
       const after = await connectorPaths(page);
       expect(after.length).toBe(before.length);
-      // 線が置き去りになっていないこと = 経路が引き直されていること。
+      // A changed path proves that the line was rerouted rather than left behind.
       expect(after).not.toEqual(before);
 
-      // 書き戻しも届いている。
+      // Writeback also arrived.
       expect(harness.editReports.length).toBeGreaterThan(0);
       expect(harness.slides[0]).not.toBe(SLIDES[0]);
     } finally {
@@ -116,7 +116,7 @@ test.describe("編集モード", () => {
     }
   });
 
-  test("layout 管理下のノードはドラッグしても動かず、理由が読み上げられる", async ({ page }) => {
+  test("dragging a layout-managed node does not move it and announces the reason", async ({ page }) => {
     const harness = await openEditor(page);
     try {
       const beforeSource = harness.slides[0];
@@ -130,11 +130,11 @@ test.describe("編集モード", () => {
       await page.mouse.up();
 
       expect(await nodeBox(page, "api")).toEqual(beforeBox);
-      // DSL は 1 文字も変わらない。
+      // The DSL remains byte-for-byte unchanged.
       expect(harness.slides[0]).toBe(beforeSource);
       expect(harness.editReports).toHaveLength(0);
 
-      // 「なぜ動かないか」と「どの group を解除すればよいか」が伝わる。
+      // Explain why it cannot move and which group must be released.
       const status = page.locator("[data-architecture-edit-status]");
       await expect(status).toHaveAttribute("aria-live", "polite");
       await expect(status).toContainText("zone");
@@ -143,7 +143,7 @@ test.describe("編集モード", () => {
     }
   });
 
-  test("キーボードだけで選択・移動・layout 解除・undo ができる", async ({ page }) => {
+  test("the keyboard alone supports selection, movement, layout release, and undo", async ({ page }) => {
     const harness = await openEditor(page);
     try {
       await page.locator(NODE("client")).focus();
@@ -153,26 +153,26 @@ test.describe("編集モード", () => {
       await expect.poll(async () => (await nodeBox(page, "client")).x).toBeGreaterThan(start.x);
       const coarse = await nodeBox(page, "client");
 
-      // Shift は微調整（粗い移動より小さく動く）。
+      // Shift performs a fine adjustment smaller than coarse movement.
       await page.locator(NODE("client")).focus();
       await page.keyboard.press("Shift+ArrowRight");
       await expect.poll(async () => (await nodeBox(page, "client")).x).toBeGreaterThan(coarse.x);
       const fine = await nodeBox(page, "client");
       expect(fine.x - coarse.x).toBeLessThan(coarse.x - start.x);
 
-      // layout 管理下のノードを選び、L で解除すると動かせるようになる。
+      // Select a layout-managed node and press L to release it for movement.
       await page.locator(NODE("api")).focus();
       const apiBefore = await nodeBox(page, "api");
       await page.keyboard.press("l");
       await expect.poll(() => harness.slides[0].includes('"layout"')).toBe(false);
-      // 解除は見た目を変えない。
+      // Releasing does not change appearance.
       expect(await nodeBox(page, "api")).toEqual(apiBefore);
 
       await page.locator(NODE("api")).focus();
       await page.keyboard.press("ArrowDown");
       await expect.poll(async () => (await nodeBox(page, "api")).y).toBeGreaterThan(apiBefore.y);
 
-      // Ctrl+Z で戻り、Ctrl+Shift+Z でやり直す。
+      // Ctrl+Z undoes, and Ctrl+Shift+Z redoes.
       await page.keyboard.press("Control+z");
       await expect.poll(async () => (await nodeBox(page, "api")).y).toBe(apiBefore.y);
       await page.keyboard.press("Control+Shift+z");
@@ -182,7 +182,7 @@ test.describe("編集モード", () => {
     }
   });
 
-  test("編集はデッキの Markdown 断片へ書き戻り、再読み込み後も残る", async ({ page }) => {
+  test("edits write back to the deck Markdown fragment and survive reload", async ({ page }) => {
     const harness = await openEditor(page);
     try {
       await page.locator(NODE("client")).focus();
@@ -191,8 +191,8 @@ test.describe("編集モード", () => {
 
       const saved = harness.slides[0];
       expect(saved).toContain("```architecture");
-      // 図の前後の地の文とフロントマターが失われていない。
-      expect(saved).toContain("## 編集ワークフローの回帰用フィクスチャ");
+      // Surrounding prose and front matter remain intact.
+      expect(saved).toContain("## Editing workflow regression fixture");
       expect(saved).toContain("deck: Architecture DSL");
 
       const moved = await nodeBox(page, "client");
@@ -204,7 +204,7 @@ test.describe("編集モード", () => {
     }
   });
 
-  test("編集モードでもコンソールエラーを出さない", async ({ page }) => {
+  test("edit mode produces no console errors", async ({ page }) => {
     const errors = [];
     page.on("console", (message) => {
       if (message.type() === "error") errors.push(message.text());
@@ -222,11 +222,11 @@ test.describe("編集モード", () => {
   });
 });
 
-test.describe("編集 UI が発表・印刷へ漏れない", () => {
-  // サーバー側が編集モードでも、presenter と印刷では編集 UI が出てはいけない。
-  // ここが崩れると発表中の画面にツールバーが写り込む。
+test.describe("editing UI does not leak into presentation or print output", () => {
+  // Even when the server is in edit mode, presenter and print modes must not show editing UI.
+  // Otherwise the toolbar would appear during the presentation.
 
-  test("presenter モードでは編集 UI が DOM に存在しない", async ({ page }) => {
+  test("editing UI is absent from the DOM in presenter mode", async ({ page }) => {
     const harness = await startHarness({ slides: SLIDES, architectureEdit: true });
     try {
       await page.goto(`${harness.url}/?present=1`, { waitUntil: "load" });
@@ -236,10 +236,10 @@ test.describe("編集 UI が発表・印刷へ漏れない", () => {
       await expect(page.locator("[data-architecture-movable]")).toHaveCount(0);
       await expect(page.locator("[data-architecture-edit-status]")).toHaveCount(0);
 
-      // 図そのものは出ている（「何も描かれていないから 0 件」ではない）。
+      // The diagram itself exists, so zero editing elements is not caused by rendering nothing.
       await expect(page.locator(NODE("client"))).toHaveCount(1);
 
-      // キーボードで動かそうとしても DSL は変わらない。
+      // Attempting keyboard movement does not change the DSL.
       await page.locator(NODE("client")).focus();
       await page.keyboard.press("ArrowDown");
       await page.waitForTimeout(200);
@@ -250,7 +250,7 @@ test.describe("編集 UI が発表・印刷へ漏れない", () => {
     }
   });
 
-  test("印刷モードでは編集 UI が DOM に存在しない", async ({ page }) => {
+  test("editing UI is absent from the DOM in print mode", async ({ page }) => {
     const harness = await startHarness({ slides: SLIDES, architectureEdit: true });
     try {
       await page.goto(`${harness.url}/?print=1&token=${harness.printToken}`, {
@@ -267,7 +267,7 @@ test.describe("編集 UI が発表・印刷へ漏れない", () => {
     }
   });
 
-  test("編集モードが無効なサーバーでは編集 UI が出ない", async ({ page }) => {
+  test("a server with edit mode disabled shows no editing UI", async ({ page }) => {
     const harness = await startHarness({ slides: SLIDES, architectureEdit: false });
     try {
       await page.goto(`${harness.url}/`, { waitUntil: "load" });
@@ -279,7 +279,7 @@ test.describe("編集 UI が発表・印刷へ漏れない", () => {
     }
   });
 
-  test("サーバーは編集モードが無効なら /edit を拒否する", async ({ request }) => {
+  test("the server rejects /edit when edit mode is disabled", async ({ request }) => {
     const harness = await startHarness({ slides: SLIDES, architectureEdit: false });
     try {
       const response = await request.post(`${harness.url}/edit`, {
@@ -294,13 +294,13 @@ test.describe("編集 UI が発表・印刷へ漏れない", () => {
   });
 });
 
-test.describe("編集モードへの到達（利用者が通る経路）", () => {
-  // ここが通らないと Phase 5 は「実装したが誰も使えない」状態になる。
-  // 単体で setArchitectureEditMode が動くことではなく、URL を開いてから
-  // 図を動かし、デッキの Markdown 断片が実際に書き換わるまでを 1 本で見る。
+test.describe("user-facing path into edit mode", () => {
+  // If this path fails, Phase 5 is implemented but inaccessible. Verify the full path from opening
+  // the URL through moving the diagram to actually changing the deck's Markdown fragment, rather
+  // than testing setArchitectureEditMode in isolation.
 
-  test("?architectureEdit=1 で編集モードに入り、書き戻しまで通る", async ({ page }) => {
-    // サーバーは無効な状態から始める（クライアントだけ true になる余地を潰す）。
+  test("?architectureEdit=1 enters edit mode and completes writeback", async ({ page }) => {
+    // Start with edit mode disabled on the server so the client cannot be true on its own.
     const harness = await startHarness({ slides: SLIDES, architectureEdit: false });
     try {
       expect(harness.architectureEdit).toBe(false);
@@ -308,15 +308,15 @@ test.describe("編集モードへの到達（利用者が通る経路）", () =>
       await page.goto(`${harness.url}/?architectureEdit=1`, { waitUntil: "load" });
       await waitForSlideReady(page);
 
-      // URL パラメーターがサーバー状態へ伝わっている（唯一の真実がサーバー側）。
+      // The URL parameter reached server state, which is the single source of truth.
       await expect.poll(() => harness.architectureEdit).toBe(true);
       await expect(page.locator(EDITOR)).toHaveCount(1);
 
-      // /state のポーリング（2 秒）を跨いでも編集モードが解除されない。
+      // Edit mode remains enabled across the two-second /state poll.
       await page.waitForTimeout(2600);
       await expect(page.locator(EDITOR)).toHaveCount(1);
 
-      // 実際に動かして、デッキの Markdown 断片が書き換わる。
+      // Move a node and verify the deck's Markdown fragment changes.
       const before = harness.slideAt(0);
       await page.locator(NODE("client")).focus();
       await page.keyboard.press("ArrowDown");
@@ -333,19 +333,19 @@ test.describe("編集モードへの到達（利用者が通る経路）", () =>
   });
 });
 
-test.describe("保存の失敗が利用者に見える", () => {
-  // クライアント側の拒否は 11 種類も読み上げるのに、実際にデータが失われる
-  // サーバー側の拒否だけ無言、という状態を作らないための回帰。
-  // 図は画面上で動くので、保存されなかったことは表示しないと気づけない。
+test.describe("save failures are visible to users", () => {
+  // Prevent a state where eleven client-side rejection types are announced but server-side
+  // rejection that actually loses data is silent. Because the diagram moves on screen, users
+  // cannot detect an unsaved change unless the failure is displayed.
 
   const SAVE_STATE = "[data-architecture-save-state]";
-  /** /edit だけを確実に捕まえる（glob より取りこぼしが無い）。 */
+  /** Match only /edit reliably, without the gaps of a glob. */
   const isEditRequest = (url) => new URL(url).pathname === "/edit";
 
-  test("サーバーが 409 で拒否したら画面に出る", async ({ page }) => {
+  test("a server 409 rejection appears in the UI", async ({ page }) => {
     const harness = await openEditor(page);
     try {
-      // 編集モードが解除された直後（クライアントが /state で気づく前）を再現する。
+      // Reproduce the moment after edit mode is disabled but before the client learns through /state.
       let intercepted = 0;
       await page.route(isEditRequest, (route) => {
         intercepted += 1;
@@ -362,18 +362,18 @@ test.describe("保存の失敗が利用者に見える", () => {
       const indicator = page.locator(SAVE_STATE);
       await expect(indicator).toHaveAttribute("data-architecture-save-state", "failed");
       await expect(indicator).toBeVisible();
-      await expect(indicator).toContainText("保存できませんでした");
-      // 何が起きたのかが区別できる。
-      await expect(indicator).toContainText("編集モードが無効です");
+      await expect(indicator).toContainText("Could not save");
+      // Distinguish what happened.
+      await expect(indicator).toContainText("Editing mode is disabled");
       expect(intercepted).toBeGreaterThan(0);
-      // 実際にサーバーへは書き戻っていない（表示だけの嘘ではない）。
+      // Nothing actually reached the server; this is not merely a displayed failure.
       expect(harness.editReports).toHaveLength(0);
     } finally {
       await harness.close();
     }
   });
 
-  test("通信そのものが失敗しても画面に出る", async ({ page }) => {
+  test("a network failure also appears in the UI", async ({ page }) => {
     const harness = await openEditor(page);
     try {
       await page.route(isEditRequest, (route) => route.abort());
@@ -384,14 +384,14 @@ test.describe("保存の失敗が利用者に見える", () => {
       const indicator = page.locator(SAVE_STATE);
       await expect(indicator).toHaveAttribute("data-architecture-save-state", "failed");
       await expect(indicator).toBeVisible();
-      await expect(indicator).toContainText("保存できませんでした");
+      await expect(indicator).toContainText("Could not save");
       expect(harness.editReports).toHaveLength(0);
     } finally {
       await harness.close();
     }
   });
 
-  test("保存に成功したら成功として見える", async ({ page }) => {
+  test("a successful save appears successful", async ({ page }) => {
     const harness = await openEditor(page);
     try {
       await page.locator(NODE("client")).focus();
@@ -399,7 +399,7 @@ test.describe("保存の失敗が利用者に見える", () => {
 
       const indicator = page.locator(SAVE_STATE);
       await expect(indicator).toHaveAttribute("data-architecture-save-state", "saved");
-      await expect(indicator).toContainText("保存しました");
+      await expect(indicator).toContainText("Saved");
       expect(harness.editReports.length).toBeGreaterThan(0);
     } finally {
       await harness.close();

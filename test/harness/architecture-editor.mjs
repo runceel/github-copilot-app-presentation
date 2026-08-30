@@ -3,18 +3,18 @@ import { readFile } from "node:fs/promises";
 import { dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { parseArchitecture } from "../../.github/extensions/presentation/renderer/architecture.mjs";
+import { parseArchitecture } from "../../.github/extensions/markdstage/renderer/architecture.mjs";
 import {
   findArchitectureBlocks,
   replaceArchitectureBlock,
-} from "../../.github/extensions/presentation/scripts/markdown-blocks.mjs";
+} from "../../.github/extensions/markdstage/scripts/markdown-blocks.mjs";
 import {
   ARCHITECTURE_ASSET_MAX_BYTES,
   normalizeArchitectureAssetName,
-} from "../../.github/extensions/presentation/scripts/architecture-assets.mjs";
+} from "../../.github/extensions/markdstage/scripts/architecture-assets.mjs";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
-const EXT_DIR = join(REPO_ROOT, ".github", "extensions", "presentation");
+const EXT_DIR = join(REPO_ROOT, ".github", "extensions", "markdstage");
 
 const MIME = {
   ".html": "text/html; charset=utf-8",

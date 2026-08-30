@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="1024"
+  height="1024"
+  viewBox="0 0 1024 1024"
+  role="img"
+  aria-labelledby="title description">
+  <title id="title">MarkdStage app icon</title>
+  <desc id="description">A high-contrast Markdown hash illuminated by a warm stage spotlight on a midnight tile.</desc>
+
+  <defs>
+    <clipPath id="tile">
+      <rect x="56" y="56" width="912" height="912" rx="216"/>
+    </clipPath>
+    <linearGradient id="tileBackground" x1="182" y1="96" x2="842" y2="940" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#151B2F"/>
+      <stop offset="0.58" stop-color="#0B1020"/>
+      <stop offset="1" stop-color="#070A14"/>
+    </linearGradient>
+    <linearGradient id="spotlight" x1="512" y1="172" x2="512" y2="882" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD77A" stop-opacity="0.72"/>
+      <stop offset="0.48" stop-color="#FFB547" stop-opacity="0.25"/>
+      <stop offset="1" stop-color="#FFB547" stop-opacity="0.04"/>
+    </linearGradient>
+    <radialGradient id="stageGlow" cx="0" cy="0" r="1" gradientTransform="translate(512 824) scale(350 104)">
+      <stop stop-color="#FFD77A" stop-opacity="0.42"/>
+      <stop offset="1" stop-color="#FFB547" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <g clip-path="url(#tile)">
+    <rect x="56" y="56" width="912" height="912" rx="216" fill="url(#tileBackground)"/>
+    <path d="M432 168H592L822 884H202L432 168Z" fill="url(#spotlight)"/>
+    <ellipse cx="512" cy="824" rx="350" ry="104" fill="url(#stageGlow)"/>
+    <path d="M404 112H620L592 198H432L404 112Z" fill="#FFB547"/>
+    <rect x="438" y="96" width="148" height="44" rx="22" fill="#FFD77A"/>
+
+    <g
+      fill="none"
+      stroke="#F7F4ED"
+      stroke-linecap="round"
+      stroke-width="76">
+      <path d="M428 342L382 708"/>
+      <path d="M612 342L566 708"/>
+      <path d="M318 458H682"/>
+      <path d="M298 594H662"/>
+    </g>
+  </g>
+
+  <rect
+    x="56"
+    y="56"
+    width="912"
+    height="912"
+    rx="216"
+    fill="none"
+    stroke="#151B2F"
+    stroke-width="16"/>
+</svg>
