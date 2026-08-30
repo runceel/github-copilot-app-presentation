@@ -14,21 +14,21 @@ GitHub Copilot App に次のように依頼してください。
 >
 > `https://github.com/runceel/github-copilot-app-presentation/tree/main/.github/extensions/presentation`
 
-`main` の URL は最新版を指します。再現可能な導入には、固定タグ `v1.13.0` の URL を
+`main` の URL は最新版を指します。再現可能な導入には、固定タグ `v1.14.0` の URL を
 使ってください。
 
 ```text
-https://github.com/runceel/github-copilot-app-presentation/tree/v1.13.0/.github/extensions/presentation
+https://github.com/runceel/github-copilot-app-presentation/tree/v1.14.0/.github/extensions/presentation
 ```
 
 ## 最新リリース
 
-presentation canvas と Presentation Desktop の最新版は **v1.13.0** です。
+presentation canvas と Presentation Desktop の最新版は **v1.14.0** です。
 
-- [v1.13.0 リリース](https://github.com/runceel/github-copilot-app-presentation/releases/tag/v1.13.0)
-- [固定タグから Extension を導入](https://github.com/runceel/github-copilot-app-presentation/tree/v1.13.0/.github/extensions/presentation)
-- [Presentation Desktop x64](https://github.com/runceel/github-copilot-app-presentation/releases/download/v1.13.0/Presentation-win-x64.zip)
-- [Presentation Desktop ARM64](https://github.com/runceel/github-copilot-app-presentation/releases/download/v1.13.0/Presentation-win-arm64.zip)
+- [v1.14.0 リリース](https://github.com/runceel/github-copilot-app-presentation/releases/tag/v1.14.0)
+- [固定タグから Extension を導入](https://github.com/runceel/github-copilot-app-presentation/tree/v1.14.0/.github/extensions/presentation)
+- [Presentation Desktop x64](https://github.com/runceel/github-copilot-app-presentation/releases/download/v1.14.0/Presentation-win-x64.zip)
+- [Presentation Desktop ARM64](https://github.com/runceel/github-copilot-app-presentation/releases/download/v1.14.0/Presentation-win-arm64.zip)
 
 リリースには、presentation canvas の手動導入用 ZIP、x64 / ARM64 の Presentation Desktop、
 それぞれの SHA-256 チェックサムを添付しています。更新時は既存のタグを移動せず、新しい
