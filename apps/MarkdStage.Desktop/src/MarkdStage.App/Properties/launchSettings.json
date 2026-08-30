@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "MarkdStage.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "MarkdStage.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

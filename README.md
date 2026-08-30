@@ -1,116 +1,130 @@
-# Copilot Canvas Presentation
+<p align="center">
+  <img src="./assets/brand/markdstage-banner.svg" alt="MarkdStage — Markdown, ready for the stage." width="100%">
+</p>
 
-GitHub Copilot App の canvas で、Markdown をスライドとして表示する
-**presentation canvas Extension** です。Markdown の変換、テーマ、Mermaid、画像、
-ページ送りを canvas 側で処理します。
+# MarkdStage
 
-## インストール
+**Markdown, ready for the stage.**
 
-このリポジトリをプロジェクトとして開くと、`.github/extensions/presentation/` の
-Extension がプロジェクトスコープで読み込まれます。別のリポジトリでも使う場合は、
-GitHub Copilot App に次のように依頼してください。
+MarkdStage is an open-source presentation tool that displays Markdown directly as slides and
+supports editing, presenting, external-display synchronization, and PDF export. Its native GitHub
+Copilot canvas Extension and standalone Windows desktop app share the same renderer.
 
-> 次の GitHub リポジトリフォルダーから presentation をユーザースコープへインストールしてください。
+## What matters to MarkdStage
+
+- **Markdown is the source**: Keep `.md` as the source of truth instead of moving to a proprietary format
+- **Write, then present immediately**: Open a file in the canvas or Desktop and it becomes a slide deck
+- **Present technical content directly**: Supports code, Mermaid, Architecture DSL, images, tables, and speaker notes
+- **Keep output consistent**: Use the same renderer in the canvas, presentation window, Desktop, and PDF
+- **Keep controls focused on presenting**: Navigate with buttons, the keyboard, or Surface Pen in supported environments
+
+## Two ways to use MarkdStage
+
+| Surface | Purpose |
+| --- | --- |
+| **MarkdStage canvas** | Ask GitHub Copilot to summarize and format Markdown, or load it directly with the canvas 📂 button |
+| **MarkdStage Desktop** | Present on Windows while viewing the Markdown, next slide, and speaker notes without opening GitHub Copilot |
+
+## Use the canvas Extension
+
+When you open this repository as a project, `.github/extensions/markdstage/` loads at project
+scope. To use it in another repository, ask GitHub Copilot:
+
+> Install MarkdStage at user scope from the following GitHub repository folder.
 >
-> `https://github.com/runceel/github-copilot-app-presentation/tree/main/.github/extensions/presentation`
+> `https://github.com/runceel/markdstage/tree/main/.github/extensions/markdstage`
 
-`main` の URL は最新版を指します。再現可能な導入には、固定タグ `v1.14.0` の URL を
-使ってください。
+The Extension runs local code in the user's environment. Review its contents before installation,
+and specify a trusted release tag or commit SHA for a reproducible install.
+
+### Minimal workflow
+
+1. Edit `slides.md` and separate slides with `---` after a blank line.
+2. Ask Copilot, "Present this deck using `slides.md`."
+3. Navigate with **◀ ▶**, the **arrow keys**, or the **☰ slide list** in the MarkdStage canvas.
+
+You can also open Markdown directly from the workspace with the canvas **📂** button or the `I`
+key, without using AI. When calling `open_canvas` directly, use canvas ID **`MarkdStage`**.
 
 ```text
-https://github.com/runceel/github-copilot-app-presentation/tree/v1.14.0/.github/extensions/presentation
+canvasId: MarkdStage
 ```
 
-## 最新リリース
+## Use MarkdStage Desktop
 
-presentation canvas と Presentation Desktop の最新版は **v1.14.0** です。
+[MarkdStage Desktop](./apps/MarkdStage.Desktop/README.md) is a WinUI 3 app that opens Markdown
+from a file picker. It displays the current and next slides with the current slide's speaker notes,
+and launches a synchronized native presentation window.
 
-- [v1.14.0 リリース](https://github.com/runceel/github-copilot-app-presentation/releases/tag/v1.14.0)
-- [固定タグから Extension を導入](https://github.com/runceel/github-copilot-app-presentation/tree/v1.14.0/.github/extensions/presentation)
-- [Presentation Desktop x64](https://github.com/runceel/github-copilot-app-presentation/releases/download/v1.14.0/Presentation-win-x64.zip)
-- [Presentation Desktop ARM64](https://github.com/runceel/github-copilot-app-presentation/releases/download/v1.14.0/Presentation-win-arm64.zip)
+Releases include the following portable artifacts for Windows x64 and ARM64:
 
-リリースには、presentation canvas の手動導入用 ZIP、x64 / ARM64 の Presentation Desktop、
-それぞれの SHA-256 チェックサムを添付しています。更新時は既存のタグを移動せず、新しい
-バージョンタグを使用します。
+```text
+MarkdStage-win-x64.zip
+MarkdStage-win-arm64.zip
+```
 
-Extension はローカルでコードを実行します。導入前に内容を確認し、信頼できるタグまたは
-コミットを指定してください。公開済みのタグは移動させず、更新時は新しいバージョンを
-使います。リリースページには手動導入用 ZIP と SHA-256 チェックサムを添付します。
-ZIP を展開すると、`.github/extensions/presentation/` の内容をユーザー拡張ディレクトリへ
-配置できます。
-
-Gist は小さな Extension の共有には便利ですが、単一ファイルがおおむね 1 MB に制限されます。
-同梱の `mermaid.min.js` はこの制限を超えるため、Mermaid を含む完全版は公開リポジトリの
-フォルダー URL またはリリース ZIP から導入してください。Mermaid を含まない軽量版を
-別配布する場合は、Mermaid 対応を省いた構成として明示します。
-
-## 何が含まれるか
-
-| ファイル | 責務 |
-| --- | --- |
-| `.github/extensions/presentation/` | Copilot canvas Extension。本体、renderer、同梱 OSS を提供します。 |
-| `.github/skills/presentation/SKILL.md` | Markdown を全スライドの断片へ変換し、Extension を起動する任意導入の Skill です。 |
-| `apps/Presentation.Desktop/` | Markdown を開いてプレビューし、内蔵のネイティブ発表画面を起動する WinUI 3 デスクトップアプリです。 |
-| `slides.md` などのルート Markdown | すぐ試せるサンプルおよびプレゼン原稿です。利用者の資料に置き換えられます。 |
-
-Skill は便利な起動手順であり、Extension 本体の代替ではありません。Skill を導入しない
-場合も、`presentation` canvas を直接開いて `slides` を渡せます。Extension と Skill の
-変更は独立してリリースできるため、互換性を壊す変更はリリースノートに記載します。
-
-GitHub Copilot App を開かずに発表する場合は
-[Presentation Desktop](./apps/Presentation.Desktop/README.md) を利用できます。Markdown を
-ファイルダイアログから開くと現在と次のスライドをプレビューし、同期されたネイティブ Window
-（アプリ内蔵の WebView2）を発表画面として起動します。canvas と Desktop の発表者ビューは、
-現在ページのスピーカーノートも表示します。
-
-## 最小操作例
-
-1. `slides.md` を編集します。`---` の行でスライドを区切ります。
-2. Copilot に次のように依頼します。
-
-   > `slides.md` に従ってプレゼンしてください。
-
-3. canvas 内の **◀ ▶ ボタン**、**矢印キー**、**☰ スライド一覧**で操作します。
-
-Copilot に頼まずに、**canvas から直接 Markdown を開く**こともできます。操作バーの
-**📂**（または `I` キー）を押すと workspace 内の Markdown 一覧が出るので、選ぶと
-そのままスライドになります。ファイル先頭の front matter はデッキ共通設定として
-継承され（`layout: title` を書けば 1 枚目が表紙になります）、ページごとの
-front matter（Slidev 形式）も使えます。
-
-スピーカーノートは各スライドのトップレベル HTML コメントへ記述します。ノートは
-発表者ビューだけに表示され、通常のスライド、外部プレゼン画面、PDF には表示されません。
+## Markdown format
 
 ```markdown
-## デモ
+---
+title: Sample
+theme: dark
+layout: title
+---
 
-<!--
-ここで **操作手順** を説明する。
-質問は最後に受ける。
--->
+# Markdown, ready for the stage.
+
+---
+
+## Second slide
+
+- Use standard Markdown
+- Write code and Mermaid directly
 ```
 
-テーマを指定する場合は、たとえば次のように依頼できます。
+The leading front matter supplies shared deck settings. Per-slide front matter can override values
+such as `layout`, `size`, and `theme`. Put speaker notes in a top-level HTML comment on each slide;
+they appear only in presenter view.
 
-> `slides.md` を Microsoft っぽいテーマでプレゼンしてください。
+## Repository structure
 
-ルートの `slides.md` が presentation canvas を試すためのサンプルです。ローカル画像は
-元 Markdown と同じ場所またはリポジトリ直下の `assets/` に置き、Markdown から
-`/assets/...` で参照します。同名の場合は Markdown と同じ場所の画像が優先されます。Mermaid は
-` ```mermaid ` のコードフェンスで記述できます。登壇用のプレゼン資料は
-[presentation-materials](https://github.com/runceel/presentation-materials) に分離しています。
+| Path | Contents |
+| --- | --- |
+| `.github/extensions/markdstage/` | Canvas Extension, renderer, bundled open-source software, and schemas |
+| `.github/skills/markdstage/SKILL.md` | Skill that formats Markdown into slide fragments and opens MarkdStage |
+| `apps/MarkdStage.Desktop/` | WinUI 3 desktop app |
+| `assets/brand/` | MarkdStage logo, lockup, and README banner |
+| `slides.md` | Sample deck that demonstrates the features |
 
-## ドキュメント
+## Breaking changes in v2
 
-- [presentation Skill](./.github/skills/presentation/SKILL.md)
-- [Extension の仕様とアクション](./.github/extensions/presentation/README.md)
-- [同梱 OSS の第三者通知](./.github/extensions/presentation/THIRD-PARTY-NOTICES.md)
-- [リリース手順](./.github/RELEASING.md)
+The MarkdStage migration does not provide compatibility aliases for the former brand.
+
+| Previous | New |
+| --- | --- |
+| canvas ID `presentation` | canvas ID `MarkdStage` |
+| tool `presentation_guide` | tool `markdstage_guide` |
+| `.github/extensions/presentation/` | `.github/extensions/markdstage/` |
+| `.github/skills/presentation/` | `.github/skills/markdstage/` |
+| `Presentation-win-*.zip` | `MarkdStage-win-*.zip` |
+
+Existing Markdown syntax, themes, Architecture DSL, and action contracts such as `load_deck` and
+`goto_slide` remain unchanged.
+
+## Documentation
+
+- [MarkdStage Skill](./.github/skills/markdstage/SKILL.md)
+- [Canvas Extension specification and actions](./.github/extensions/markdstage/README.md)
+- [MarkdStage Desktop](./apps/MarkdStage.Desktop/README.md)
+- [Custom theme authoring](./.github/extensions/markdstage/docs/custom-theme-authoring.md)
+- [Product principles](./PRODUCT.md)
+- [Brand and design system](./DESIGN.md)
+- [Release process](./.github/RELEASING.md)
+- [Third-party notices](./.github/extensions/markdstage/THIRD-PARTY-NOTICES.md)
 - [MIT License](./LICENSE)
 
-## ライセンス
+## License
 
-このリポジトリのオリジナル部分は MIT License で公開しています。同梱 OSS のライセンスと
-著作権表示は [THIRD-PARTY-NOTICES.md](./.github/extensions/presentation/THIRD-PARTY-NOTICES.md)
-を参照してください。
+The original portions of this repository are released under the MIT License. See
+[THIRD-PARTY-NOTICES.md](./.github/extensions/markdstage/THIRD-PARTY-NOTICES.md) for licenses and
+copyright notices for bundled open-source software.

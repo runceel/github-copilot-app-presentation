@@ -6,7 +6,7 @@ title: Architecture DSL visual regression
 
 # Architecture DSL
 
-固定レイアウトの構成図をテーマ横断で検証する
+Verify fixed-layout architecture diagrams across themes
 
 <!-- slide -->
 
@@ -17,7 +17,7 @@ page: 2
 total: 5
 ---
 
-## レイアウト駆動の構成図
+## Layout-driven architecture diagram
 
 ```architecture
 {
@@ -165,7 +165,7 @@ page: 3
 total: 5
 ---
 
-## 図形・スタイル・経路の網羅
+## Shape, style, and route coverage
 
 ```architecture
 {
@@ -336,9 +336,9 @@ page: 4
 total: 5
 ---
 
-## 密な構成図の自動ルーティング
+## Automatic routing in a dense architecture diagram
 
-10 ノード / 12 connector を手動 polyline なしで配線する
+Route 10 nodes and 12 connectors without manual polylines
 
 ```architecture
 {

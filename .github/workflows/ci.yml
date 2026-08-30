@@ -15,71 +15,70 @@ concurrency:
 
 jobs:
   test:
-    name: テスト
-    # ビジュアル回帰のスクリーンショットはフォント構成に強く依存するため、runner を
-    # 固定したうえで Playwright 公式コンテナー（ブラウザーとフォントを同梱）で実行する。
-    # ローカルでのベースライン更新も同じイメージで行う（npm run test:visual:update:linux）。
+    name: Test
+    # Visual regression screenshots depend heavily on the installed fonts. Pin the runner and use
+    # the official Playwright container, which bundles the browser and fonts.
+    # Local baseline updates use the same image (npm run test:visual:update:linux).
     runs-on: ubuntu-24.04
     container:
       image: mcr.microsoft.com/playwright:v1.62.1-noble
       options: --init --ipc=host
 
     steps:
-      - name: チェックアウト
+      - name: Checkout
         uses: actions/checkout@v5
 
-      - name: 依存関係のインストール
+      - name: Install dependencies
         run: npm ci
 
-      - name: 拡張機能に実行時 npm 依存がないことを確認
-        # 拡張はフォルダーごと ZIP で配布され、利用者環境でそのまま動く必要がある。
+      - name: Verify the Extension has no runtime npm dependencies
+        # The Extension is distributed as a folder ZIP and must run directly in the user's environment.
         run: |
           set -e
-          found=$(find .github/extensions/presentation \
+          found=$(find .github/extensions/markdstage \
             \( -name package.json -o -name package-lock.json -o -name node_modules \) -print)
           if [ -n "$found" ]; then
-            echo "拡張ディレクトリに npm 依存が混入しています:"
+            echo "The Extension directory contains npm dependencies:"
             echo "$found"
             exit 1
           fi
-          echo "OK: 拡張ディレクトリに npm 依存はありません。"
+          echo "OK: The Extension directory has no npm dependencies."
 
-      - name: vendor 資産の整合性検証
-        # 分割された mermaid チャンクが壊れていると、後段のビジュアル回帰が
-        # 原因の分かりにくいタイムアウトで落ちるため先に検出する。
+      - name: Verify vendor asset integrity
+        # Detect broken split Mermaid chunks before visual regression fails with an opaque timeout.
         run: npm run test:vendor
 
-      - name: Architecture DSL スキーマ検証
-        # JSON Schema と parseArchitecture の判定が一致していることを固定する。
-        # 乖離を放置するとスキーマが仕様として信用できなくなるため、単体テストより先に流す。
+      - name: Validate Architecture DSL schemas
+        # Keep JSON Schema and parseArchitecture verdicts aligned. Run this before unit tests because
+        # an unchecked divergence would make the schema unreliable as a specification.
         run: npm run test:schema
 
-      - name: 単体テスト
+      - name: Unit tests
         run: npm run test:unit
 
-      - name: 編集ワークフロー回帰
-        # 編集 UI が presenter / 印刷へ漏れていないことを含めて、ブラウザー上の
-        # 振る舞いを固定する。ビジュアル回帰より先に流して原因を切り分けやすくする。
+      - name: Editing workflow regression
+        # Lock down browser behavior, including keeping editing UI out of presenter and print modes.
+        # Run before visual regression to make failures easier to isolate.
         run: npm run test:editing
 
-      - name: ビジュアル回帰
+      - name: Visual regression
         run: npm run test:visual
 
-      - name: アクセシビリティと出力の等価性
-        # axe-core の自動チェックと、Chromium のアクセシビリティツリー（CDP）を
-        # 根拠にした読み上げ内容・順序・到達性の検証。あわせて canvas / presenter /
-        # 印刷が同じ意味構造と同じ描画寸法を出すこと（WYSIWYG）も固定する。
+      - name: Accessibility and output equivalence
+        # Use axe-core and Chromium's accessibility tree (CDP) to verify spoken content, order, and
+        # reachability. Also require canvas, presenter, and print to produce equivalent semantics and
+        # rendering dimensions (WYSIWYG).
         run: npm run test:a11y
 
-      - name: 描画コストのバジェット
-        # レイアウトと配線が要素数に対して二乗・指数に転んでいないことを見る。
-        # 見た目は壊れないためビジュアル回帰では捕まらない種類の劣化を検出する。
+      - name: Rendering cost budget
+        # Ensure layout and routing do not become quadratic or exponential in the element count.
+        # This catches regressions that do not affect appearance and evade visual tests.
         run: npm run test:perf
 
-      - name: PDF 回帰
+      - name: PDF regression
         run: npm run test:pdf
 
-      - name: 失敗時のレポートを保存
+      - name: Save reports on failure
         if: failure()
         uses: actions/upload-artifact@v5
         with:
@@ -91,11 +90,11 @@ jobs:
           if-no-files-found: ignore
 
   desktop:
-    name: Presentation Desktop
+    name: MarkdStage Desktop
     runs-on: windows-latest
 
     steps:
-      - name: チェックアウト
+      - name: Checkout
         uses: actions/checkout@v5
 
       - name: .NET SDK
@@ -103,25 +102,25 @@ jobs:
         with:
           dotnet-version: 10.0.x
 
-      - name: Core テスト
-        run: dotnet test apps\Presentation.Desktop\tests\Presentation.Core.Tests\Presentation.Core.Tests.csproj -c Release
+      - name: Core tests
+        run: dotnet test apps\MarkdStage.Desktop\tests\MarkdStage.Core.Tests\MarkdStage.Core.Tests.csproj -c Release
 
       - name: WinUI build
-        run: dotnet build apps\Presentation.Desktop\src\Presentation.App\Presentation.App.csproj -c Release -r win-x64 -p:Platform=x64
+        run: dotnet build apps\MarkdStage.Desktop\src\MarkdStage.App\MarkdStage.App.csproj -c Release -r win-x64 -p:Platform=x64
 
       - name: x64 portable publish
         shell: pwsh
-        run: apps\Presentation.Desktop\scripts\Publish.ps1 -Architecture x64
+        run: apps\MarkdStage.Desktop\scripts\Publish.ps1 -Architecture x64
 
       - name: ARM64 portable publish
         shell: pwsh
-        run: apps\Presentation.Desktop\scripts\Publish.ps1 -Architecture arm64
+        run: apps\MarkdStage.Desktop\scripts\Publish.ps1 -Architecture arm64
 
-      - name: ポータブル成果物
+      - name: Portable artifacts
         uses: actions/upload-artifact@v5
         with:
-          name: presentation-desktop
+          name: markdstage-desktop
           path: |
-            apps/Presentation.Desktop/artifacts/*.zip
-            apps/Presentation.Desktop/artifacts/*.sha256
+            apps/MarkdStage.Desktop/artifacts/*.zip
+            apps/MarkdStage.Desktop/artifacts/*.sha256
           retention-days: 7

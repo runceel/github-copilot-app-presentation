@@ -1,11 +1,10 @@
-// ビジュアル回帰を Playwright 公式コンテナー内で実行するための薄いラッパー。
+// Thin wrapper for running visual regression in the official Playwright container.
 //
-// スクリーンショットはフォント構成に強く依存するため、ローカル（Windows / macOS）と
-// GitHub Actions で同じ結果を得るには、同一のコンテナーイメージで実行する必要がある。
-// CI も同じイメージを `container:` に指定しているので、ここで生成したベースラインが
-// そのまま CI の期待値になる。
+// Screenshots depend heavily on installed fonts, so local systems (Windows / macOS) and GitHub
+// Actions must use the same container image to produce matching results. CI specifies the same
+// image under `container:`, making baselines generated here the expected CI output.
 //
-// 追加の npm 依存は使わない（node 標準モジュールのみ）。
+// Do not add npm dependencies; use only built-in Node modules.
 
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -18,8 +17,8 @@ const pkg = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8"));
 const playwrightVersion = pkg.devDependencies["@playwright/test"];
 if (!/^\d+\.\d+\.\d+$/.test(playwrightVersion ?? "")) {
   console.error(
-    `@playwright/test のバージョンを固定してください（現在: ${playwrightVersion}）。` +
-      "コンテナーイメージのタグと一致させる必要があります。",
+    `Pin the @playwright/test version (current: ${playwrightVersion}). ` +
+      "It must match the container image tag.",
   );
   process.exit(1);
 }
@@ -45,7 +44,7 @@ console.log(`> docker ${args.join(" ")}`);
 const result = spawnSync("docker", args, { stdio: "inherit" });
 
 if (result.error) {
-  console.error("docker を起動できませんでした。Docker Desktop が動作しているか確認してください。");
+  console.error("Unable to start Docker. Verify that Docker Desktop is running.");
   console.error(result.error.message);
   process.exit(1);
 }

@@ -6,9 +6,9 @@ total: 4
 title: Standard title with short body
 ---
 
-## 固定位置のタイトル
+## Fixed-position title
 
-- 短い本文
+- Short body
 
 <!-- slide -->
 
@@ -20,14 +20,14 @@ total: 4
 title: Standard title with dense body
 ---
 
-## 固定位置のタイトル
+## Fixed-position title
 
-- 1 つ目の要点
-- 2 つ目の要点
-- 3 つ目の要点
-- 4 つ目の要点
-- 5 つ目の要点
-- 6 つ目の要点
+- First key point
+- Second key point
+- Third key point
+- Fourth key point
+- Fifth key point
+- Sixth key point
 
 <!-- slide -->
 
@@ -38,9 +38,9 @@ total: 4
 title: Standard H1 title
 ---
 
-# H1 のタイトル
+# H1 title
 
-通常スライドでは H1 もタイトル領域に配置されます。
+On a regular slide, H1 is also placed in the title region.
 
 <!-- slide -->
 
@@ -51,8 +51,8 @@ total: 4
 title: Non-leading heading
 ---
 
-本文から始まるスライドです。
+This slide starts with body content.
 
-## 本文中の見出し
+## Heading within the body
 
-先頭要素ではない見出しは本文に残ります。
+A heading that is not the first element remains in the body.

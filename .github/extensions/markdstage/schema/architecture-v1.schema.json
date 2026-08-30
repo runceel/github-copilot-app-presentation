@@ -1,0 +1,664 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/runceel/markdstage/main/.github/extensions/markdstage/schema/architecture-v1.schema.json",
+  "title": "Architecture DSL v1",
+  "description": "Shape definition for the constrained JSON DSL (v1) accepted by ```architecture blocks in the MarkdStage canvas. This schema validates shape only; it is necessary but not sufficient. renderer/architecture.mjs parseArchitecture performs semantic validation such as referential integrity, unique IDs, flattened element-count limits, and layout compatibility. See README.md in this directory for details.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["elements"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Schema reference for editor completion and validation. Ignored at runtime."
+    },
+    "version": {
+      "const": 1,
+      "description": "DSL grammar version. v1 accepts only 1. An omitted value is also treated as 1."
+    },
+    "canvas": {
+      "$ref": "#/$defs/canvas",
+      "description": "Diagram logical coordinate-system size. Defaults to 1600x900."
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 200,
+      "description": "Accessible name for the diagram. Defaults to \"Architecture diagram\"."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1000,
+      "description": "Supplementary diagram description used by screen readers."
+    },
+    "elements": {
+      "type": "array",
+      "maxItems": 200,
+      "description": "Top-level element array. A complete diagram may contain up to 200 elements and 100 connectors; parseArchitecture enforces these aggregate limits.",
+      "items": { "$ref": "#/$defs/elementFixedL0" }
+    }
+  },
+  "$defs": {
+    "themeToken": {
+      "enum": [
+        "accent",
+        "accentStrong",
+        "accentSoft",
+        "accentLine",
+        "surface",
+        "fg",
+        "muted",
+        "body",
+        "border",
+        "bg"
+      ],
+      "description": "Theme-aware color token. Preferred over literal colors so the diagram remains legible when the theme changes."
+    },
+    "literalColor": {
+      "type": "string",
+      "pattern": "^(?:#[0-9a-fA-F]{3,8}|[Bb][Ll][Aa][Cc][Kk]|[Ww][Hh][Ii][Tt][Ee]|[Tt][Rr][Aa][Nn][Ss][Pp][Aa][Rr][Ee][Nn][Tt]|[Nn][Oo][Nn][Ee])$",
+      "description": "Literal color. Only hexadecimal notation (#rgb through #rrggbbaa) and black / white / transparent / none are supported. rgb() and other named colors such as red are not supported."
+    },
+    "color": {
+      "anyOf": [
+        { "$ref": "#/$defs/themeToken" },
+        { "$ref": "#/$defs/literalColor" }
+      ],
+      "description": "Theme token name or a restricted literal color. Arbitrary CSS colors are not accepted."
+    },
+    "iconName": {
+      "enum": [
+        "cloud",
+        "database",
+        "api",
+        "user",
+        "server",
+        "analytics",
+        "browser",
+        "mobile",
+        "network",
+        "queue",
+        "shield"
+      ],
+      "description": "Built-in icon name. Icons render as 24x24 line art using the node textColor for the stroke, so their colors automatically adapt to all four themes."
+    },
+    "assetPath": {
+      "type": "string",
+      "maxLength": 200,
+      "pattern": "^assets/(?:[A-Za-z0-9][A-Za-z0-9_-]*(?:\\.[A-Za-z0-9_-]+)*/)*[A-Za-z0-9][A-Za-z0-9_-]*(?:\\.[A-Za-z0-9_-]+)*\\.(?:[Ss][Vv][Gg]|[Pp][Nn][Gg]|[Ww][Ee][Bb][Pp]|[Jj][Pp][Gg]|[Jj][Pp][Ee][Gg])$",
+      "description": "Image in the repository assets/ directory. Supported extensions are .svg / .png / .webp / .jpg / .jpeg, including uppercase variants. The syntax cannot represent paths containing '..', data: URIs, or external URLs."
+    },
+    "iconAsset": {
+      "$ref": "#/$defs/assetPath",
+      "description": "Image under assets/ used as a node icon. Raster images and SVG files loaded through <image> do not adapt to theme colors, so use artwork that remains legible against every theme background."
+    },
+    "icon": {
+      "anyOf": [
+        { "$ref": "#/$defs/iconName" },
+        { "$ref": "#/$defs/iconAsset" }
+      ],
+      "description": "Built-in icon name or path to an icon under assets/."
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_.-]{0,63}$",
+      "description": "Identifier of 1–64 characters that starts with an ASCII letter and contains only ASCII letters, digits, '.', '_', and '-'."
+    },
+    "coordinate": {
+      "type": "number",
+      "minimum": -4000,
+      "maximum": 4000,
+      "description": "Coordinate in the canvas coordinate system, relative to the parent group."
+    },
+    "extent": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 4000,
+      "description": "Width or height. When the parent group has a layout, the effective maximum depends on cell size and is validated by parseArchitecture."
+    },
+    "zIndex": {
+      "type": "number",
+      "minimum": -100,
+      "maximum": 100,
+      "description": "Stacking order. Defaults are -50 for groups, -10 for connectors, and 0 for nodes."
+    },
+    "canvas": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "width": { "type": "number", "minimum": 320, "maximum": 4000 },
+        "height": { "type": "number", "minimum": 180, "maximum": 4000 }
+      }
+    },
+    "style": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Appearance overrides. Omitted properties use the defaults for the element type.",
+      "properties": {
+        "fill": { "$ref": "#/$defs/color" },
+        "stroke": { "$ref": "#/$defs/color" },
+        "textColor": { "$ref": "#/$defs/color" },
+        "strokeWidth": { "type": "number", "minimum": 0.5, "maximum": 20 },
+        "fontSize": { "type": "number", "minimum": 8, "maximum": 160 },
+        "opacity": { "type": "number", "minimum": 0, "maximum": 1 },
+        "dash": {
+          "type": "string",
+          "maxLength": 40,
+          "pattern": "^$|^\\d+(?:\\.\\d+)?(?:[ ,]+\\d+(?:\\.\\d+)?)*$",
+          "description": "Dash pattern containing only whitespace- or comma-separated non-negative numbers (for example, \"12 8\"). An empty string means no dashes."
+        },
+        "cornerRadius": { "type": "number", "minimum": 0, "maximum": 200 }
+      }
+    },
+    "layoutObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "enum": ["row", "column", "grid", "layered"] },
+        "gap": { "type": "number", "minimum": 0, "maximum": 240 },
+        "rowGap": { "type": "number", "minimum": 0, "maximum": 240 },
+        "columnGap": { "type": "number", "minimum": 0, "maximum": 240 },
+        "padding": { "type": "number", "minimum": 0, "maximum": 400 },
+        "columns": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 12,
+          "description": "Number of grid columns. Fractional values are truncated. Ignored for row / column / layered."
+        },
+        "direction": {
+          "enum": ["down", "right"],
+          "description": "Direction in which layered ranks extend. down means top to bottom; right means left to right. Not allowed for layouts other than layered."
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "not": { "properties": { "type": { "const": "layered" } }, "required": ["type"] }
+          },
+          "then": { "not": { "required": ["direction"] } }
+        }
+      ]
+    },
+    "layout": {
+      "anyOf": [
+        {
+          "enum": ["row", "column", "grid", "layered"],
+          "description": "String shorthand. Defaults are gap 36 / padding 54 / columns 3 / direction \"down\"."
+        },
+        { "$ref": "#/$defs/layoutObject" }
+      ],
+      "description": "Automatic child placement. When specified, child x / y / width / height values are calculated automatically, and explicit x / y values are ignored. layered infers ranks from connectors between children."
+    },
+    "point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" }
+      }
+    },
+    "nodeBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "const": "node" },
+        "id": { "$ref": "#/$defs/identifier" },
+        "shape": { "enum": ["rect", "rounded-rect", "ellipse"] },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "width": { "$ref": "#/$defs/extent" },
+        "height": { "$ref": "#/$defs/extent" },
+        "text": { "type": "string", "maxLength": 500 },
+        "icon": { "$ref": "#/$defs/icon" },
+        "ariaLabel": { "type": "string", "maxLength": 300 },
+        "z": { "$ref": "#/$defs/zIndex" },
+        "style": { "$ref": "#/$defs/style" }
+      }
+    },
+    "nodeFixed": {
+      "description": "Node placed directly under a parent without a layout. Position and size are required.",
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        { "$ref": "#/$defs/boxRequired" }
+      ]
+    },
+    "nodeFlow": {
+      "description": "Node placed directly under a group with a layout. Position and size are calculated automatically.",
+      "$ref": "#/$defs/nodeBase"
+    },
+    "imageBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id", "src"],
+      "properties": {
+        "type": { "const": "image" },
+        "id": { "$ref": "#/$defs/identifier" },
+        "src": { "$ref": "#/$defs/assetPath" },
+        "fit": { "enum": ["contain", "cover", "stretch"] },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "width": { "$ref": "#/$defs/extent" },
+        "height": { "$ref": "#/$defs/extent" },
+        "ariaLabel": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "Alternative text for the image. Defaults first to the src file name and then to the id."
+        },
+        "z": { "$ref": "#/$defs/zIndex" },
+        "style": { "$ref": "#/$defs/style" }
+      }
+    },
+    "imageFixed": {
+      "description": "Image placed directly under a parent without a layout. Position and size are required.",
+      "allOf": [
+        { "$ref": "#/$defs/imageBase" },
+        { "$ref": "#/$defs/boxRequired" }
+      ]
+    },
+    "imageFlow": {
+      "description": "Image placed directly under a group with a layout. Position and size are calculated automatically.",
+      "$ref": "#/$defs/imageBase"
+    },
+    "connector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "from", "to"],
+      "properties": {
+        "type": { "const": "connector" },
+        "from": { "$ref": "#/$defs/identifier" },
+        "to": { "$ref": "#/$defs/identifier" },
+        "fromPort": { "enum": ["auto", "top", "right", "bottom", "left"] },
+        "toPort": { "enum": ["auto", "top", "right", "bottom", "left"] },
+        "label": { "type": "string", "maxLength": 200 },
+        "labelLayer": {
+          "enum": ["front", "behind"],
+          "default": "front",
+          "description": "Label stacking order. front renders above boxes; behind uses the connector body's stacking order."
+        },
+        "ariaLabel": { "type": "string", "maxLength": 300 },
+        "routing": { "enum": ["straight", "orthogonal", "polyline"] },
+        "points": {
+          "type": "array",
+          "maxItems": 12,
+          "items": { "$ref": "#/$defs/point" },
+          "description": "Waypoints allowed only when routing is polyline."
+        },
+        "arrow": { "type": "boolean" },
+        "lane": {
+          "type": "number",
+          "minimum": -12,
+          "maximum": 12,
+          "description": "Separation lane for parallel connectors. Fractional values are truncated."
+        },
+        "z": { "$ref": "#/$defs/zIndex" },
+        "style": { "$ref": "#/$defs/style" }
+      },
+      "if": {
+        "type": "object",
+        "required": ["routing"],
+        "properties": { "routing": { "const": "polyline" } }
+      },
+      "else": {
+        "type": "object",
+        "properties": {
+          "points": {
+            "type": "array",
+            "maxItems": 0,
+            "description": "points may be specified only when routing is polyline."
+          }
+        }
+      }
+    },
+    "groupBase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "const": "group" },
+        "id": { "$ref": "#/$defs/identifier" },
+        "x": { "$ref": "#/$defs/coordinate" },
+        "y": { "$ref": "#/$defs/coordinate" },
+        "width": { "$ref": "#/$defs/extent" },
+        "height": { "$ref": "#/$defs/extent" },
+        "title": { "type": "string", "maxLength": 200 },
+        "ariaLabel": { "type": "string", "maxLength": 300 },
+        "layout": { "$ref": "#/$defs/layout" },
+        "z": { "$ref": "#/$defs/zIndex" },
+        "style": { "$ref": "#/$defs/style" },
+        "children": { "type": "array", "maxItems": 200 }
+      }
+    },
+    "groupChildrenL1": {
+      "if": { "type": "object", "required": ["layout"] },
+      "then": {
+        "type": "object",
+        "properties": {
+          "children": { "type": "array", "items": { "$ref": "#/$defs/elementFlowL1" } }
+        }
+      },
+      "else": {
+        "type": "object",
+        "properties": {
+          "children": { "type": "array", "items": { "$ref": "#/$defs/elementFixedL1" } }
+        }
+      }
+    },
+    "groupChildrenL2": {
+      "if": { "type": "object", "required": ["layout"] },
+      "then": {
+        "type": "object",
+        "properties": {
+          "children": { "type": "array", "items": { "$ref": "#/$defs/elementFlowL2" } }
+        }
+      },
+      "else": {
+        "type": "object",
+        "properties": {
+          "children": { "type": "array", "items": { "$ref": "#/$defs/elementFixedL2" } }
+        }
+      }
+    },
+    "groupChildrenL3": {
+      "if": { "type": "object", "required": ["layout"] },
+      "then": {
+        "type": "object",
+        "properties": {
+          "children": { "type": "array", "items": { "$ref": "#/$defs/elementFlowL3" } }
+        }
+      },
+      "else": {
+        "type": "object",
+        "properties": {
+          "children": { "type": "array", "items": { "$ref": "#/$defs/elementFixedL3" } }
+        }
+      }
+    },
+    "groupChildrenL4": {
+      "if": { "type": "object", "required": ["layout"] },
+      "then": {
+        "type": "object",
+        "properties": {
+          "children": { "type": "array", "items": { "$ref": "#/$defs/elementFlowL4" } }
+        }
+      },
+      "else": {
+        "type": "object",
+        "properties": {
+          "children": { "type": "array", "items": { "$ref": "#/$defs/elementFixedL4" } }
+        }
+      }
+    },
+    "boxRequired": {
+      "description": "x / y / width / height are required directly under a parent without a layout.",
+      "type": "object",
+      "required": ["x", "y", "width", "height"]
+    },
+    "groupFixedL0": {
+      "allOf": [
+        { "$ref": "#/$defs/groupBase" },
+        { "$ref": "#/$defs/boxRequired" },
+        { "$ref": "#/$defs/groupChildrenL1" }
+      ]
+    },
+    "groupFlowL0": {
+      "allOf": [
+        { "$ref": "#/$defs/groupBase" },
+        { "$ref": "#/$defs/groupChildrenL1" }
+      ]
+    },
+    "groupFixedL1": {
+      "allOf": [
+        { "$ref": "#/$defs/groupBase" },
+        { "$ref": "#/$defs/boxRequired" },
+        { "$ref": "#/$defs/groupChildrenL2" }
+      ]
+    },
+    "groupFlowL1": {
+      "allOf": [
+        { "$ref": "#/$defs/groupBase" },
+        { "$ref": "#/$defs/groupChildrenL2" }
+      ]
+    },
+    "groupFixedL2": {
+      "allOf": [
+        { "$ref": "#/$defs/groupBase" },
+        { "$ref": "#/$defs/boxRequired" },
+        { "$ref": "#/$defs/groupChildrenL3" }
+      ]
+    },
+    "groupFlowL2": {
+      "allOf": [
+        { "$ref": "#/$defs/groupBase" },
+        { "$ref": "#/$defs/groupChildrenL3" }
+      ]
+    },
+    "groupFixedL3": {
+      "allOf": [
+        { "$ref": "#/$defs/groupBase" },
+        { "$ref": "#/$defs/boxRequired" },
+        { "$ref": "#/$defs/groupChildrenL4" }
+      ]
+    },
+    "groupFlowL3": {
+      "allOf": [
+        { "$ref": "#/$defs/groupBase" },
+        { "$ref": "#/$defs/groupChildrenL4" }
+      ]
+    },
+    "elementFixedL0": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": ["node", "group", "image", "connector"],
+          "description": "Element type."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
+          "then": { "$ref": "#/$defs/nodeFixed" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "group" } } },
+          "then": { "$ref": "#/$defs/groupFixedL0" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFixed" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
+          "then": { "$ref": "#/$defs/connector" }
+        }
+      ]
+    },
+    "elementFixedL1": {
+      "type": "object",
+      "required": ["type"],
+      "properties": { "type": { "enum": ["node", "group", "image", "connector"] } },
+      "allOf": [
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
+          "then": { "$ref": "#/$defs/nodeFixed" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "group" } } },
+          "then": { "$ref": "#/$defs/groupFixedL1" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFixed" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
+          "then": { "$ref": "#/$defs/connector" }
+        }
+      ]
+    },
+    "elementFlowL1": {
+      "type": "object",
+      "required": ["type"],
+      "properties": { "type": { "enum": ["node", "group", "image", "connector"] } },
+      "allOf": [
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
+          "then": { "$ref": "#/$defs/nodeFlow" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "group" } } },
+          "then": { "$ref": "#/$defs/groupFlowL1" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFlow" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
+          "then": { "$ref": "#/$defs/connector" }
+        }
+      ]
+    },
+    "elementFixedL2": {
+      "type": "object",
+      "required": ["type"],
+      "properties": { "type": { "enum": ["node", "group", "image", "connector"] } },
+      "allOf": [
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
+          "then": { "$ref": "#/$defs/nodeFixed" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "group" } } },
+          "then": { "$ref": "#/$defs/groupFixedL2" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFixed" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
+          "then": { "$ref": "#/$defs/connector" }
+        }
+      ]
+    },
+    "elementFlowL2": {
+      "type": "object",
+      "required": ["type"],
+      "properties": { "type": { "enum": ["node", "group", "image", "connector"] } },
+      "allOf": [
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
+          "then": { "$ref": "#/$defs/nodeFlow" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "group" } } },
+          "then": { "$ref": "#/$defs/groupFlowL2" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFlow" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
+          "then": { "$ref": "#/$defs/connector" }
+        }
+      ]
+    },
+    "elementFixedL3": {
+      "type": "object",
+      "required": ["type"],
+      "properties": { "type": { "enum": ["node", "group", "image", "connector"] } },
+      "allOf": [
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
+          "then": { "$ref": "#/$defs/nodeFixed" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "group" } } },
+          "then": { "$ref": "#/$defs/groupFixedL3" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFixed" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
+          "then": { "$ref": "#/$defs/connector" }
+        }
+      ]
+    },
+    "elementFlowL3": {
+      "type": "object",
+      "required": ["type"],
+      "properties": { "type": { "enum": ["node", "group", "image", "connector"] } },
+      "allOf": [
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
+          "then": { "$ref": "#/$defs/nodeFlow" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "group" } } },
+          "then": { "$ref": "#/$defs/groupFlowL3" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFlow" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
+          "then": { "$ref": "#/$defs/connector" }
+        }
+      ]
+    },
+    "elementFixedL4": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": ["node", "image", "connector"],
+          "description": "Groups cannot be placed at this depth because nesting is limited to four levels."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
+          "then": { "$ref": "#/$defs/nodeFixed" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFixed" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
+          "then": { "$ref": "#/$defs/connector" }
+        }
+      ]
+    },
+    "elementFlowL4": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": ["node", "image", "connector"],
+          "description": "Groups cannot be placed at this depth because nesting is limited to four levels."
+        }
+      },
+      "allOf": [
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "node" } } },
+          "then": { "$ref": "#/$defs/nodeFlow" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "image" } } },
+          "then": { "$ref": "#/$defs/imageFlow" }
+        },
+        {
+          "if": { "type": "object", "required": ["type"], "properties": { "type": { "const": "connector" } } },
+          "then": { "$ref": "#/$defs/connector" }
+        }
+      ]
+    }
+  }
+}

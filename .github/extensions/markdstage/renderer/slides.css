@@ -1,0 +1,576 @@
+/* ===== Themes =====
+   Default (and explicit dark) live on :root; light/microsoft override.
+   data-theme is set on <html> and each .deck so print pages can vary themes. */
+:root,
+:root[data-theme="dark"],
+.deck[data-theme="dark"]{
+  --bg:#0e1117; --fg:#f0f4fa; --muted:#8b95a3; --body:#c9d2dd;
+  --accent:#4ea8ff; --accent-strong:#79c0ff; --accent-soft:rgba(78,168,255,.14); --accent-line:rgba(78,168,255,.4);
+  --surface:#161b22; --code:#1b2330; --code-fg:#a9c7ff; --border:#2a313c;
+  --syntax-comment:#8b949e; --syntax-keyword:#ff7b72; --syntax-string:#a5d6ff;
+  --syntax-number:#79c0ff; --syntax-title:#d2a8ff; --syntax-type:#ffa657;
+  --syntax-meta:#7ee787; --syntax-variable:#ffa657;
+  --syntax-addition:#7ee787; --syntax-addition-bg:rgba(46,160,67,.15);
+  --syntax-deletion:#ffa198; --syntax-deletion-bg:rgba(248,81,73,.15);
+  --glow-1:rgba(56,110,190,.22); --glow-2:rgba(120,86,210,.16);
+  --topbar:linear-gradient(90deg,#4ea8ff,#7a5cff);
+  --kicker-mark:linear-gradient(135deg,#4ea8ff,#7a5cff);
+  --cover-bg:
+    radial-gradient(1200px 760px at 50% 34%, rgba(78,168,255,.20) 0%, transparent 66%),
+    linear-gradient(160deg,#11203a 0%,#0e1117 60%);
+  --section-bg:
+    linear-gradient(56deg,transparent 0 76%,rgba(225,78,181,.78) 76.4%,
+      rgba(122,92,255,.9) 77.2%,rgba(78,168,255,.95) 78%,transparent 78.4%)
+      top right/52% 80% no-repeat,
+    radial-gradient(120% 58% at 62% 118%,rgba(78,168,255,.92) 0%,
+      rgba(122,92,255,.68) 34%,rgba(14,17,23,0) 72%),
+    linear-gradient(160deg,#101827 0%,#0e1117 62%);
+  --backcover-bg:linear-gradient(135deg,#1d2b52 0%,#2a1f52 100%);
+  --print-slide-bg:#0e1117;
+  --print-cover-bg:linear-gradient(160deg,#11203a 0%,#0e1117 60%);
+  --print-section-bg:var(--section-bg);
+}:root[data-theme="light"],
+.deck[data-theme="light"]{
+  --bg:#ffffff; --fg:#15181f; --muted:#5b6470; --body:#333a44;
+  --accent:#4f46e5; --accent-strong:#4338ca; --accent-soft:#eef2ff; --accent-line:#c7d2fe;
+  --surface:#ffffff; --code:#f3f4f6; --code-fg:#3730a3; --border:#e5e7eb;
+  --syntax-comment:#6e7781; --syntax-keyword:#cf222e; --syntax-string:#0a3069;
+  --syntax-number:#0550ae; --syntax-title:#8250df; --syntax-type:#953800;
+  --syntax-meta:#116329; --syntax-variable:#953800;
+  --syntax-addition:#116329; --syntax-addition-bg:#dafbe1;
+  --syntax-deletion:#82071e; --syntax-deletion-bg:#ffebe9;
+  --glow-1:#eef2ff; --glow-2:#f5f3ff;
+  --topbar:linear-gradient(90deg,#4f46e5,#7c3aed);
+  --kicker-mark:linear-gradient(135deg,#4f46e5,#7c3aed);
+  --cover-bg:
+    radial-gradient(1200px 760px at 50% 32%, #e0e7ff 0%, transparent 70%),
+    linear-gradient(160deg,#eef2ff 0%,#ffffff 58%);
+  --section-bg:
+    linear-gradient(56deg,transparent 0 76%,rgba(225,78,181,.72) 76.4%,
+      rgba(124,58,237,.88) 77.2%,rgba(59,130,246,.94) 78%,transparent 78.4%)
+      top right/52% 80% no-repeat,
+    radial-gradient(120% 58% at 62% 118%,rgba(37,99,235,.95) 0%,
+      rgba(79,70,229,.84) 31%,rgba(124,58,237,.42) 48%,rgba(255,255,255,0) 72%),
+    linear-gradient(160deg,#fff 0%,#f7f7fa 72%);
+  --backcover-bg:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);
+  --print-slide-bg:#ffffff;
+  --print-cover-bg:linear-gradient(160deg,#e0e7ff 0%,#eef2ff 45%,#ffffff 100%);
+  --print-section-bg:var(--section-bg);
+}
+:root[data-theme="microsoft"],
+.deck[data-theme="microsoft"]{
+  --bg:#ffffff; --fg:#201f1e; --muted:#605e5c; --body:#323130;
+  --accent:#0078d4; --accent-strong:#106ebe; --accent-soft:#eff6fc; --accent-line:#cfe4f7;
+  --surface:#ffffff; --code:#f3f2f1; --code-fg:#0b3a66; --border:#e1dfdd;
+  --syntax-comment:#008000; --syntax-keyword:#0000ff; --syntax-string:#a31515;
+  --syntax-number:#098658; --syntax-title:#795e26; --syntax-type:#267f99;
+  --syntax-meta:#af00db; --syntax-variable:#001080;
+  --syntax-addition:#107c10; --syntax-addition-bg:#dff6dd;
+  --syntax-deletion:#a4262c; --syntax-deletion-bg:#fde7e9;
+  --glow-1:#eaf3fc; --glow-2:#f1f8ff;
+  --ms-red:#f25022; --ms-green:#7fba00; --ms-blue:#00a4ef; --ms-yellow:#ffb900;
+  --topbar:linear-gradient(90deg,
+    #f25022 0 25%, #7fba00 25% 50%, #00a4ef 50% 75%, #ffb900 75% 100%);
+  --kicker-mark:linear-gradient(135deg,var(--accent),var(--accent-strong));
+  --cover-bg:
+    radial-gradient(1100px 720px at 50% 26%, #9fd0f4 0%, transparent 72%),
+    linear-gradient(160deg,#bfe1fb 0%,#daeefc 100%);
+  --section-bg:
+    linear-gradient(56deg,transparent 0 76%,rgba(216,59,154,.74) 76.4%,
+      rgba(115,74,200,.88) 77.2%,rgba(0,120,212,.94) 78%,transparent 78.4%)
+      top right/52% 80% no-repeat,
+    radial-gradient(120% 58% at 62% 118%,rgba(0,120,212,.94) 0%,
+      rgba(47,98,205,.82) 31%,rgba(115,74,200,.4) 49%,rgba(255,255,255,0) 72%),
+    linear-gradient(160deg,#fff 0%,#f5f5f5 72%);
+  --backcover-bg:#0078d4;
+  --print-slide-bg:#ffffff;
+  --print-cover-bg:linear-gradient(160deg,#a7d4f5 0%,#b7dcf7 55%,#d1e9fa 100%);
+  --print-section-bg:var(--section-bg);
+}
+*{box-sizing:border-box}
+/* The canvas viewport itself never scrolls: a slide always fills exactly one
+   screen. Sizing the deck with % (not 100vh/100vw, which include the scrollbar
+   gutter and round up on fractional display scaling) keeps stray 1px
+   scrollbars from appearing on slides that actually fit. */
+html,body{height:100%;margin:0;overflow:hidden}
+#stage{height:100%}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
+         clip:rect(0,0,0,0);white-space:nowrap;border:0;}
+body{
+  font-family:var(--ms-font,"Segoe UI Variable Text","Segoe UI","Hiragino Kaku Gothic ProN","Yu Gothic UI",system-ui,sans-serif);
+  background:
+    radial-gradient(1100px 720px at 88% -12%, var(--glow-1) 0%, transparent 60%),
+    radial-gradient(900px 620px at -10% 112%, var(--glow-2) 0%, transparent 55%),
+    var(--bg);
+  color:var(--fg);
+}
+body.markdstage-empty{
+  --bg:#0b1020;--fg:#f7f4ed;--muted:#aab2c5;--body:#d7dbe5;
+  --accent:#ffb547;--accent-strong:#ffd77a;--accent-soft:rgba(255,181,71,.14);
+  --accent-line:rgba(255,181,71,.46);--surface:#151b2f;--border:#303953;
+  --glow-1:rgba(255,181,71,.08);--glow-2:rgba(255,215,122,.04);
+}
+.deck{position:relative;height:100%;width:100%;display:flex;flex-direction:column;
+      --deck-pad-y:clamp(30px,5.5vh,68px); --deck-pad-x:clamp(40px,6.5vw,104px);
+      --slide-h1-size:clamp(32px,6.6vh,72px);
+      --slide-h2-size:clamp(25px,5vh,50px);
+      --slide-h3-size:clamp(20px,3.4vh,32px);
+      --slide-body-size:clamp(18px,3vh,30px);
+      --slide-code-size:clamp(14px,2.1vh,22px);
+      padding:var(--deck-pad-y) var(--deck-pad-x);
+      animation:fade .35s ease both;}
+.deck.size-large{
+      --slide-h1-size:clamp(38px,7.4vh,84px);
+      --slide-h2-size:clamp(30px,5.8vh,60px);
+      --slide-h3-size:clamp(23px,4vh,38px);
+      --slide-body-size:clamp(21px,3.45vh,34px);
+      --slide-code-size:clamp(16px,2.35vh,24px);}
+.deck.size-xlarge{
+      --slide-h1-size:clamp(44px,8.3vh,96px);
+      --slide-h2-size:clamp(35px,6.6vh,70px);
+      --slide-h3-size:clamp(26px,4.6vh,44px);
+      --slide-body-size:clamp(24px,3.9vh,40px);
+      --slide-code-size:clamp(18px,2.65vh,28px);}
+.deck::before{content:"";position:fixed;top:0;left:0;right:0;height:6px;z-index:2;
+  background:var(--topbar);}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){.deck{animation:none}}
+.deck>header{flex:0 0 auto;}
+.deck>header:empty{display:none;}
+.kicker{display:inline-flex;align-items:center;gap:.55em;
+        color:var(--accent-strong);font-weight:700;letter-spacing:.08em;
+        text-transform:uppercase;font-size:clamp(12px,1.6vh,16px);margin-bottom:.55em;}
+.kicker::before{content:"";flex:0 0 auto;width:1.05em;height:1.05em;border-radius:3px;
+  background:var(--kicker-mark);}
+.deck[data-theme="microsoft"] .kicker::before{border-radius:0;
+  background:
+    linear-gradient(var(--ms-red),var(--ms-red)) left top/47% 47% no-repeat,
+    linear-gradient(var(--ms-green),var(--ms-green)) right top/47% 47% no-repeat,
+    linear-gradient(var(--ms-blue),var(--ms-blue)) left bottom/47% 47% no-repeat,
+    linear-gradient(var(--ms-yellow),var(--ms-yellow)) right bottom/47% 47% no-repeat;}
+h1{font-size:var(--slide-h1-size);line-height:1.08;margin:.1em 0 .25em;
+   font-weight:700;letter-spacing:-.01em;color:var(--fg);}
+h2{font-size:var(--slide-h2-size);line-height:1.14;margin:.1em 0 .45em;
+   font-weight:600;letter-spacing:-.005em;color:var(--fg);}
+h3{font-size:var(--slide-h3-size);margin:.25em 0 .3em;font-weight:600;color:var(--accent-strong);}
+/* Standard slides reserve the header for their leading H1/H2, and the body flows
+   from the top right below it (`layout: center` opts back into centering). */
+.deck.has-slide-title>header{display:flex;flex-direction:column;align-items:flex-start;}
+.deck.has-slide-title .slide-title{flex:0 0 auto;width:100%;margin-top:0;}
+.body{flex:1 1 auto;display:flex;flex-direction:column;justify-content:flex-start;
+      font-size:var(--slide-body-size);line-height:1.55;gap:.5em;min-height:0;overflow:hidden;color:var(--body);}
+/* `overflow:auto` would show a scrollbar for a sub-pixel overflow, so scrolling
+   is opted into by the renderer only when the content really does not fit
+   (see updateBodyScroll / SCROLL_EPSILON in renderer.js). */
+.body.is-scrollable{overflow:auto;}
+.body>:first-child{margin-top:0}
+.body ul,.body ol{margin:.2em 0;padding-left:1.35em;}
+.body li{margin:.4em 0;}
+.body li::marker{color:var(--accent);}
+strong{color:var(--fg);font-weight:700;}
+em{color:var(--accent-strong);font-style:normal;font-weight:600;}
+a{color:var(--accent);text-underline-offset:3px;}
+code{font-family:"Cascadia Code","Cascadia Mono",Consolas,monospace;background:var(--code);
+     border:1px solid var(--border);border-radius:5px;padding:.08em .38em;font-size:.9em;color:var(--code-fg);}
+pre{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);
+    border-radius:8px;padding:1em 1.2em;overflow:auto;font-size:var(--slide-code-size);line-height:1.5;
+    box-shadow:0 2px 10px rgba(0,0,0,.06);}
+pre code{background:none;border:0;padding:0;color:inherit;}
+pre code.hljs{display:block;overflow-x:auto;color:var(--code-fg);}
+.hljs-comment,.hljs-quote{color:var(--syntax-comment);font-style:italic;}
+.hljs-doctag,.hljs-keyword,.hljs-selector-tag,.hljs-template-tag{
+  color:var(--syntax-keyword);
+}
+.hljs-string,.hljs-regexp,.hljs-template-variable,.hljs-meta .hljs-string{
+  color:var(--syntax-string);
+}
+.hljs-attr,.hljs-attribute,.hljs-literal,.hljs-number,.hljs-operator,
+.hljs-selector-attr,.hljs-selector-class,.hljs-selector-id{
+  color:var(--syntax-number);
+}
+.hljs-title,.hljs-title.class_,.hljs-title.function_,.hljs-section{
+  color:var(--syntax-title);font-weight:600;
+}
+.hljs-built_in,.hljs-name,.hljs-symbol,.hljs-type{
+  color:var(--syntax-type);
+}
+.hljs-meta,.hljs-selector-pseudo{color:var(--syntax-meta);}
+.hljs-variable,.hljs-params,.hljs-property{color:var(--syntax-variable);}
+.hljs-subst,.hljs-punctuation{color:var(--code-fg);}
+.hljs-emphasis{font-style:italic;}
+.hljs-strong{font-weight:700;}
+.hljs-addition{color:var(--syntax-addition);background:var(--syntax-addition-bg);}
+.hljs-deletion{color:var(--syntax-deletion);background:var(--syntax-deletion-bg);}
+blockquote{margin:.3em 0;padding:.5em 1.1em;border-left:4px solid var(--accent);
+           color:var(--muted);background:var(--accent-soft);border-radius:0 8px 8px 0;}
+table{border-collapse:collapse;width:100%;font-size:.9em;
+      box-shadow:0 1px 6px rgba(0,0,0,.05);border-radius:8px;overflow:hidden;}
+th,td{border:1px solid var(--border);padding:.55em .8em;text-align:left;}
+th{background:var(--accent-soft);color:var(--accent-strong);font-weight:600;}
+img{max-width:100%;max-height:48vh;border-radius:10px;box-shadow:0 4px 16px rgba(0,0,0,.1);}
+.body img{display:block;margin:.4em auto;}
+pre.mermaid{background:none;border:0;border-left:0;border-radius:0;box-shadow:none;
+    padding:0;margin:.4em 0;font-family:inherit;font-size:inherit;line-height:1.3;
+    text-align:center;overflow:auto;}
+pre.mermaid svg{max-width:100%;height:auto;max-height:44vh;}
+body.mermaid-loading .mermaid{visibility:hidden;}
+.architecture-diagram{width:100%;min-height:0;margin:.35em 0;display:flex;
+     align-items:center;justify-content:center;}
+.architecture-svg{display:block;width:100%;height:auto;max-height:56vh;
+     color:var(--body);font-family:inherit;overflow:visible;}
+.architecture-svg text{font-family:inherit;}
+/* --- Architecture diagram editing UI --------------------------------------
+   Appears in the DOM only in editing mode (the canvas edit_architecture action /
+   ?architectureEdit=1). Normal view, presenter view, and printing do not create
+   these elements, so these rules cannot cause visual regressions there. */
+.architecture-editor{position:relative;padding-top:2.4em;}
+.architecture-editor-surface{display:block;}
+.architecture-editor-toolbar{position:absolute;top:0;right:0;left:0;z-index:3;display:flex;
+     align-items:center;gap:.65em;font-size:clamp(11px,1.5vh,14px);}
+.architecture-editor-button{border:1px solid var(--border);border-radius:6px;
+     padding:.35em .7em;background:var(--surface);color:var(--fg);font:inherit;cursor:pointer;}
+.architecture-editor-button:hover:not(:disabled){border-color:var(--accent);color:var(--accent-strong);}
+.architecture-editor-button:disabled{opacity:.45;cursor:default;}
+.architecture-editor-button:focus-visible{outline:2px solid var(--accent-strong);outline-offset:2px;}
+.architecture-editor-status{flex:1;color:var(--muted);text-align:right;
+     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* Save result. A failure means edits were actually lost, so keep it visually prominent. */
+.architecture-editor-save{flex:0 0 auto;font-weight:600;}
+.architecture-editor-save[data-architecture-save-state="idle"]{display:none;}
+.architecture-editor-save[data-architecture-save-state="saving"]{color:var(--muted);}
+.architecture-editor-save[data-architecture-save-state="saved"]{color:var(--muted);}
+.architecture-editor-save[data-architecture-save-state="failed"]{color:#b3261e;
+     border:1px solid currentColor;border-radius:6px;padding:.2em .6em;white-space:normal;}
+.architecture-editor [data-architecture-movable="true"]{cursor:grab;outline:none;}
+.architecture-editor [data-architecture-movable="false"]{cursor:not-allowed;outline:none;}
+.architecture-editor [data-architecture-type]:focus-visible>rect,
+.architecture-editor [data-architecture-type]:focus-visible>ellipse,
+.architecture-editor .architecture-selected>rect,
+.architecture-editor .architecture-selected>ellipse{
+     stroke:var(--accent-strong);stroke-width:7;filter:drop-shadow(0 0 8px var(--accent-line));}
+/* Layout-managed elements cannot move. Show a dashed explanation only when selected. */
+.architecture-editor [data-architecture-movable="false"].architecture-selected>rect,
+.architecture-editor [data-architecture-movable="false"].architecture-selected>ellipse{
+     stroke-dasharray:10 8;}
+.architecture-error{display:flex;flex-direction:column;gap:.35em;margin:.5em 0;
+     padding:.8em 1em;border:2px solid #d13438;border-radius:8px;
+     color:var(--body);background:color-mix(in srgb,#d13438 10%,var(--surface));}
+.architecture-error strong{color:#d13438;}
+.architecture-error span{font-family:"Cascadia Code","Cascadia Mono",Consolas,monospace;
+     font-size:.75em;overflow-wrap:anywhere;}
+/* Connector routing degraded: a non-fatal notice. The diagram still renders,
+   so this is amber (not red) and uses role="status" rather than role="alert". */
+.architecture-routing-warning{display:flex;flex-direction:column;gap:.3em;margin:.4em 0 0;
+     padding:.55em .9em;border:1px solid #b26a00;border-radius:8px;
+     color:var(--body);background:color-mix(in srgb,#b26a00 12%,var(--surface));
+     font-size:.8em;}
+.architecture-routing-warning strong{color:#b26a00;}
+.architecture-routing-warning span{font-family:"Cascadia Code","Cascadia Mono",Consolas,monospace;
+     font-size:.85em;overflow-wrap:anywhere;}
+hr{border:0;border-top:1px solid var(--border);margin:.7em 0;}
+footer{flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;
+       color:var(--muted);font-size:clamp(12px,1.7vh,16px);
+       margin-top:clamp(12px,2.2vh,26px);border-top:1px solid var(--border);padding-top:12px;}
+footer .page{color:var(--accent-strong);font-weight:600;background:var(--accent-soft);
+             border:1px solid var(--accent-line);border-radius:999px;padding:.18em .8em;}
+/* ===== Center layout (`layout: center`) =====
+   Standard slides align headings and body content to the top. Only `layout: center`
+   vertically centers the heading and body as a unit. As with cover and section
+   slides, pin the footer to the bottom so it does not shift the centering baseline. */
+.deck.center-slide{justify-content:center;}
+.deck.center-slide>.body{flex:0 1 auto;justify-content:center;justify-content:safe center;
+      max-height:calc(100% - 2*var(--deck-pad-y));}
+.deck.center-slide>footer{position:absolute;
+      left:var(--deck-pad-x);right:var(--deck-pad-x);bottom:var(--deck-pad-y);
+      margin-top:0;}
+
+/* ===== Cover (title) layout =====
+   Centers the kicker + body as one block (footer pinned to the bottom via
+   absolute positioning so it doesn't shift the centering) with its own
+   background so the cover stands apart from the body slides. */
+.deck.title-slide{justify-content:center;text-align:var(--cover-text-align,center);
+      background:var(--cover-bg,var(--bg));}
+.deck.title-slide::before{background:var(--cover-topbar,var(--topbar));}
+.deck.title-slide>header{display:flex;justify-content:var(--cover-content-align,center);}
+.deck.title-slide>.body{flex:0 1 auto;justify-content:center;justify-content:safe center;
+      align-items:var(--cover-content-align,stretch);
+      width:var(--cover-content-width,auto);align-self:var(--cover-content-self,auto);
+      max-height:calc(100% - 2*var(--deck-pad-y));z-index:1;}
+.deck.title-slide>footer{position:absolute;
+      left:var(--deck-pad-x);right:var(--deck-pad-x);bottom:var(--deck-pad-y);
+      margin-top:0;border-top:0;padding-top:0;}
+.deck.title-slide .kicker{margin-bottom:.7em;}
+.deck.markdstage-placeholder{
+       --cover-text-align:left;--cover-content-align:flex-start;
+       --cover-content-width:min(760px,58%);--cover-content-self:stretch;
+       background:
+         radial-gradient(ellipse 36% 16% at 78% 82%,rgba(255,215,122,.48),transparent 72%),
+         linear-gradient(111deg,transparent 0 61%,rgba(255,215,122,.58) 61.2%,
+           rgba(255,181,71,.16) 78%,transparent 78.2%),
+         linear-gradient(145deg,#151b2f 0%,#0b1020 62%);
+       isolation:isolate;}
+.deck.markdstage-placeholder::before{height:7px;background:#ffb547;}
+.deck.markdstage-placeholder>.body{position:relative;overflow:visible;}
+.deck.markdstage-placeholder>.body::before{
+       content:"#";position:absolute;z-index:-1;right:-60%;top:50%;transform:translateY(-50%);
+       color:#f7f4ed;font-size:clamp(180px,30vw,420px);font-weight:760;line-height:.8;
+       letter-spacing:-.08em;text-shadow:18px 22px 0 rgba(255,181,71,.22);}
+.deck.markdstage-placeholder .kicker{color:#ffd77a;letter-spacing:.14em;}
+.deck.markdstage-placeholder .kicker::before{background:#ffb547;border-radius:2px;}
+.deck.markdstage-placeholder h1{
+       max-width:10ch;font-size:clamp(44px,7.8vw,112px);line-height:.94;
+       letter-spacing:-.045em;text-wrap:balance;}
+.deck.markdstage-placeholder p{
+       max-width:32em;margin-top:1.25em;color:#c8cedd;font-size:clamp(18px,2.2vw,30px);}
+.theme-cover-background{position:absolute;inset:0;width:100%;height:100%;max-width:none;
+      max-height:none;object-fit:cover;border-radius:0;box-shadow:none;z-index:0;}
+.theme-cover-logo{position:absolute;top:var(--deck-pad-y);left:var(--deck-pad-x);
+      width:var(--cover-logo-width,clamp(130px,16vw,230px));height:auto;max-height:none;
+      border-radius:0;box-shadow:none;z-index:2;}
+.deck.title-slide>header,.deck.title-slide>footer{z-index:1;}
+
+/* ===== Section divider layout =====
+   Keeps the heading block vertically centered and left aligned. The diagonal
+   accent and lower color sweep are part of --section-bg, so custom themes can
+   replace the background without introducing an icon or image asset path. */
+.deck.section-slide{justify-content:center;text-align:left;
+      background:var(--section-bg,var(--cover-bg,var(--bg)));}
+.deck.section-slide::before{display:none;}
+.deck.section-slide>header{flex:0 0 auto;z-index:1;}
+.deck.section-slide>.body{flex:0 1 auto;justify-content:center;justify-content:safe center;
+      max-height:calc(100% - 2*var(--deck-pad-y));z-index:1;}
+.deck.section-slide h1,.deck.section-slide h2{font-weight:400;letter-spacing:-.025em;}
+.deck.section-slide>footer{position:absolute;
+      left:var(--deck-pad-x);right:var(--deck-pad-x);bottom:var(--deck-pad-y);
+      margin-top:0;z-index:1;}
+
+/* ===== Back cover =====
+   Equivalent to the .thmx "Closing logo slide" and appended to every deck,
+   regardless of theme. Uses white text over each theme's dark --backcover-bg.
+   Show the logo and copyright notice only when explicitly provided by custom
+   theme metadata or slide front matter. */
+.deck.backcover-slide{justify-content:center;text-align:center;
+      background:var(--backcover-bg,var(--accent));color:#fff;}
+/* Hide the top bar because it muddies the back cover's solid background. */
+.deck.backcover-slide::before{display:none;}
+.deck.backcover-slide>header{display:flex;justify-content:center;}
+.deck.backcover-slide>.body{flex:0 1 auto;justify-content:center;justify-content:safe center;
+      color:#fff;max-height:calc(100% - 2*var(--deck-pad-y));}
+.deck.backcover-slide h1,.deck.backcover-slide h2,
+.deck.backcover-slide h3,.deck.backcover-slide strong{color:#fff;}
+.deck.backcover-slide em{color:rgba(255,255,255,.82);}
+.deck.backcover-slide .kicker{color:#fff;margin-bottom:.7em;}
+.deck.backcover-slide a{color:#fff;}
+.deck.backcover-slide li::marker{color:rgba(255,255,255,.7);}
+.theme-backcover-logo{position:absolute;top:var(--deck-pad-y);left:var(--deck-pad-x);
+      width:var(--backcover-logo-width,clamp(130px,16vw,230px));height:auto;max-height:none;
+      border-radius:0;box-shadow:none;}
+.theme-backcover-logo-text{width:auto;display:flex;align-items:center;
+      font-size:clamp(17px,2.6vh,26px);font-weight:600;letter-spacing:.01em;color:#fff;}
+.theme-backcover-copyright{position:absolute;left:var(--deck-pad-x);right:var(--deck-pad-x);
+      bottom:var(--deck-pad-y);text-align:left;
+      font-size:clamp(10px,1.35vh,13px);color:rgba(255,255,255,.78);}
+
+/* ===== In-canvas navigation controls ===== */
+/* An author `display` rule on .nav/.overview would override the UA's
+   [hidden]{display:none}, so re-assert hidden explicitly. */
+.nav[hidden],.overview[hidden]{display:none;}
+.nav{position:fixed;left:50%;bottom:clamp(10px,2.4vh,22px);transform:translateX(-50%);
+     z-index:50;display:flex;align-items:center;gap:.4em;
+     padding:.3em .5em;border-radius:999px;
+     background:color-mix(in srgb,var(--surface) 86%,transparent);
+     border:1px solid var(--border);
+     box-shadow:0 6px 22px rgba(0,0,0,.22);
+     opacity:.45;transition:opacity .2s ease;}
+.nav:hover,.nav:focus-within{opacity:1;}
+@media (prefers-reduced-motion:reduce){.nav{transition:none;}}
+.nav-btn{display:inline-flex;align-items:center;justify-content:center;
+     min-width:2em;height:2em;padding:0 .55em;
+     font-size:clamp(13px,1.9vh,17px);line-height:1;cursor:pointer;
+     color:var(--fg);background:transparent;border:1px solid transparent;
+     border-radius:999px;transition:background .15s ease,color .15s ease;}
+.nav-btn[hidden]{display:none;}
+.nav-btn:hover:not(:disabled){background:var(--accent-soft);color:var(--accent-strong);}
+.nav-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.nav-btn:disabled{opacity:.32;cursor:default;}
+.nav-btn[data-state="active"]{color:var(--accent-strong);background:var(--accent-soft);}
+.nav-btn[data-state="error"]{color:#d13438;}
+.nav-counter{min-width:4.2em;text-align:center;font-variant-numeric:tabular-nums;
+     font-weight:600;color:var(--accent-strong);font-size:clamp(12px,1.7vh,16px);
+     padding:0 .3em;user-select:none;}
+body.presenter-mode .nav{opacity:0;}
+body.presenter-mode .nav:hover,body.presenter-mode .nav:focus-within{opacity:1;}
+body.presenter-mode #navPresent{display:none;}
+body.presenter-mode #navPresenterView{display:none;}
+body.presenter-mode #navExport{display:none;}
+body.presenter-mode #navImport{display:none;}
+body.presenter-mode #navSourceMode{display:none;}
+body.preview-mode .nav,body.preview-mode .overview{display:none!important;}
+/* When no deck is loaded, leave only the load button as the available action. */
+.nav.nav-empty > :not(#navImport){display:none;}
+body.markdstage-empty .nav{
+       opacity:1;padding:.42em;border-color:#3b4562;background:#151b2f;
+       box-shadow:0 10px 30px rgba(0,0,0,.36);}
+body.markdstage-empty #navImport{
+       width:auto;min-width:2.5em;height:2.5em;padding:0 1em;
+       border-color:#ffb547;background:#ffb547;color:#0b1020;font-weight:750;}
+body.markdstage-empty #navImport::after{content:"  Open Markdown";}
+body.markdstage-empty #navImport:hover{background:#ffd77a;color:#0b1020;}
+
+/* ===== Presenter view ===== */
+.presenter-view[hidden]{display:none;}
+.presenter-view{position:fixed;inset:0;z-index:55;display:grid;
+     grid-template-rows:auto minmax(0,1fr) auto;gap:clamp(12px,2vh,22px);
+     padding:clamp(16px,3vh,30px) clamp(18px,3vw,42px);
+     background:var(--bg);color:var(--fg);}
+.presenter-view-head{display:flex;align-items:center;justify-content:space-between;gap:1em;}
+.presenter-view-head h1{margin:0;font-size:clamp(24px,4vh,42px);}
+.presenter-previews{display:grid;grid-template-columns:minmax(0,2fr) minmax(260px,1fr);
+     align-items:stretch;gap:clamp(16px,2vw,30px);min-height:0;}
+.presenter-preview{display:flex;min-width:0;min-height:0;flex-direction:column;gap:.55em;}
+.presenter-preview h2{margin:0;font-size:clamp(16px,2.4vh,24px);color:var(--accent-strong);}
+.presenter-preview-current{justify-content:center;}
+.presenter-frame,.presenter-next-empty{width:100%;aspect-ratio:16/9;border:1px solid var(--border);
+     border-radius:10px;background:var(--surface);box-shadow:0 6px 24px rgba(0,0,0,.24);}
+.presenter-frame{display:block;}
+.presenter-frame[hidden]{display:none;}
+.presenter-next-empty{display:flex;align-items:center;justify-content:center;margin:0;
+     color:var(--muted);font-weight:600;}
+.presenter-next-empty[hidden]{display:none;}
+.presenter-sidebar{display:grid;grid-template-rows:auto minmax(0,1fr);
+     gap:clamp(12px,2vh,20px);min-width:0;min-height:0;}
+.presenter-notes{display:flex;min-width:0;min-height:0;flex-direction:column;gap:.55em;}
+.presenter-notes h2{margin:0;font-size:clamp(16px,2.4vh,24px);color:var(--accent-strong);}
+.presenter-notes-body,.presenter-notes-empty{flex:1 1 auto;min-height:0;margin:0;padding:.85em 1em;
+     overflow:auto;border:1px solid var(--border);border-radius:10px;
+     background:var(--surface);color:var(--body);font-size:clamp(14px,1.9vh,18px);line-height:1.55;}
+.presenter-notes-body[hidden],.presenter-notes-empty[hidden]{display:none;}
+.presenter-notes-body>:first-child{margin-top:0;}
+.presenter-notes-body>:last-child{margin-bottom:0;}
+.presenter-notes-body h1,.presenter-notes-body h2,.presenter-notes-body h3{
+     margin:.45em 0 .3em;font-size:1.15em;color:var(--fg);}
+.presenter-notes-body ul,.presenter-notes-body ol{padding-left:1.35em;}
+.presenter-notes-body pre{font-size:.78em;}
+.presenter-notes-empty{display:flex;align-items:center;justify-content:center;color:var(--muted);}
+.presenter-controls{display:flex;align-items:center;justify-content:center;gap:.75em;flex-wrap:wrap;}
+.presenter-button{min-height:2.5em;padding:.45em 1em;border:1px solid var(--border);
+     border-radius:7px;background:var(--surface);color:var(--fg);font:inherit;font-weight:600;
+     cursor:pointer;}
+.presenter-button:hover:not(:disabled){border-color:var(--accent);color:var(--accent-strong);
+     background:var(--accent-soft);}
+.presenter-button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.presenter-button:disabled{opacity:.4;cursor:default;}
+.presenter-toggle{background:var(--accent);border-color:var(--accent);color:#fff;}
+.presenter-toggle[data-state="active"]{background:#d13438;border-color:#d13438;color:#fff;}
+.presenter-counter{min-width:5em;text-align:center;font-weight:700;
+     font-variant-numeric:tabular-nums;color:var(--accent-strong);}
+body.presenter-view-mode #stage,body.presenter-view-mode #nav{display:none;}
+@media (max-width:800px){
+  .presenter-view{overflow:auto;}
+  .presenter-previews{grid-template-columns:1fr;align-items:start;}
+  .presenter-preview-current{order:-1;}
+  .presenter-sidebar{min-height:30em;}
+}
+
+/* ===== Slide-list overview overlay ===== */
+.overview{position:fixed;inset:0;z-index:60;display:flex;
+     align-items:center;justify-content:center;
+     background:rgba(0,0,0,.46);backdrop-filter:blur(2px);}
+.overview-panel{width:min(560px,86vw);max-height:80vh;display:flex;flex-direction:column;
+     background:var(--surface);color:var(--fg);
+     border:1px solid var(--border);border-radius:14px;overflow:hidden;
+     box-shadow:0 18px 60px rgba(0,0,0,.4);
+     animation:fade .2s ease both;}
+.overview-head{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;
+     padding:.7em 1em;border-bottom:1px solid var(--border);
+     font-weight:700;letter-spacing:.04em;color:var(--accent-strong);
+     background:var(--accent-soft);}
+.overview-list{flex:1 1 auto;margin:0;padding:.5em;list-style:none;overflow:auto;}
+.overview-item{margin:0;}
+.overview-link{display:flex;align-items:center;gap:.7em;width:100%;
+     padding:.55em .7em;border:0;border-radius:8px;cursor:pointer;text-align:left;
+     background:transparent;color:var(--body);font:inherit;
+     transition:background .12s ease,color .12s ease;}
+.overview-link:hover{background:var(--accent-soft);color:var(--fg);}
+.overview-link:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+.overview-num{flex:0 0 auto;min-width:1.9em;height:1.9em;display:inline-flex;
+     align-items:center;justify-content:center;border-radius:6px;
+     font-size:.82em;font-weight:700;font-variant-numeric:tabular-nums;
+     color:var(--muted);background:var(--code);border:1px solid var(--border);}
+.overview-label{flex:1 1 auto;font-size:.96em;line-height:1.35;
+     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.overview-item.current .overview-link{background:var(--accent-soft);}
+.overview-item.current .overview-num{color:var(--fg);background:var(--accent);
+     border-color:var(--accent);}
+.overview-item.current .overview-label{color:var(--fg);font-weight:600;}
+
+/* ===== Markdown import overlay ===== */
+.import-mode{display:flex;align-items:center;gap:1em;margin:.8em 1em 0;padding:.7em;
+     color:var(--body);background:var(--code);border:1px solid var(--border);border-radius:8px;}
+.import-mode legend{padding:0 .3em;font-size:.82em;font-weight:700;color:var(--muted);}
+.import-mode label{display:inline-flex;align-items:center;gap:.35em;font-size:.9em;cursor:pointer;}
+.import-mode input{accent-color:var(--accent);}
+.import-mode input:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+.import-filter{flex:0 0 auto;margin:.7em 1em 0;padding:.5em .7em;
+     font:inherit;font-size:.95em;color:var(--fg);
+     background:var(--code);border:1px solid var(--border);border-radius:8px;}
+.import-filter:focus-visible{outline:2px solid var(--accent);outline-offset:-1px;}
+.import-message{flex:0 0 auto;margin:.6em 1em 0;font-size:.86em;color:var(--muted);}
+.import-message:empty{display:none;}
+.import-message[data-state="error"]{color:#d13438;}
+.import-path{flex:1 1 auto;font-size:.94em;line-height:1.35;
+     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+/* ===== Headless PDF export ===== */
+@page{size:13.333333in 7.5in;margin:0;}
+@media print{
+  /* The screen rules clip everything to one viewport; printing needs the whole
+     stack of pages to flow, so the scroll containment is lifted here. */
+  html,body{width:13.333333in;height:auto;overflow:visible;}
+  body.print-mode{
+    overflow:visible;background:none;
+    -webkit-print-color-adjust:exact;print-color-adjust:exact;
+  }
+
+  body.print-mode #stage{display:block;width:13.333333in;height:auto;}
+  body.print-mode .deck{
+    width:13.333333in;height:7.5in;min-height:7.5in;max-height:7.5in;
+    --deck-pad-y:40px;--deck-pad-x:84px;
+    --slide-h1-size:48px;--slide-h2-size:36px;--slide-h3-size:24px;
+    --slide-body-size:22px;--slide-code-size:15px;
+    overflow:hidden;animation:none;break-after:page;page-break-after:always;
+  }
+  body.print-mode .deck.size-large{
+    --slide-h1-size:53px;--slide-h2-size:42px;--slide-h3-size:29px;
+    --slide-body-size:25px;--slide-code-size:17px;
+  }
+  body.print-mode .deck.size-xlarge{
+    --slide-h1-size:60px;--slide-h2-size:48px;--slide-h3-size:33px;
+    --slide-body-size:28px;--slide-code-size:19px;
+  }
+  body.print-mode .deck:not(.title-slide):not(.section-slide):not(.backcover-slide){
+    background:var(--print-slide-bg,var(--bg));
+  }
+  body.print-mode .deck.title-slide{background:var(--print-cover-bg,var(--cover-bg));}
+  body.print-mode .deck.section-slide{
+    background:var(--print-section-bg,var(--section-bg,var(--bg)));
+  }
+  body.print-mode .deck.backcover-slide{background:var(--backcover-bg,var(--accent));}
+  body.print-mode .deck:last-child{break-after:auto;page-break-after:auto;}
+  body.print-mode .deck::before{position:absolute;}
+  body.print-mode .body{overflow:hidden;}
+  body.print-mode .architecture-svg{max-height:5.25in;}
+  body.print-mode .architecture-editor-toolbar{display:none!important;}
+  /* Mermaid appends a tooltip host to <body> on render. It sits just past the
+     720px page boundary and forces an extra blank page in the exported PDF. */
+  body.print-mode .mermaidTooltip{display:none!important;}
+  body.print-mode .nav,body.print-mode .overview{display:none!important;}
+}
+
+@media (forced-colors:active){
+  body{background:Canvas;color:CanvasText;}
+  .deck{background:Canvas!important;color:CanvasText;border:1px solid CanvasText;}
+  .deck::before{background:Highlight;}
+  .deck a{color:LinkText;}
+  .deck pre,.deck code,.deck table,.deck th,.deck td{border-color:CanvasText;}
+}

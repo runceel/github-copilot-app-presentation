@@ -1,11 +1,11 @@
-// renderer の描画完了を決定論的に待つためのヘルパー。
+// Helpers for deterministically waiting for the renderer to finish.
 //
-// 描画完了は renderer が出す ready シグナルで判定する（固定 sleep は使わない）。
-//   通常モード: <body> から `mermaid-loading` クラスが外れる
-//   印刷モード: <html data-print-ready="true"> かつ window.__presentationPrintReady === true
-//               失敗時は <html data-print-error="true">
+// Detect completion through the renderer's ready signal rather than a fixed sleep.
+//   Normal mode: the `mermaid-loading` class is removed from <body>
+//   Print mode: <html data-print-ready="true"> and window.__presentationPrintReady === true
+//               On failure: <html data-print-error="true">
 
-/** スクリーンショットを安定させるための CSS（アニメーション停止・操作 UI の非表示）。 */
+/** CSS that stabilizes screenshots by disabling animation and hiding control UI. */
 export const DETERMINISTIC_CSS = `
   *, *::before, *::after {
     animation-duration: 0s !important;
@@ -14,24 +14,24 @@ export const DETERMINISTIC_CSS = `
     transition-delay: 0s !important;
     caret-color: transparent !important;
   }
-  /* 操作 UI はスライドの描画結果ではないので比較対象から外す。 */
+  /* Control UI is not part of slide rendering, so exclude it from comparisons. */
   #nav, #overview { display: none !important; }
 `;
 
-/** レイアウト（rAF ベースの自動サイズ調整）とフォント読み込みが落ち着くまで待つ。 */
+/** Wait for layout (rAF-based auto-sizing) and font loading to settle. */
 async function settleLayout(page) {
   await page.evaluate(async () => {
     if (document.fonts?.ready) await document.fonts.ready;
     const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
-    // renderer は requestAnimationFrame 2 回でレイアウトを確定させるので、
-    // それより 1 段多く回して確実に落ち着かせる。
+    // The renderer finalizes layout in two requestAnimationFrame calls. Run one additional frame
+    // to ensure it has settled.
     await frame();
     await frame();
     await frame();
   });
 }
 
-/** 通常モード: 1 枚のスライドの描画完了を待つ。 */
+/** In normal mode, wait for one slide to finish rendering. */
 export async function waitForSlideReady(page, { timeout = 60_000 } = {}) {
   await page.waitForSelector("#stage .deck", { state: "attached", timeout });
   await page.waitForFunction(
@@ -43,9 +43,9 @@ export async function waitForSlideReady(page, { timeout = 60_000 } = {}) {
 }
 
 /**
- * 印刷モード: 全スライドの描画完了を待つ。
- * 失敗シグナルも監視し、失敗していれば理由付きで throw する
- * （見ないと「空の PDF が出た」ことを成功と誤判定する）。
+ * In print mode, wait for all slides to finish rendering.
+ * Also monitor the failure signal and throw with a reason when set. Without this check, an empty
+ * PDF could be mistaken for success.
  */
 export async function waitForPrintReady(page, { timeout = 120_000 } = {}) {
   await page.waitForFunction(

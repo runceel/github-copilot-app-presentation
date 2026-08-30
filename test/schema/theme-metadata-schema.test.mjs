@@ -3,10 +3,10 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import Ajv2020 from "ajv/dist/2020.js";
 
-import { parseThemeMetadata } from "../../.github/extensions/presentation/renderer/theme.mjs";
+import { parseThemeMetadata } from "../../.github/extensions/markdstage/renderer/theme.mjs";
 
 const schemaUrl = new URL(
-  "../../.github/extensions/presentation/schema/theme-metadata-v1.schema.json",
+  "../../.github/extensions/markdstage/schema/theme-metadata-v1.schema.json",
   import.meta.url,
 );
 const schema = JSON.parse(await readFile(schemaUrl, "utf8"));

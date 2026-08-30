@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="360" viewBox="0 0 1500 360" role="img" aria-labelledby="title desc">
+  <title id="title">MarkdStage</title>
+  <desc id="desc">MarkdStage logo and the tagline Markdown, ready for the stage.</desc>
+  <defs>
+    <linearGradient id="ink" x1="40" y1="24" x2="320" y2="336" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#151B2F"/>
+      <stop offset="1" stop-color="#0B1020"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="246" y1="34" x2="158" y2="304" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD77A" stop-opacity=".98"/>
+      <stop offset="1" stop-color="#FFB547" stop-opacity=".06"/>
+    </linearGradient>
+  </defs>
+  <rect width="1500" height="360" rx="44" fill="#0B1020"/>
+  <rect x="44" y="44" width="272" height="272" rx="68" fill="url(#ink)" stroke="#29314C" stroke-width="2"/>
+  <path d="M222 44h62l-90 248H92L222 44Z" fill="url(#beam)"/>
+  <g fill="none" stroke="#F7F4ED" stroke-width="22" stroke-linecap="round">
+    <path d="M140 105 124 252"/>
+    <path d="M220 105 204 252"/>
+    <path d="M96 154h146"/>
+    <path d="M88 205h146"/>
+  </g>
+  <path d="M220 105 204 252" fill="none" stroke="#FFD77A" stroke-width="22" stroke-linecap="round"/>
+  <text x="380" y="184" fill="#F7F4ED" font-family="Segoe UI Variable Display, Segoe UI, Arial, sans-serif" font-size="104" font-weight="720" letter-spacing="-4">Markd<tspan fill="#FFB547">Stage</tspan></text>
+  <text x="388" y="246" fill="#C8CEDD" font-family="Segoe UI Variable Text, Segoe UI, Arial, sans-serif" font-size="34" font-weight="430" letter-spacing=".5">Markdown, ready for the stage.</text>
+</svg>

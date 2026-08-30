@@ -1,76 +1,73 @@
-// Architecture DSL の描画コストのバジェット。
+// Rendering-cost budget for the Architecture DSL.
 //
-// なぜ測るか: レイアウト（layered / row / column）と配線（rip-up and reroute）は
-// 要素数に対して素直に線形ではない書き方ができてしまう場所で、実際に
-// 配線は再配線ループを持っている。ここが二乗や指数に転ぶと、スライドを
-// 1 枚めくるたびにブラウザーが固まる。見た目は壊れないので、ビジュアル回帰
-// では絶対に捕まらない種類の劣化である。
+// Why measure this: layout (layered / row / column) and routing (rip-up and reroute) can easily
+// become nonlinear in the number of elements; routing already has a rerouting loop. If this turns
+// quadratic or exponential, the browser freezes whenever the slide changes. Nothing looks broken,
+// so visual regression tests cannot detect this type of degradation.
 //
-// 何を測るか: `renderArchitectureBlock`（パース + レイアウト + 配線 + SVG 生成）
-// の 1 回あたりの所要時間。ページ遷移やフォント読み込みを含む end-to-end 時間は
-// マシンとネットワークの影響が大きすぎてバジェットにならないので、
-// パイプラインだけを **ページ内で** 直接呼んで測る。
+// What to measure: duration per `renderArchitectureBlock` call (parsing + layout + routing + SVG
+// generation). End-to-end time including navigation and font loading varies too much with the
+// machine and network to serve as a budget, so call only the pipeline directly **inside the page**.
 //
-// バジェットの根拠（実測値。Windows / Chromium / 41 回の中央値）:
+// Budget basis (measured on Windows / Chromium; median of 41 runs):
 //
-//   | 図の形                              | 要素数 | 1 回あたり |
-//   | ----------------------------------- | ------ | ---------- |
-//   | ノード 1（ほぼ空）                  |      1 |    0.1 ms  |
-//   | ノード 25（接続なし）               |     25 |    1.2 ms  |
-//   | ノード 200（接続なし）              |    200 |    8.3 ms  |
-//   | ノード 100 + 交差コネクター 100     |    200 |    9.0 ms  |
+//   | Diagram shape                          | Elements | Per run |
+//   | -------------------------------------- | -------- | ------- |
+//   | 1 node (nearly empty)                  |        1 |  0.1 ms |
+//   | 25 nodes (no connections)              |       25 |  1.2 ms |
+//   | 200 nodes (no connections)             |      200 |  8.3 ms |
+//   | 100 nodes + 100 crossing connectors    |      200 |  9.0 ms |
 //
-// 200 要素は `MAX_ELEMENTS` そのもので、**DSL が受け付ける最大の図**である。
-// つまり上の 9 ms 前後が、製品として起こりうる最悪ケースの実測値。
+// 200 elements is `MAX_ELEMENTS`, the **largest diagram accepted by the DSL**. About 9 ms is
+// therefore the measured worst case possible in the product.
 //
-// 平均ではなく **中央値** を取る。1 回ごとに計測して中央値を取ると、GC や
-// 他プロセスに 1 回持っていかれても値が動かない。平均だと外れ値 1 個で
-// 比率が崩れ、バジェットを無意味に緩める方向へ引っ張られる。
+// Use the **median**, not the mean. Measuring each run individually and taking the median keeps one
+// GC pause or other process from moving the result. With a mean, one outlier distorts the ratio and
+// encourages weakening the budget until it is meaningless.
 //
-// スケーリングでは 2 つのサイズを **交互に** 測る。別々にまとめて測ると、
-// 計測中の CPU 周波数や JIT の状態のずれがそのまま比率に乗る（同じコードで
-// 25 ms と 111 ms に振れるのを実測した）。交互なら、その手のドリフトは
-// 両方に等しく乗るので比率からは消える。
+// For scaling, measure the two sizes **alternately**. Measuring separate batches puts any CPU
+// frequency or JIT drift directly into the ratio (the same code was observed varying from 25 ms to
+// 111 ms). Alternating applies such drift equally to both sizes, removing it from the ratio.
 //
-// 2 本立てにしている理由:
-//   - 絶対バジェット（RENDER_BUDGET_MS）は「数 ms が数秒になった」だけを見る
-//     粗い門。CI は共有ランナーで実測の数倍ぶれるので、ここを締めても
-//     不安定になるだけで劣化は捕まらない。
-//   - 実際に形の劣化を捕まえるのは **スケーリング側**。要素数を 8 倍にして
-//     コストが何倍になるかを見る。ここは相対値なのでマシン速度に影響されず、
-//     遅いランナーでも締めたままにできる。
+// Why use both checks:
+//   - The absolute budget (`RENDER_BUDGET_MS`) is a coarse gate that only catches milliseconds
+//     becoming seconds. Shared CI runners vary by several times the measured value; tightening this
+//     gate would only make it flaky, not catch degradation.
+//   - The **scaling check** catches shape degradation by measuring the cost increase for 8x as many
+//     elements. As a relative value, it is unaffected by machine speed and can remain strict even
+//     on slow runners.
 
 import { expect, test } from "@playwright/test";
 
 import { startHarness } from "../harness/server.mjs";
 
-/** DSL が受け付ける要素数の上限（architecture.mjs の MAX_ELEMENTS と同じ値）。 */
+/** Maximum number of elements accepted by the DSL (same as MAX_ELEMENTS in architecture.mjs). */
 const MAX_ELEMENTS = 200;
 
 /**
- * 最大サイズの図 1 枚あたりの上限。実測 ~9 ms に対して 27 倍の余裕。
- * ここを超えるのは「アルゴリズムが壊れた」ときだけのはず。
+ * Per-diagram limit at maximum size. This leaves 27x headroom over the measured ~9 ms.
+ * Only a broken algorithm should exceed this.
  */
 const RENDER_BUDGET_MS = 250;
 
 /**
- * 要素数 8 倍（25 → 200）でコストが何倍まで増えてよいか。
- * 線形なら 8 倍、二乗なら 64 倍。実測は 7.3〜8.3 倍（ほぼ線形、3 回計測）。
+ * Maximum cost increase allowed for 8x as many elements (25 → 200).
+ * Linear is 8x; quadratic is 64x. Measured values are 7.3–8.3x (nearly linear, three measurements).
  *
- * 15 倍は実測上限の約 1.8 倍。相対値なのでランナーの速度そのものには影響されず、
- * 遅い CI でも締めたままにできる（小さい図と大きい図を**交互に**測っているので、
- * 計測中の速度変動は比率から消える）。
+ * 15x is about 1.8x the measured maximum. Because it is relative, runner speed does not affect it
+ * and it can remain strict on slow CI. Alternating the **small and large** diagrams removes speed
+ * variation during measurement from the ratio.
  *
- * 変異テストで確認済み: 描画に要素数の二乗に比例するコストを足すと比率が
- * 19〜35 倍に上がり、3 回とも 15 を超えてこのテストが落ちる。逆に無改造では
- * 3 回とも 8.3 以下だった。
+ * Verified by mutation testing: adding render cost proportional to the square of the element count
+ * raised the ratio to 19–35x, exceeding 15 in all three runs. Unmodified code stayed at or below
+ * 8.3 in all three runs.
  */
 const SCALING_BUDGET = 15;
 
-/** 中央値を取る回数。1 回ごとに計測するので外れ値に強い。 */
+/** Number of runs used for the median. Measuring each run individually resists outliers. */
 const RUNS = 41;
 
-/** ウォームアップ（JIT とアイコンの初回生成をバジェットから外す）。 */
+/** Warmup that excludes JIT and initial icon generation from the budget. */
 const WARMUP = 5;
 
 const CANVAS = { width: 1600, height: 1600 };
@@ -88,7 +85,7 @@ function makeNode(index) {
   };
 }
 
-/** ノードだけの図。レイアウトと SVG 生成のコストを見る。 */
+/** Node-only diagram for measuring layout and SVG generation cost. */
 function nodesOnly(count) {
   const elements = [];
   for (let i = 0; i < count; i += 1) elements.push(makeNode(i));
@@ -96,8 +93,8 @@ function nodesOnly(count) {
 }
 
 /**
- * ノードとコネクターが半々の図。コネクターは大きく飛び越して交差させる
- * （i -> i+37）。これが配線アルゴリズムにとって最も重い形。
+ * Diagram with equal numbers of nodes and connectors. Connectors cross over long distances
+ * (i -> i+37), which is the most expensive shape for the routing algorithm.
  */
 function nodesAndCrossingConnectors(nodeCount) {
   const elements = [];
@@ -114,12 +111,12 @@ function nodesAndCrossingConnectors(nodeCount) {
 }
 
 /**
- * ページ内で `renderArchitectureBlock` を繰り返し呼び、1 回あたりの ms の
- * **中央値** を返す。1 回ずつ計測して中央値を取るので、GC や他プロセスに
- * 数回持っていかれても値が動かない。
+ * Repeatedly call `renderArchitectureBlock` inside the page and return the **median** milliseconds
+ * per run. Individual measurements and the median keep a few GC pauses or other processes from
+ * moving the result.
  *
- * 併せて「本当に図が描けたか」も返す。図がエラー表示に落ちていると描画コストは
- * 劇的に下がる（実測 0.6 ms）ので、速いことを成功と誤読しないためのガード。
+ * Also report whether the diagram actually rendered. An error display dramatically reduces render
+ * cost (measured at 0.6 ms), so this guards against misreading fast failure as success.
  */
 async function measureRender(page, model) {
   return page.evaluate(
@@ -156,11 +153,11 @@ async function measureRender(page, model) {
 }
 
 /**
- * 2 つのモデルを **交互に** 測って、それぞれの中央値と比率を返す。
+ * Measure two models **alternately**, returning each median and their ratio.
  *
- * 別々に測ると、測っている間の CPU 周波数・JIT の状態・他プロセスの負荷が
- * 2 つの計測でずれ、比率にそのまま乗る（実測で同じコードが 24 ms と 111 ms に
- * 振れた）。交互に測れば、その手のドリフトは両方に等しく乗るので比率から消える。
+ * Separate measurements let CPU frequency, JIT state, and other-process load drift between the two
+ * batches and directly affect the ratio (the same code was observed varying from 24 ms to 111 ms).
+ * Alternating applies this drift equally and removes it from the ratio.
  */
 async function measureScaling(page, smallModel, largeModel) {
   return page.evaluate(
@@ -215,8 +212,8 @@ async function measureScaling(page, smallModel, largeModel) {
 let harness;
 
 test.beforeAll(async () => {
-  // このデッキの中身は測定に使わない（測定対象はページ内で組み立てる）。
-  // renderer を読み込んでモジュールを解決できる状態にするためだけのもの。
+  // This deck is not measured; measurement targets are built inside the page. It exists only to
+  // load the renderer and make the module resolvable.
   harness = await startHarness({
     slides: [`## Perf\n\n\`\`\`architecture\n${JSON.stringify(nodesOnly(2))}\n\`\`\`\n`],
   });
@@ -231,56 +228,56 @@ test.beforeEach(async ({ page }) => {
   await page.waitForFunction(() => !document.body.classList.contains("mermaid-loading"));
 });
 
-test.describe("Architecture の描画コスト", () => {
-  test("DSL が受け付ける最大サイズの図が描画バジェット内に収まる", async ({ page }) => {
+test.describe("Architecture rendering cost", () => {
+  test("the largest diagram accepted by the DSL stays within the rendering budget", async ({ page }) => {
     const nodes = await measureRender(page, nodesOnly(MAX_ELEMENTS));
     const routed = await measureRender(page, nodesAndCrossingConnectors(MAX_ELEMENTS / 2));
 
-    // 実測値をログに残す。バジェットは開発機の実測から決めているので、
-    // 実行環境ごとの値が記録に残っていないと、後でバジェットを調整するときに
-    // 「締めすぎたのか、本当に遅くなったのか」が判別できない。
+    // Log measurements. The budget is based on development-machine measurements, so recording each
+    // environment's values is necessary to tell whether a future adjustment is correcting an overly
+    // strict budget or masking a real slowdown.
     console.log(
-      `[perf] ノード ${MAX_ELEMENTS} = ${nodes.perRun.toFixed(2)}ms / ` +
-        `交差コネクター入り = ${routed.perRun.toFixed(2)}ms（上限 ${RENDER_BUDGET_MS}ms）`,
+      `[perf] ${MAX_ELEMENTS} nodes = ${nodes.perRun.toFixed(2)}ms / ` +
+        `with crossing connectors = ${routed.perRun.toFixed(2)}ms (limit ${RENDER_BUDGET_MS}ms)`,
     );
 
-    // まず「本当に最大サイズの図が描けている」ことを確認する。
-    // MAX_ELEMENTS を 1 でも超えるとパーサーがエラー表示に落ち、描画コストが
-    // ほぼゼロになる。速さを成功と読み違えないための門。
-    expect(nodes.rendered, "ノードだけの図が描画されていない").toBe(true);
-    expect(routed.rendered, "コネクター入りの図が描画されていない").toBe(true);
+    // First verify that the maximum-size diagrams actually rendered. Exceeding MAX_ELEMENTS by even
+    // one produces a parser error display and near-zero render cost. This gate prevents treating
+    // fast failure as success.
+    expect(nodes.rendered, "the node-only diagram was not rendered").toBe(true);
+    expect(routed.rendered, "the diagram with connectors was not rendered").toBe(true);
     expect(nodes.elementCount).toBe(MAX_ELEMENTS);
     expect(routed.elementCount).toBe(MAX_ELEMENTS);
 
     expect(
       nodes.perRun,
-      `ノード ${MAX_ELEMENTS} 個の描画が ${nodes.perRun.toFixed(1)}ms（実測基準 ~8ms）`,
+      `rendering ${MAX_ELEMENTS} nodes took ${nodes.perRun.toFixed(1)}ms (measured baseline ~8ms)`,
     ).toBeLessThan(RENDER_BUDGET_MS);
     expect(
       routed.perRun,
-      `交差コネクター入りの描画が ${routed.perRun.toFixed(1)}ms（実測基準 ~9ms）`,
+      `rendering with crossing connectors took ${routed.perRun.toFixed(1)}ms (measured baseline ~9ms)`,
     ).toBeLessThan(RENDER_BUDGET_MS);
   });
 
-  test("要素数に対して描画コストが二乗に転ばない", async ({ page }) => {
+  test("rendering cost does not become quadratic with element count", async ({ page }) => {
     const { small, large } = await measureScaling(page, nodesOnly(25), nodesOnly(MAX_ELEMENTS));
 
     expect(small.rendered).toBe(true);
     expect(large.rendered).toBe(true);
     expect(small.elementCount).toBe(25);
     expect(large.elementCount).toBe(MAX_ELEMENTS);
-    // 割り算する前に、分母がタイマー分解能に埋もれていないことを確かめる。
-    // ここが 0 に近いと比率がいくらでも大きく／小さく振れて意味を失う。
-    expect(small.perRun, "小さい図の計測が速すぎて比率を取れない").toBeGreaterThan(0.05);
+    // Before dividing, verify that the denominator is above timer resolution. A value near zero
+    // would make the ratio fluctuate arbitrarily and become meaningless.
+    expect(small.perRun, "the small diagram rendered too quickly to calculate a ratio").toBeGreaterThan(0.05);
 
     const ratio = large.perRun / small.perRun;
     console.log(
-      `[perf] 25 要素 = ${small.perRun.toFixed(2)}ms / ${MAX_ELEMENTS} 要素 = ${large.perRun.toFixed(2)}ms / ` +
-        `比 ${ratio.toFixed(2)}（上限 ${SCALING_BUDGET}）`,
+      `[perf] 25 elements = ${small.perRun.toFixed(2)}ms / ${MAX_ELEMENTS} elements = ${large.perRun.toFixed(2)}ms / ` +
+        `ratio ${ratio.toFixed(2)} (limit ${SCALING_BUDGET})`,
     );
     expect(
       ratio,
-      `要素数 8 倍でコストが ${ratio.toFixed(1)} 倍（線形なら 8 倍、二乗なら 64 倍、実測 7〜8 倍）`,
+      `8x as many elements cost ${ratio.toFixed(1)}x (linear: 8x; quadratic: 64x; measured: 7–8x)`,
     ).toBeLessThan(SCALING_BUDGET);
   });
 });

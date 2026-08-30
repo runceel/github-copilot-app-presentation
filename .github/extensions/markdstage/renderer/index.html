@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <!--
+    THESIS: Markdown moves directly into a live presentation; the interface refuses generic slide-software chrome.
+    OWN-WORLD: Midnight Ink surfaces, Spotlight Amber action states, crisp Paper text, and a single illuminated # mark.
+    STORY: Open Markdown, see it staged instantly, then present or export without changing source formats.
+    FIRST VIEWPORT: A left-aligned promise faces an oversized # inside an angled spotlight; the Markdown picker is the only primary action.
+    FORM: A focused backstage control surface that recedes once the deck begins.
+  -->
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0B1020">
+  <title>MarkdStage</title>
+  <link rel="stylesheet" href="./renderer/slides.css">
+</head>
+<body class="mermaid-loading" tabindex="-1">
+  <div id="stage"></div>
+
+  <!-- In-canvas navigation controls (persist across slide re-renders). -->
+  <nav id="nav" class="nav" hidden aria-label="Slide controls">
+    <button id="navPrev" class="nav-btn" type="button" title="Previous (←)" aria-label="Previous slide">&#9664;</button>
+    <span id="navCounter" class="nav-counter" aria-live="polite"></span>
+    <button id="navNext" class="nav-btn" type="button" title="Next (→)" aria-label="Next slide">&#9654;</button>
+    <button id="navEdit" class="nav-btn" type="button" title="Shape editing mode" aria-label="Shape editing mode">&#x270E;</button>
+    <button id="navPresent" class="nav-btn" type="button" title="Open in external window (F11 for full screen)" aria-label="Open in external window">&#x26F6;</button>
+    <button id="navPresenterView" class="nav-btn" type="button" title="Presenter view" aria-label="Presenter view">&#128100;</button>
+    <button id="navExport" class="nav-btn" type="button" title="Save as PDF" aria-label="Save as PDF">&#128438;</button>
+    <button id="navImport" class="nav-btn" type="button" title="Load Markdown (I)" aria-label="Load Markdown">&#128193;</button>
+    <button id="navSourceMode" class="nav-btn" type="button" title="Automatically refresh when Markdown is saved" aria-label="Automatically refresh when Markdown is saved" hidden>&#8635;</button>
+    <button id="navList" class="nav-btn" type="button" title="Slide list (O)" aria-label="Slide list">&#9776;</button>
+    <span id="presentStatus" class="sr-only" aria-live="polite"></span>
+    <span id="exportStatus" class="sr-only" aria-live="polite"></span>
+    <span id="sourceStatus" class="sr-only" aria-live="polite"></span>
+  </nav>
+
+  <section id="presenterView" class="presenter-view" hidden aria-label="Presenter view">
+    <header class="presenter-view-head">
+      <h1>Presenter view</h1>
+      <button id="presenterReturnButton" class="presenter-button" type="button">Return to slide view</button>
+    </header>
+    <div class="presenter-previews">
+      <section class="presenter-preview presenter-preview-current" aria-labelledby="presenterCurrentLabel">
+        <h2 id="presenterCurrentLabel">Current slide</h2>
+        <iframe id="presenterCurrent" class="presenter-frame" title="Current slide"></iframe>
+      </section>
+      <div class="presenter-sidebar">
+        <section class="presenter-preview" aria-labelledby="presenterNextLabel">
+          <h2 id="presenterNextLabel">Next slide</h2>
+          <iframe id="presenterNext" class="presenter-frame" title="Next slide"></iframe>
+          <p id="presenterNextEmpty" class="presenter-next-empty" hidden>There is no next slide</p>
+        </section>
+        <section class="presenter-notes" aria-labelledby="presenterNotesLabel">
+          <h2 id="presenterNotesLabel">Speaker notes</h2>
+          <div id="presenterNotes" class="presenter-notes-body" tabindex="0" aria-live="polite"></div>
+          <p id="presenterNotesEmpty" class="presenter-notes-empty">No speaker notes</p>
+        </section>
+      </div>
+    </div>
+    <footer class="presenter-controls" aria-label="Presenter view controls">
+      <button id="presenterPrevButton" class="presenter-button" type="button">Previous</button>
+      <span id="presenterCounter" class="presenter-counter" aria-live="polite"></span>
+      <button id="presenterNextButton" class="presenter-button" type="button">Next</button>
+      <button id="presenterListButton" class="presenter-button" type="button">Slide list</button>
+      <button id="presenterToggleButton" class="presenter-button presenter-toggle" type="button">Start presentation</button>
+    </footer>
+  </section>
+
+  <!-- Slide-list overview overlay, toggled from the control bar / keyboard. -->
+  <div id="overview" class="overview" hidden>
+    <div class="overview-panel" role="dialog" aria-modal="true" aria-label="Slide list">
+      <div class="overview-head">
+        <span>Slide list</span>
+        <button id="overviewClose" class="nav-btn" type="button" title="Close (Esc)" aria-label="Close">&#10005;</button>
+      </div>
+      <ol id="overviewList" class="overview-list"></ol>
+    </div>
+  </div>
+
+  <!-- Markdown import overlay: pick a *.md from the workspace and show it. -->
+  <div id="importPicker" class="overview" hidden>
+    <div class="overview-panel" role="dialog" aria-modal="true" aria-label="Load Markdown">
+      <div class="overview-head">
+        <span>Load Markdown</span>
+        <button id="importClose" class="nav-btn" type="button" title="Close (Esc)" aria-label="Close">&#10005;</button>
+      </div>
+      <fieldset class="import-mode">
+        <legend>Refresh display on save</legend>
+        <label><input id="importModeSnapshot" type="radio" name="importMode" value="snapshot" checked> Keep loaded snapshot</label>
+        <label><input type="radio" name="importMode" value="live"> Refresh automatically on save</label>
+      </fieldset>
+      <input id="importFilter" class="import-filter" type="search" placeholder="Filter by file name" aria-label="Filter by file name" autocomplete="off">
+      <p id="importMessage" class="import-message" role="status" aria-live="polite"></p>
+      <ol id="importList" class="overview-list"></ol>
+    </div>
+  </div>
+
+  <script src="./vendor/marked.min.js"></script>
+  <script src="./vendor/purify.min.js"></script>
+  <script src="./vendor/highlight.min.js"></script>
+  <script src="./vendor/mermaid.min.js"></script>
+  <script type="module" src="./renderer/renderer.js"></script>
+</body>
+</html>

@@ -1,34 +1,34 @@
 ---
-title: インポート用サンプル
+title: Import sample
 theme: dark
 layout: title
 ---
 
-# インポートのテスト
+# Import test
 
-Markdown をそのまま読み込むための素のソース。
-
----
-
-## 2 枚目
-
-- 区切りだけで分かれる
-- デッキ front matter を継承する
-
----
-kicker: ページ front matter
----
-
-## 3 枚目
-
-ページごとの front matter が効く。
+Raw source for importing Markdown directly.
 
 ---
 
-## コードフェンス
+## Second slide
+
+- Splits on separators alone
+- Inherits deck front matter
+
+---
+kicker: Page front matter
+---
+
+## Third slide
+
+Per-slide front matter takes effect.
+
+---
+
+## Code fence
 
 ```text
 ---
-これは区切りではない
+This is not a separator
 ---
 ```
