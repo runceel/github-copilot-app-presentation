@@ -1,16 +1,36 @@
 <p align="center">
-  <img src="./assets/brand/markdstage-banner.svg" alt="MarkdStage — Markdown, ready for the stage." width="100%">
+  <a href="https://github.com/runceel/markdstage">
+    <img src="./assets/brand/markdstage-banner.svg" alt="MarkdStage - Markdown, ready for the stage." width="100%">
+  </a>
 </p>
 
-# MarkdStage
+<h1 align="center">MarkdStage</h1>
 
-**Markdown, ready for the stage.**
+<p align="center">
+  <strong>Markdown, ready for the stage.</strong>
+</p>
 
-MarkdStage is an open-source presentation tool that displays Markdown directly as slides and
-supports editing, presenting, external-display synchronization, and PDF export. Its native GitHub
-Copilot canvas Extension and standalone Windows desktop app share the same renderer.
+<p align="center">
+  <a href="https://github.com/runceel/markdstage/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/runceel/markdstage/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="./LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-FFB547?labelColor=0B1020"></a>
+  <img alt="Source format: Markdown" src="https://img.shields.io/badge/source-Markdown-F7F4ED?labelColor=0B1020">
+  <img alt="Windows: x64 and ARM64" src="https://img.shields.io/badge/Windows-x64%20%7C%20ARM64-F7F4ED?labelColor=0B1020">
+</p>
 
-## What matters to MarkdStage
+<p align="center">
+  <a href="#use-the-canvas-extension">Canvas Extension</a> |
+  <a href="#use-markdstage-desktop">Desktop</a> |
+  <a href="#markdown-format">Markdown format</a> |
+  <a href="#documentation">Documentation</a> |
+  <a href="https://github.com/runceel/markdstage/releases">Releases</a>
+</p>
+
+MarkdStage is an open-source presentation tool that turns Markdown directly into polished slides,
+with editing, synchronized presenting, speaker notes, and PDF export. Its native GitHub Copilot
+canvas Extension and standalone Windows app share one renderer, so authors can keep Markdown as
+the source of truth from the first draft to the stage.
+
+## Why MarkdStage
 
 - **Markdown is the source**: Keep `.md` as the source of truth instead of moving to a proprietary format
 - **Write, then present immediately**: Open a file in the canvas or Desktop and it becomes a slide deck
