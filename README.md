@@ -48,14 +48,16 @@ the source of truth from the first draft to the stage.
 ## Use the canvas Extension
 
 When you open this repository as a project, `.github/extensions/markdstage/` loads at project
-scope. To use it in another repository, ask GitHub Copilot:
+scope. To install the current **[v2.0.0 release](https://github.com/runceel/markdstage/releases/tag/v2.0.0)**
+at user scope in another repository, ask GitHub Copilot:
 
 > Install MarkdStage at user scope from the following GitHub repository folder.
 >
-> `https://github.com/runceel/markdstage/tree/main/.github/extensions/markdstage`
+> `https://github.com/runceel/markdstage/tree/v2.0.0/.github/extensions/markdstage`
 
 The Extension runs local code in the user's environment. Review its contents before installation,
-and specify a trusted release tag or commit SHA for a reproducible install.
+and use a trusted release tag or commit SHA for a reproducible install. The `main` branch tracks
+the latest development version.
 
 ### Minimal workflow
 
@@ -76,12 +78,11 @@ canvasId: MarkdStage
 from a file picker. It displays the current and next slides with the current slide's speaker notes,
 and launches a synchronized native presentation window.
 
-Releases include the following portable artifacts for Windows x64 and ARM64:
+The current **[v2.0.0 release](https://github.com/runceel/markdstage/releases/tag/v2.0.0)**
+includes portable builds and SHA-256 checksum files for Windows x64 and ARM64:
 
-```text
-MarkdStage-win-x64.zip
-MarkdStage-win-arm64.zip
-```
+- [MarkdStage-win-x64.zip](https://github.com/runceel/markdstage/releases/download/v2.0.0/MarkdStage-win-x64.zip)
+- [MarkdStage-win-arm64.zip](https://github.com/runceel/markdstage/releases/download/v2.0.0/MarkdStage-win-arm64.zip)
 
 ## Markdown format
 
@@ -116,7 +117,7 @@ they appear only in presenter view.
 | `assets/brand/` | MarkdStage logo, lockup, and README banner |
 | `slides.md` | Sample deck that demonstrates the features |
 
-## Breaking changes in v2
+## Breaking changes in v2.0.0
 
 The MarkdStage migration does not provide compatibility aliases for the former brand.
 
