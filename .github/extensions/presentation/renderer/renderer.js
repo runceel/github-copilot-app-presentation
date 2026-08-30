@@ -88,6 +88,7 @@ let architectureDetailedEdit = false;
 let presenterMode = false;
 let previewMode = false;
 let previewOffset = 0;
+let navigationEnabled = true;
 // 直近に描画したスライドの Markdown。編集モードの切り替えで描き直すために持つ。
 let lastMarkdown = "";
 // 描画中のスライドに取り付けた編集 UI。再描画のたびに破棄する。
@@ -1025,7 +1026,7 @@ async function fetchState() {
 // Server-authoritative: every nav action POSTs to /navigate, then immediately
 // re-fetches /state for an instant update (without waiting for the SSE nudge).
 async function navigate(payload) {
-  if (previewMode) return;
+  if (!navigationEnabled) return;
   try {
     const res = await fetch("./navigate", {
       method: "POST",
@@ -1336,7 +1337,9 @@ function isSlideWhitespaceTarget(target) {
   if (
     target.closest(
       "#nav, #overview, button, a, input, textarea, select, video, iframe, " +
-        ".deck > header, .deck > footer, .deck > .backcover-logo, .deck > .backcover-copyright, " +
+        ".deck > header > *, .deck > footer > *, " +
+        ".deck > .theme-cover-logo, " +
+        ".deck > .theme-backcover-logo, .deck > .theme-backcover-copyright, " +
         ".body > *",
     )
   ) {
@@ -1346,6 +1349,85 @@ function isSlideWhitespaceTarget(target) {
 }
 
 // --- input wiring ----------------------------------------------------------
+function wirePointerNavigation() {
+  document.addEventListener("click", (e) => {
+    if (
+      e.defaultPrevented ||
+      e.button !== 0 ||
+      e.ctrlKey ||
+      e.metaKey ||
+      e.altKey ||
+      e.shiftKey ||
+      !isSlideWhitespaceTarget(e.target)
+    ) {
+      return;
+    }
+    goNext();
+  });
+
+  document.addEventListener("contextmenu", (e) => {
+    if (
+      e.defaultPrevented ||
+      e.ctrlKey ||
+      e.metaKey ||
+      e.altKey ||
+      e.shiftKey ||
+      !isSlideWhitespaceTarget(e.target)
+    ) {
+      return;
+    }
+    e.preventDefault();
+    goPrev();
+  });
+}
+
+function handleSlideNavigationKey(e) {
+  const target = e.target;
+  if (
+    target &&
+    (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+  ) {
+    return false;
+  }
+
+  const onButton = !!(
+    target &&
+    (target.tagName === "BUTTON" || target.getAttribute?.("role") === "button")
+  );
+  switch (e.key) {
+    case " ":
+    case "Spacebar":
+      if (onButton) return false;
+      goNext();
+      break;
+    case "ArrowRight":
+    case "PageDown":
+      goNext();
+      break;
+    case "ArrowLeft":
+    case "PageUp":
+      goPrev();
+      break;
+    case "Home":
+      navigate({ index: 0 });
+      break;
+    case "End":
+      if (navTotal > 0) navigate({ index: navTotal - 1 });
+      break;
+    default:
+      return false;
+  }
+  e.preventDefault();
+  return true;
+}
+
+function wirePreviewKeyboardNavigation() {
+  document.addEventListener("keydown", (e) => {
+    if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+    handleSlideNavigationKey(e);
+  });
+}
+
 function wireControls() {
   const bind = (id, fn) => {
     const el = document.getElementById(id);
@@ -1387,35 +1469,7 @@ function wireControls() {
     });
   }
 
-  document.addEventListener("click", (e) => {
-    if (
-      e.defaultPrevented ||
-      e.button !== 0 ||
-      e.ctrlKey ||
-      e.metaKey ||
-      e.altKey ||
-      e.shiftKey ||
-      !isSlideWhitespaceTarget(e.target)
-    ) {
-      return;
-    }
-    goNext();
-  });
-
-  document.addEventListener("contextmenu", (e) => {
-    if (
-      e.defaultPrevented ||
-      e.ctrlKey ||
-      e.metaKey ||
-      e.altKey ||
-      e.shiftKey ||
-      !isSlideWhitespaceTarget(e.target)
-    ) {
-      return;
-    }
-    e.preventDefault();
-    goPrev();
-  });
+  wirePointerNavigation();
 
   // The iframe must be focused to receive key events; grab focus up front and
   // whenever the user interacts with it.
@@ -1437,35 +1491,9 @@ function wireControls() {
       e.preventDefault();
       return;
     }
+    if (handleSlideNavigationKey(e)) return;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
-    // When a button (◀ ▶ ☰ ✕ or an overview link) has focus, let the browser's
-    // native Space/Enter activation run instead of hijacking it for "next".
-    const onButton = !!(t && (t.tagName === "BUTTON" || t.getAttribute?.("role") === "button"));
     switch (e.key) {
-      case " ":
-      case "Spacebar":
-        if (onButton) break;
-        goNext();
-        e.preventDefault();
-        break;
-      case "ArrowRight":
-      case "PageDown":
-        goNext();
-        e.preventDefault();
-        break;
-      case "ArrowLeft":
-      case "PageUp":
-        goPrev();
-        e.preventDefault();
-        break;
-      case "Home":
-        navigate({ index: 0 });
-        e.preventDefault();
-        break;
-      case "End":
-        if (navTotal > 0) navigate({ index: navTotal - 1 });
-        e.preventDefault();
-        break;
       case "o":
       case "O":
         toggleOverview();
@@ -1526,6 +1554,7 @@ function init() {
     previewMode = true;
     presenterMode = true;
     previewOffset = Math.max(-1, Math.min(1, Number(params.get("offset")) || 0));
+    navigationEnabled = params.get("navigate") === "1" && previewOffset === 0;
     document.body.classList.add("presenter-mode", "preview-mode");
   } else if (params.get("present") === "1") {
     presenterMode = true;
@@ -1541,6 +1570,10 @@ function init() {
 
   updateArchitectureEditButton();
   if (!previewMode) wireControls();
+  else if (navigationEnabled) {
+    wirePointerNavigation();
+    wirePreviewKeyboardNavigation();
+  }
   window.addEventListener("resize", scheduleLayoutRefresh);
   if (document.fonts?.ready) {
     document.fonts.ready.then(scheduleLayoutRefresh).catch(() => {});
