@@ -17,7 +17,11 @@ internal sealed class PresentationServer(
     PresentationSession session,
     Func<bool> presenterRunning) : IAsyncDisposable
 {
+    private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(2);
+
     private readonly string _token = Guid.NewGuid().ToString("N");
+    private readonly CancellationTokenSource _shutdown = new();
+    private readonly SemaphoreSlim _lifecycleGate = new(1, 1);
     private WebApplication? _application;
     private string _webRoot = string.Empty;
     private VendorAssetProvider? _vendorAssets;
@@ -26,55 +30,92 @@ internal sealed class PresentationServer(
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
-        if (_application is not null)
+        using var startup = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _shutdown.Token);
+        await _lifecycleGate.WaitAsync(startup.Token);
+        WebApplication? application = null;
+        try
         {
-            return;
+            if (_application is not null)
+            {
+                return;
+            }
+
+            _webRoot = Path.Combine(AppContext.BaseDirectory, "Web");
+            if (!File.Exists(Path.Combine(_webRoot, "index.html")))
+            {
+                throw new InvalidOperationException("Presentation renderer assets are missing.");
+            }
+
+            _vendorAssets = new VendorAssetProvider(_webRoot);
+            _ = await _vendorAssets.GetMermaidAsync(startup.Token);
+
+            var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
+            {
+                ApplicationName = typeof(PresentationServer).Assembly.FullName,
+                ContentRootPath = AppContext.BaseDirectory,
+            });
+            builder.Logging.ClearProviders();
+            builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
+
+            application = builder.Build();
+            MapRoutes(application);
+            await application.StartAsync(startup.Token);
+
+            var addresses = application.Services
+                .GetRequiredService<IServer>()
+                .Features
+                .Get<IServerAddressesFeature>()?
+                .Addresses;
+            var address = addresses?.SingleOrDefault()
+                ?? throw new InvalidOperationException("Presentation server did not expose an address.");
+
+            startup.Token.ThrowIfCancellationRequested();
+            BaseUri = new Uri($"{address.TrimEnd('/')}/{_token}/", UriKind.Absolute);
+            _application = application;
+            application = null;
         }
-
-        _webRoot = Path.Combine(AppContext.BaseDirectory, "Web");
-        if (!File.Exists(Path.Combine(_webRoot, "index.html")))
+        finally
         {
-            throw new InvalidOperationException("Presentation renderer assets are missing.");
+            if (application is not null)
+            {
+                await application.DisposeAsync();
+            }
+            _lifecycleGate.Release();
         }
-
-        _vendorAssets = new VendorAssetProvider(_webRoot);
-        _ = await _vendorAssets.GetMermaidAsync(cancellationToken);
-
-        var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
-        {
-            ApplicationName = typeof(PresentationServer).Assembly.FullName,
-            ContentRootPath = AppContext.BaseDirectory,
-        });
-        builder.Logging.ClearProviders();
-        builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
-
-        var application = builder.Build();
-        MapRoutes(application);
-        await application.StartAsync(cancellationToken);
-
-        var addresses = application.Services
-            .GetRequiredService<IServer>()
-            .Features
-            .Get<IServerAddressesFeature>()?
-            .Addresses;
-        var address = addresses?.SingleOrDefault()
-            ?? throw new InvalidOperationException("Presentation server did not expose an address.");
-
-        BaseUri = new Uri($"{address.TrimEnd('/')}/{_token}/", UriKind.Absolute);
-        _application = application;
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (_application is null)
+        _shutdown.Cancel();
+        await _lifecycleGate.WaitAsync();
+        WebApplication? application;
+        try
+        {
+            application = _application;
+            _application = null;
+            BaseUri = null;
+        }
+        finally
+        {
+            _lifecycleGate.Release();
+        }
+
+        if (application is null)
         {
             return;
         }
 
-        await _application.StopAsync();
-        await _application.DisposeAsync();
-        _application = null;
-        BaseUri = null;
+        using var timeout = new CancellationTokenSource(ShutdownTimeout);
+        try
+        {
+            await application.StopAsync(timeout.Token);
+            await application.DisposeAsync().AsTask().WaitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+        {
+        }
     }
 
     private void MapRoutes(WebApplication application)
@@ -224,18 +265,21 @@ internal sealed class PresentationServer(
             EventHandler<PresentationSnapshot> handler = (_, snapshot) =>
                 channel.Writer.TryWrite(snapshot.Version);
             session.Changed += handler;
+            using var lifetime = CancellationTokenSource.CreateLinkedTokenSource(
+                context.RequestAborted,
+                _shutdown.Token);
 
             try
             {
-                await foreach (var version in channel.Reader.ReadAllAsync(context.RequestAborted))
+                await foreach (var version in channel.Reader.ReadAllAsync(lifetime.Token))
                 {
                     await context.Response.WriteAsync(
                         $"data: {version}\n\n",
-                        context.RequestAborted);
-                    await context.Response.Body.FlushAsync(context.RequestAborted);
+                        lifetime.Token);
+                    await context.Response.Body.FlushAsync(lifetime.Token);
                 }
             }
-            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
             {
             }
             finally

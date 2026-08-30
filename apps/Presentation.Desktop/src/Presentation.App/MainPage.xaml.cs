@@ -15,6 +15,7 @@ public sealed partial class MainPage : Page
 {
     private readonly PresenterWindowService _presenterWindowService;
     private CoreWebView2Environment? _webViewEnvironment;
+    private bool _shutdownStarted;
 
     public MainPageViewModel ViewModel { get; }
 
@@ -23,7 +24,10 @@ public sealed partial class MainPage : Page
         InitializeComponent();
 
         var session = new PresentationSession();
-        _presenterWindowService = new PresenterWindowService();
+        _presenterWindowService = new PresenterWindowService(delta =>
+        {
+            session.NavigateBy(delta);
+        });
         var server = new PresentationServer(session, () => _presenterWindowService.IsRunning);
         ViewModel = new MainPageViewModel(
             session,
@@ -48,7 +52,16 @@ public sealed partial class MainPage : Page
 
     public async ValueTask ShutdownAsync()
     {
+        if (_shutdownStarted)
+        {
+            return;
+        }
+
+        _shutdownStarted = true;
+        Loaded -= OnLoaded;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        CurrentSlideWebView.Close();
+        NextSlideWebView.Close();
         await ViewModel.DisposeAsync();
     }
 
@@ -58,6 +71,11 @@ public sealed partial class MainPage : Page
         try
         {
             await ViewModel.InitializeAsync();
+            if (_shutdownStarted)
+            {
+                return;
+            }
+
             var userDataFolder = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "PresentationApp",
@@ -68,6 +86,11 @@ public sealed partial class MainPage : Page
                 userDataFolder,
                 EnvironmentVariableTarget.Process);
             _webViewEnvironment = await CoreWebView2Environment.CreateAsync();
+            if (_shutdownStarted)
+            {
+                return;
+            }
+
             _presenterWindowService.SetEnvironment(_webViewEnvironment);
             await InitializeWebViewAsync(
                 CurrentSlideWebView,
@@ -82,9 +105,17 @@ public sealed partial class MainPage : Page
         catch (Exception error) when (
             error is InvalidOperationException or COMException or IOException)
         {
+            if (_shutdownStarted)
+            {
+                return;
+            }
+
             ViewModel.IsErrorOpen = true;
             ViewModel.ErrorMessage =
                 "Microsoft Edge WebView2 Runtime を初期化できませんでした。Runtime と保存先の権限を確認してください。";
+        }
+        catch (OperationCanceledException) when (_shutdownStarted)
+        {
         }
     }
 
@@ -96,6 +127,12 @@ public sealed partial class MainPage : Page
         try
         {
             await webView.EnsureCoreWebView2Async(environment);
+            if (_shutdownStarted)
+            {
+                webView.Close();
+                return;
+            }
+
             WebViewPolicy.Configure(webView, () => ViewModel.CurrentPreviewUri);
             if (source is not null)
             {
@@ -105,6 +142,11 @@ public sealed partial class MainPage : Page
         catch (Exception error) when (
             error is InvalidOperationException or COMException)
         {
+            if (_shutdownStarted)
+            {
+                return;
+            }
+
             ViewModel.IsErrorOpen = true;
             ViewModel.ErrorMessage =
                 "Microsoft Edge WebView2 Runtime が必要です。Runtime をインストールして再起動してください。";

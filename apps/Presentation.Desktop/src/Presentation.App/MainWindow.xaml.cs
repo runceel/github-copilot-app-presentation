@@ -35,6 +35,7 @@ public sealed partial class MainWindow : Window
         }
 
         _shutdownStarted = true;
+        AppWindow.Hide();
         try
         {
             if (RootFrame.Content is MainPage page)

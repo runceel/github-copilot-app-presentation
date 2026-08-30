@@ -17,13 +17,16 @@ public sealed partial class PresenterWindow : Window
 {
     private const int InitialWidthDip = 1280;
     private const int InitialHeightDip = 720;
+    private static readonly TimeSpan NavigationTimeout = TimeSpan.FromSeconds(10);
 
     private readonly CoreWebView2Environment _environment;
     private readonly Uri _presenterUri;
     private readonly nint _windowHandle;
+    private readonly CancellationTokenSource _lifetime = new();
     private CoreWebView2Controller? _controller;
+    private Task? _initializationTask;
     private bool _closed;
-    private bool _isFullScreen;
+    private bool _fullScreenRequestQueued;
 
     /// <summary>
     /// Raised when the WebView2 could not be initialized (for example, the WebView2 Runtime is
@@ -41,10 +44,12 @@ public sealed partial class PresenterWindow : Window
         AppWindow.SetIcon("Assets/AppIcon.ico");
         WindowSizing.ResizeToDips(AppWindow, InitialWidthDip, InitialHeightDip);
         AppWindow.Changed += OnAppWindowChanged;
+        Activated += OnActivated;
         Closed += OnClosed;
-
-        _ = InitializeWebViewAsync();
     }
+
+    public Task InitializeAsync() =>
+        _initializationTask ??= InitializeWebViewAsync();
 
     private async Task InitializeWebViewAsync()
     {
@@ -63,24 +68,56 @@ public sealed partial class PresenterWindow : Window
             _controller = controller;
             controller.AcceleratorKeyPressed += OnAcceleratorKeyPressed;
             controller.DefaultBackgroundColor = Color.FromArgb(255, 0, 0, 0);
-            ResizeWebView();
+            UpdateControllerBounds();
 
+            // This host creates the initialized Win32 controller directly; WUI4001 only recognizes
+            // the XAML WebView2 EnsureCoreWebView2Async initialization pattern.
+#pragma warning disable WUI4001
             var webView = controller.CoreWebView2;
+#pragma warning restore WUI4001
             WebViewPolicy.Configure(webView, () => _presenterUri);
             webView.ProcessFailed += OnProcessFailed;
-            webView.Navigate(_presenterUri.AbsoluteUri);
+            var navigationCompleted =
+                new TaskCompletionSource<CoreWebView2NavigationCompletedEventArgs>(
+                    TaskCreationOptions.RunContinuationsAsynchronously);
+            void OnNavigationCompleted(
+                CoreWebView2 sender,
+                CoreWebView2NavigationCompletedEventArgs args) =>
+                navigationCompleted.TrySetResult(args);
+
+            webView.NavigationCompleted += OnNavigationCompleted;
             controller.IsVisible = true;
+            webView.Navigate(_presenterUri.AbsoluteUri);
+            CoreWebView2NavigationCompletedEventArgs navigation;
+            try
+            {
+                navigation = await navigationCompleted.Task.WaitAsync(
+                    NavigationTimeout,
+                    _lifetime.Token);
+            }
+            finally
+            {
+                webView.NavigationCompleted -= OnNavigationCompleted;
+            }
+
+            if (!navigation.IsSuccess)
+            {
+                throw new InvalidOperationException(
+                    $"The presentation renderer failed to load ({navigation.WebErrorStatus}).");
+            }
+
+            UpdateControllerBounds();
             controller.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
         }
-        catch (Exception error) when (
-            error is InvalidOperationException or COMException)
+        catch (OperationCanceledException) when (_closed)
         {
-            if (!_closed)
-            {
-                WebViewInitializationFailed?.Invoke(
-                    this,
-                    "Microsoft Edge WebView2 Runtime が必要です。Runtime をインストールして再起動してください。");
-            }
+        }
+        catch (Exception error) when (
+            error is InvalidOperationException or COMException or TimeoutException)
+        {
+            throw new InvalidOperationException(
+                "Microsoft Edge WebView2 Runtime を初期化できませんでした。Runtime を確認して発表画面を開き直してください。",
+                error);
         }
     }
 
@@ -97,23 +134,62 @@ public sealed partial class PresenterWindow : Window
 
         if (args.VirtualKey == (uint)VirtualKey.F11)
         {
-            SetFullScreen(!_isFullScreen);
             args.Handled = true;
+            if (args.PhysicalKeyStatus.WasKeyDown == 0)
+            {
+                QueueFullScreenChange(!IsFullScreen);
+            }
         }
-        else if (args.VirtualKey == (uint)VirtualKey.Escape && _isFullScreen)
+        else if (args.VirtualKey == (uint)VirtualKey.Escape && IsFullScreen)
         {
-            SetFullScreen(false);
             args.Handled = true;
+            if (args.PhysicalKeyStatus.WasKeyDown == 0)
+            {
+                QueueFullScreenChange(false);
+            }
         }
     }
 
-    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    private void OnHostKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs args)
     {
-        if (args.DidSizeChange)
+        if (args.Key == VirtualKey.F11)
         {
-            ResizeWebView();
+            args.Handled = true;
+            if (!args.KeyStatus.WasKeyDown)
+            {
+                QueueFullScreenChange(!IsFullScreen);
+            }
+        }
+        else if (args.Key == VirtualKey.Escape && IsFullScreen)
+        {
+            args.Handled = true;
+            if (!args.KeyStatus.WasKeyDown)
+            {
+                QueueFullScreenChange(false);
+            }
         }
     }
+
+    private void OnActivated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState == WindowActivationState.Deactivated)
+        {
+            return;
+        }
+
+        UpdateControllerBounds();
+        if (_controller is null)
+        {
+            WebViewHost.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+        }
+        else
+        {
+            _controller.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
+        }
+    }
+
+    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args) =>
+        UpdateControllerBounds();
 
     private void OnProcessFailed(CoreWebView2 sender, CoreWebView2ProcessFailedEventArgs args) =>
         WebViewInitializationFailed?.Invoke(
@@ -123,7 +199,9 @@ public sealed partial class PresenterWindow : Window
     private void OnClosed(object sender, WindowEventArgs args)
     {
         _closed = true;
+        _lifetime.Cancel();
         Closed -= OnClosed;
+        Activated -= OnActivated;
         AppWindow.Changed -= OnAppWindowChanged;
         if (_controller is not null)
         {
@@ -132,9 +210,10 @@ public sealed partial class PresenterWindow : Window
             _controller.Close();
             _controller = null;
         }
+        _lifetime.Dispose();
     }
 
-    private void ResizeWebView()
+    private void UpdateControllerBounds()
     {
         if (_controller is null ||
             !GetClientRect(_windowHandle, out var clientRect))
@@ -147,19 +226,43 @@ public sealed partial class PresenterWindow : Window
             clientRect.Top,
             clientRect.Right - clientRect.Left,
             clientRect.Bottom - clientRect.Top);
+        _controller.NotifyParentWindowPositionChanged();
     }
 
-    private void SetFullScreen(bool enable)
+    private bool IsFullScreen =>
+        AppWindow.Presenter.Kind == AppWindowPresenterKind.FullScreen;
+
+    private void QueueFullScreenChange(bool enable)
     {
-        if (enable == _isFullScreen)
+        if (_closed || _fullScreenRequestQueued)
         {
             return;
         }
 
-        _isFullScreen = enable;
-        AppWindow.SetPresenter(
-            enable ? AppWindowPresenterKind.FullScreen : AppWindowPresenterKind.Default);
-        _controller?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
+        _fullScreenRequestQueued = true;
+        if (!DispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    if (!_closed && enable != IsFullScreen)
+                    {
+                        AppWindow.SetPresenter(
+                            enable
+                                ? AppWindowPresenterKind.FullScreen
+                                : AppWindowPresenterKind.Default);
+                    }
+
+                    UpdateControllerBounds();
+                    _controller?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
+                }
+                finally
+                {
+                    _fullScreenRequestQueued = false;
+                }
+            }))
+        {
+            _fullScreenRequestQueued = false;
+        }
     }
 
     [DllImport("user32.dll")]

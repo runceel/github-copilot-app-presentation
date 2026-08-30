@@ -45,6 +45,7 @@ $required = @(
     "Web\index.html",
     "Web\renderer\renderer.js",
     "Web\vendor\vendor-assets.lock.json",
+    "SurfacePen\pen-button-listener.ps1",
     "THIRD-PARTY-NOTICES.md"
 )
 foreach ($relative in $required) {

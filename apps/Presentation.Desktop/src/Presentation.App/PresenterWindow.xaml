@@ -17,5 +17,7 @@
     <Grid
         x:Name="WebViewHost"
         AutomationProperties.AutomationId="PresenterWebViewHost"
-        Background="Black" />
+        Background="Black"
+        IsTabStop="True"
+        KeyDown="OnHostKeyDown" />
 </Window>

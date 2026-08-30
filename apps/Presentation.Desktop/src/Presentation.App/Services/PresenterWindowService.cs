@@ -11,8 +11,14 @@ namespace PresentationApp.Services;
 /// </summary>
 internal sealed class PresenterWindowService : IAsyncDisposable
 {
+    private readonly SurfacePenListener _surfacePenListener;
     private CoreWebView2Environment? _environment;
     private PresenterWindow? _window;
+    private TaskCompletionSource<object?>? _windowClosed;
+    private Task _surfacePenStopTask = Task.CompletedTask;
+
+    public PresenterWindowService(Action<int> navigate) =>
+        _surfacePenListener = new SurfacePenListener(navigate);
 
     public event EventHandler? StatusChanged;
 
@@ -31,13 +37,15 @@ internal sealed class PresenterWindowService : IAsyncDisposable
     /// </summary>
     public void SetEnvironment(CoreWebView2Environment environment) => _environment = environment;
 
-    public Task OpenAsync(Uri baseUri)
+    public async Task OpenAsync(Uri baseUri)
     {
         if (IsRunning)
         {
-            return Task.CompletedTask;
+            return;
         }
 
+        await _surfacePenStopTask;
+        await _surfacePenListener.StopAsync();
         var environment = _environment
             ?? throw new InvalidOperationException(
                 "Microsoft Edge WebView2 Runtime is still initializing. Try again in a moment.");
@@ -47,19 +55,55 @@ internal sealed class PresenterWindowService : IAsyncDisposable
         window.Closed += OnWindowClosed;
         window.WebViewInitializationFailed += OnWebViewInitializationFailed;
         _window = window;
+        _windowClosed = new TaskCompletionSource<object?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         window.Activate();
 
-        StatusChanged?.Invoke(this, EventArgs.Empty);
-        return Task.CompletedTask;
+        try
+        {
+            await window.InitializeAsync();
+            if (!ReferenceEquals(window, _window))
+            {
+                return;
+            }
+
+            await _surfacePenListener.StartAsync();
+            StatusChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            await StopAsync();
+            throw;
+        }
     }
 
-    public Task StopAsync()
+    public async Task StopAsync()
     {
-        _window?.Close();
-        return Task.CompletedTask;
+        await _surfacePenListener.StopAsync();
+        var window = _window;
+        var closed = _windowClosed?.Task;
+        window?.Close();
+        if (closed is not null)
+        {
+            try
+            {
+                await closed.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+            catch (TimeoutException)
+            {
+                System.Diagnostics.Debug.WriteLine(
+                    "Presenter window did not report Closed before the shutdown deadline.");
+            }
+        }
+        await _surfacePenStopTask;
     }
 
-    public async ValueTask DisposeAsync() => await StopAsync();
+    public async ValueTask DisposeAsync()
+    {
+        await StopAsync();
+        await _surfacePenStopTask;
+        await _surfacePenListener.DisposeAsync();
+    }
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
@@ -68,7 +112,10 @@ internal sealed class PresenterWindowService : IAsyncDisposable
             return;
         }
 
+        var closed = _windowClosed;
         DetachWindow((PresenterWindow)sender);
+        closed?.TrySetResult(null);
+        _surfacePenStopTask = _surfacePenListener.StopAsync();
         StatusChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -83,5 +130,6 @@ internal sealed class PresenterWindowService : IAsyncDisposable
         window.Closed -= OnWindowClosed;
         window.WebViewInitializationFailed -= OnWebViewInitializationFailed;
         _window = null;
+        _windowClosed = null;
     }
 }
