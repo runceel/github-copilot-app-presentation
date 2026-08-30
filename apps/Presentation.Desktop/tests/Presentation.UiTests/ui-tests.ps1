@@ -120,44 +120,33 @@ public static class PresentationUiNative {
             new IntPtr(unchecked((long)0xC0000001)));
     }
 
-    public static void ClickPresenterMargin(IntPtr windowHandle, bool rightButton) {
-        var info = new GUITHREADINFO();
-        var threadId = GetWindowThreadProcessId(windowHandle, IntPtr.Zero);
+    public static void ClickSlideMargin(IntPtr windowHandle, bool rightButton) {
+        ClickClientPoint(windowHandle, rightButton, 30, 2);
+    }
+
+    private static void ClickClientPoint(
+        IntPtr windowHandle,
+        bool rightButton,
+        int horizontalDivisor,
+        int verticalDivisor) {
         ShowWindow(windowHandle, 5);
         SetForegroundWindow(windowHandle);
-        for (var attempt = 0; attempt < 20; attempt++) {
-            info = new GUITHREADINFO();
-            info.Size = Marshal.SizeOf<GUITHREADINFO>();
-            if (GetGUIThreadInfo(threadId, ref info) &&
-                info.Active == windowHandle &&
-                info.Focus != IntPtr.Zero) {
-                break;
-            }
-            Thread.Sleep(25);
-        }
-        if (info.Active != windowHandle || info.Focus == IntPtr.Zero) {
-            throw new InvalidOperationException("The presenter does not have a focused WebView2 window.");
-        }
 
         RECT rect;
-        if (!GetClientRect(info.Focus, out rect)) {
-            throw new InvalidOperationException("Could not read the focused WebView2 bounds.");
+        if (!GetClientRect(windowHandle, out rect)) {
+            throw new InvalidOperationException("Could not read the presentation window bounds.");
         }
 
-        var x = Math.Min(24, Math.Max(1, rect.Right - rect.Left - 1));
-        var y = Math.Max(1, (rect.Bottom - rect.Top) / 2);
-        var position = new IntPtr((y << 16) | (x & 0xFFFF));
-        SendMessage(info.Focus, 0x0200, IntPtr.Zero, position);
-        SendMessage(
-            info.Focus,
-            rightButton ? 0x0204u : 0x0201u,
-            rightButton ? new IntPtr(2) : new IntPtr(1),
-            position);
-        SendMessage(
-            info.Focus,
-            rightButton ? 0x0205u : 0x0202u,
-            IntPtr.Zero,
-            position);
+        var x = Math.Max(1, (rect.Right - rect.Left) / horizontalDivisor);
+        var y = Math.Max(1, (rect.Bottom - rect.Top) / verticalDivisor);
+        var point = new POINT { X = x, Y = y };
+        if (!ClientToScreen(windowHandle, ref point) || !SetCursorPos(point.X, point.Y)) {
+            throw new InvalidOperationException("Could not position the mouse over the slide margin.");
+        }
+
+        Thread.Sleep(50);
+        mouse_event(rightButton ? 0x0008u : 0x0002u, 0, 0, 0, UIntPtr.Zero);
+        mouse_event(rightButton ? 0x0010u : 0x0004u, 0, 0, 0, UIntPtr.Zero);
     }
 
     public static void SendPenShortcut(byte virtualKey) {
@@ -397,6 +386,27 @@ try {
         Invoke-WinApp ui wait-for PresentationErrorInfoBar -a $AppPid --gone -t 5000 | Out-Null
     }
 
+    Invoke-Test "Presenter view slide margins navigate with physical mouse input" {
+        $script:mainHwnd = (winapp ui list-windows -a $AppPid --json |
+            ConvertFrom-Json |
+            Select-Object -First 1).hwnd
+        $windowHandle = [IntPtr]$script:mainHwnd
+        [PresentationUiNative]::ClickSlideMargin($windowHandle, $false)
+        Wait-PageCounter -Expected "3 / 4"
+        [PresentationUiNative]::ClickSlideMargin($windowHandle, $true)
+        Wait-PageCounter -Expected "2 / 4"
+    }
+
+    Invoke-Test "Presenter view keeps Home and End after mouse focus" {
+        $windowHandle = [IntPtr]$script:mainHwnd
+        [PresentationUiNative]::SendKey($windowHandle, 0x23)
+        Wait-PageCounter -Expected "4 / 4"
+        [PresentationUiNative]::SendKey($windowHandle, 0x24)
+        Wait-PageCounter -Expected "1 / 4"
+        Invoke-WinApp ui invoke NextSlideButton -a $AppPid | Out-Null
+        Wait-PageCounter -Expected "2 / 4"
+    }
+
     Invoke-Test "Presenter opens a second top-level window in the same process" {
         $before = @(winapp ui list-windows -a $AppPid --json | ConvertFrom-Json | Select-Object -ExpandProperty hwnd)
         $script:mainHwnd = $before[0]
@@ -415,12 +425,11 @@ try {
         Wait-PresenterRunning
     }
 
-    Invoke-Test "Presenter slide margins navigate through the shared renderer" {
+    Invoke-Test "Presentation screen slide margins navigate with physical mouse input" {
         $windowHandle = [IntPtr]$script:presenterHwnd
-        [PresentationUiNative]::SetForegroundWindow($windowHandle) | Out-Null
-        [PresentationUiNative]::ClickPresenterMargin($windowHandle, $false)
+        [PresentationUiNative]::ClickSlideMargin($windowHandle, $false)
         Wait-PageCounter -Expected "3 / 4"
-        [PresentationUiNative]::ClickPresenterMargin($windowHandle, $true)
+        [PresentationUiNative]::ClickSlideMargin($windowHandle, $true)
         Wait-PageCounter -Expected "2 / 4"
     }
 

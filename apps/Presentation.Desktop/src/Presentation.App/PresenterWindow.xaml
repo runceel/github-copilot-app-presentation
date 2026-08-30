@@ -19,5 +19,12 @@
         AutomationProperties.AutomationId="PresenterWebViewHost"
         Background="Black"
         IsTabStop="True"
-        KeyDown="OnHostKeyDown" />
+        KeyDown="OnHostKeyDown">
+        <WebView2
+            x:Name="PresenterWebView"
+            AutomationProperties.AutomationId="PresenterWebView"
+            DefaultBackgroundColor="Black"
+            IsTabStop="True"
+            KeyDown="OnHostKeyDown" />
+    </Grid>
 </Window>

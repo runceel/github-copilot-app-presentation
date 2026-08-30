@@ -252,7 +252,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
             ?? throw new InvalidOperationException("The presentation server is not ready.");
         return new UriBuilder(baseUri)
         {
-            Query = $"preview=1&offset={offset}",
+            Query = offset == 0
+                ? "preview=1&offset=0&navigate=1"
+                : $"preview=1&offset={offset}",
         }.Uri;
     }
 

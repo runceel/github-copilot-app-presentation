@@ -94,7 +94,6 @@
                         <WebView2
                             x:Name="CurrentSlideWebView"
                             AutomationProperties.AutomationId="CurrentSlideWebView"
-                            IsHitTestVisible="False"
                             IsTabStop="False" />
                     </Grid>
                     <Border

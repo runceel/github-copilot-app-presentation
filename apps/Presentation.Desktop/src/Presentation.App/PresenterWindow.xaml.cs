@@ -1,33 +1,43 @@
 using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.Web.WebView2.Core;
 using PresentationApp.Services;
-using Windows.Foundation;
 using Windows.System;
-using Windows.UI;
 
 namespace PresentationApp;
 
 /// <summary>
-/// Native, in-process audience window: a full-bleed WebView2 hosted in a standard WinUI 3
-/// <see cref="Window"/>. Replaces the previous external Edge/Chrome app-mode process.
+/// Native, in-process audience window with a full-bleed XAML WebView2.
 /// </summary>
 public sealed partial class PresenterWindow : Window
 {
     private const int InitialWidthDip = 1280;
     private const int InitialHeightDip = 720;
+    private const string PresenterShortcutScript =
+        """
+        let presentationHostFullScreen = false;
+        window.chrome.webview.addEventListener("message", event => {
+          presentationHostFullScreen = event.data === "fullscreen";
+        });
+        document.addEventListener("keydown", event => {
+          if (event.repeat) return;
+          if (event.key !== "F11" && !(event.key === "Escape" && presentationHostFullScreen)) {
+            return;
+          }
+          window.chrome.webview.postMessage(event.key);
+          event.preventDefault();
+        }, true);
+        """;
     private static readonly TimeSpan NavigationTimeout = TimeSpan.FromSeconds(10);
 
     private readonly CoreWebView2Environment _environment;
     private readonly Uri _presenterUri;
-    private readonly nint _windowHandle;
     private readonly CancellationTokenSource _lifetime = new();
-    private CoreWebView2Controller? _controller;
     private Task? _initializationTask;
     private bool _closed;
-    private bool _displayReady;
     private bool _fullScreenRequestQueued;
 
     /// <summary>
@@ -41,11 +51,9 @@ public sealed partial class PresenterWindow : Window
         InitializeComponent();
         _environment = environment;
         _presenterUri = presenterUri;
-        _windowHandle = WinRT.Interop.WindowNative.GetWindowHandle(this);
 
         AppWindow.SetIcon("Assets/AppIcon.ico");
         WindowSizing.ResizeToDips(AppWindow, InitialWidthDip, InitialHeightDip);
-        AppWindow.Changed += OnAppWindowChanged;
         Activated += OnActivated;
         Closed += OnClosed;
     }
@@ -63,29 +71,25 @@ public sealed partial class PresenterWindow : Window
                 return;
             }
 
-            var windowReference =
-                CoreWebView2ControllerWindowReference.CreateFromWindowHandle(
-                    unchecked((ulong)_windowHandle));
-            var controller = await _environment.CreateCoreWebView2ControllerAsync(windowReference);
+            await PresenterWebView.EnsureCoreWebView2Async(_environment);
             if (_closed)
             {
-                controller.Close();
+                PresenterWebView.Close();
                 return;
             }
 
-            _controller = controller;
-            controller.AcceleratorKeyPressed += OnAcceleratorKeyPressed;
-            controller.DefaultBackgroundColor = Color.FromArgb(255, 0, 0, 0);
-            controller.IsVisible = false;
-            UpdateControllerBounds();
+            WebViewPolicy.Configure(PresenterWebView, () => _presenterUri);
+            var webView = PresenterWebView.CoreWebView2;
+            webView.Settings.AreBrowserAcceleratorKeysEnabled = false;
+            webView.WebMessageReceived += OnWebMessageReceived;
+            await webView.AddScriptToExecuteOnDocumentCreatedAsync(PresenterShortcutScript);
+            if (_closed)
+            {
+                return;
+            }
 
-            // This host creates the initialized Win32 controller directly; WUI4001 only recognizes
-            // the XAML WebView2 EnsureCoreWebView2Async initialization pattern.
-#pragma warning disable WUI4001
-            var webView = controller.CoreWebView2;
-#pragma warning restore WUI4001
-            WebViewPolicy.Configure(webView, () => _presenterUri);
             webView.ProcessFailed += OnProcessFailed;
+            webView.NavigationCompleted += OnPresenterNavigationCompleted;
             var navigationCompleted =
                 new TaskCompletionSource<CoreWebView2NavigationCompletedEventArgs>(
                     TaskCreationOptions.RunContinuationsAsynchronously);
@@ -93,7 +97,7 @@ public sealed partial class PresenterWindow : Window
                 CoreWebView2 sender,
                 CoreWebView2NavigationCompletedEventArgs args) =>
                 navigationCompleted.TrySetResult(args);
-            webView.NavigationCompleted += OnNavigationCompleted;
+
             webView.NavigationCompleted += OnNavigationCompleted;
             webView.Navigate(_presenterUri.AbsoluteUri);
             CoreWebView2NavigationCompletedEventArgs navigation;
@@ -114,19 +118,21 @@ public sealed partial class PresenterWindow : Window
                     $"The presentation renderer failed to load ({navigation.WebErrorStatus}).");
             }
 
-            UpdateControllerBounds();
             await WaitForNextRenderAsync();
             if (_closed)
             {
                 return;
             }
 
-            UpdateControllerBounds();
-            controller.IsVisible = true;
-            _displayReady = true;
-            controller.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
+            PresenterWebView.Focus(FocusState.Programmatic);
         }
         catch (OperationCanceledException) when (_closed)
+        {
+        }
+        catch (InvalidOperationException) when (_closed)
+        {
+        }
+        catch (COMException) when (_closed)
         {
         }
         catch (Exception error) when (
@@ -138,36 +144,7 @@ public sealed partial class PresenterWindow : Window
         }
     }
 
-    private void OnAcceleratorKeyPressed(
-        CoreWebView2Controller sender,
-        CoreWebView2AcceleratorKeyPressedEventArgs args)
-    {
-        if (args.KeyEventKind is not (
-            CoreWebView2KeyEventKind.KeyDown or
-            CoreWebView2KeyEventKind.SystemKeyDown))
-        {
-            return;
-        }
-
-        if (args.VirtualKey == (uint)VirtualKey.F11)
-        {
-            args.Handled = true;
-            if (args.PhysicalKeyStatus.WasKeyDown == 0)
-            {
-                QueueFullScreenChange(!IsFullScreen);
-            }
-        }
-        else if (args.VirtualKey == (uint)VirtualKey.Escape && IsFullScreen)
-        {
-            args.Handled = true;
-            if (args.PhysicalKeyStatus.WasKeyDown == 0)
-            {
-                QueueFullScreenChange(false);
-            }
-        }
-    }
-
-    private void OnHostKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs args)
+    private void OnHostKeyDown(object sender, KeyRoutedEventArgs args)
     {
         if (args.Key == VirtualKey.F11)
         {
@@ -189,62 +166,61 @@ public sealed partial class PresenterWindow : Window
 
     private void OnActivated(object sender, WindowActivatedEventArgs args)
     {
-        if (args.WindowActivationState == WindowActivationState.Deactivated)
+        if (args.WindowActivationState != WindowActivationState.Deactivated)
         {
-            return;
-        }
-
-        UpdateControllerBounds();
-        if (!_displayReady || _controller is null)
-        {
-            WebViewHost.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
-        }
-        else
-        {
-            _controller.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
+            PresenterWebView.Focus(FocusState.Programmatic);
         }
     }
-
-    private void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args) =>
-        UpdateControllerBounds();
 
     private void OnProcessFailed(CoreWebView2 sender, CoreWebView2ProcessFailedEventArgs args) =>
         WebViewInitializationFailed?.Invoke(
             this,
             "発表画面の WebView2 プロセスが停止しました。発表画面を開き直してください。");
 
-    private void OnClosed(object sender, WindowEventArgs args)
+    private void OnPresenterNavigationCompleted(
+        CoreWebView2 sender,
+        CoreWebView2NavigationCompletedEventArgs args)
     {
-        _closed = true;
-        _displayReady = false;
-        _lifetime.Cancel();
-        Closed -= OnClosed;
-        Activated -= OnActivated;
-        AppWindow.Changed -= OnAppWindowChanged;
-        if (_controller is not null)
+        if (args.IsSuccess &&
+            Uri.TryCreate(sender.Source, UriKind.Absolute, out var source) &&
+            source == _presenterUri)
         {
-            _controller.CoreWebView2.ProcessFailed -= OnProcessFailed;
-            _controller.AcceleratorKeyPressed -= OnAcceleratorKeyPressed;
-            _controller.Close();
-            _controller = null;
+            UpdateShortcutFullScreenState();
         }
-        _lifetime.Dispose();
     }
 
-    private void UpdateControllerBounds()
+    private void OnWebMessageReceived(CoreWebView2 sender, CoreWebView2WebMessageReceivedEventArgs args)
     {
-        if (_controller is null ||
-            !GetClientRect(_windowHandle, out var clientRect))
+        if (!Uri.TryCreate(args.Source, UriKind.Absolute, out var source) ||
+            source != _presenterUri)
         {
             return;
         }
 
-        _controller.Bounds = new Rect(
-            clientRect.Left,
-            clientRect.Top,
-            clientRect.Right - clientRect.Left,
-            clientRect.Bottom - clientRect.Top);
-        _controller.NotifyParentWindowPositionChanged();
+        if (args.WebMessageAsJson == "\"F11\"")
+        {
+            QueueFullScreenChange(!IsFullScreen);
+        }
+        else if (args.WebMessageAsJson == "\"Escape\"" && IsFullScreen)
+        {
+            QueueFullScreenChange(false);
+        }
+    }
+
+    private void OnClosed(object sender, WindowEventArgs args)
+    {
+        _closed = true;
+        _lifetime.Cancel();
+        Closed -= OnClosed;
+        Activated -= OnActivated;
+        if (PresenterWebView.CoreWebView2 is not null)
+        {
+            PresenterWebView.CoreWebView2.ProcessFailed -= OnProcessFailed;
+            PresenterWebView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
+            PresenterWebView.CoreWebView2.NavigationCompleted -= OnPresenterNavigationCompleted;
+        }
+        PresenterWebView.Close();
+        _lifetime.Dispose();
     }
 
     private async Task WaitForHostLayoutAsync()
@@ -284,10 +260,7 @@ public sealed partial class PresenterWindow : Window
     private bool IsHostLayoutReady() =>
         WebViewHost.IsLoaded &&
         WebViewHost.ActualWidth > 0 &&
-        WebViewHost.ActualHeight > 0 &&
-        GetClientRect(_windowHandle, out var clientRect) &&
-        clientRect.Right > clientRect.Left &&
-        clientRect.Bottom > clientRect.Top;
+        WebViewHost.ActualHeight > 0;
 
     private async Task WaitForNextRenderAsync()
     {
@@ -329,8 +302,8 @@ public sealed partial class PresenterWindow : Window
                                 : AppWindowPresenterKind.Default);
                     }
 
-                    UpdateControllerBounds();
-                    _controller?.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
+                    PresenterWebView.Focus(FocusState.Programmatic);
+                    UpdateShortcutFullScreenState();
                 }
                 finally
                 {
@@ -342,16 +315,9 @@ public sealed partial class PresenterWindow : Window
         }
     }
 
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetClientRect(nint windowHandle, out NativeRect clientRect);
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct NativeRect
+    private void UpdateShortcutFullScreenState()
     {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
+        PresenterWebView.CoreWebView2?.PostWebMessageAsString(
+            IsFullScreen ? "fullscreen" : "windowed");
     }
 }
