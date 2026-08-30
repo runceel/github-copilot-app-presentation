@@ -20,6 +20,7 @@
 <p align="center">
   <a href="#use-the-canvas-extension">Canvas Extension</a> |
   <a href="#use-markdstage-desktop">Desktop</a> |
+  <a href="#see-markdown-on-stage">Examples</a> |
   <a href="#markdown-format">Markdown format</a> |
   <a href="#documentation">Documentation</a> |
   <a href="https://github.com/runceel/markdstage/releases">Releases</a>
@@ -37,6 +38,46 @@ the source of truth from the first draft to the stage.
 - **Present technical content directly**: Supports code, Mermaid, Architecture DSL, images, tables, and speaker notes
 - **Keep output consistent**: Use the same renderer in the canvas, presentation window, Desktop, and PDF
 - **Keep controls focused on presenting**: Navigate with buttons, the keyboard, or Surface Pen in supported environments
+
+## See Markdown on stage
+
+The same Markdown renderer powers the GitHub Copilot canvas, presenter window, Desktop app, and
+PDF export.
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="./assets/readme/simple-slide.png" alt="A standard Markdown slide rendered by MarkdStage">
+    </td>
+    <td width="50%">
+      <img src="./assets/readme/architecture-dsl.png" alt="An Architecture DSL diagram rendered in a MarkdStage slide">
+    </td>
+  </tr>
+  <tr>
+    <td valign="top">
+      <strong>Standard Markdown</strong><br>
+      Write headings, lists, emphasis, code, tables, and images directly. Mermaid is also available
+      when automatic diagram layout is useful.
+    </td>
+    <td valign="top">
+      <strong>Architecture DSL</strong><br>
+      Put JSON in an <code>architecture</code> fence for stable groups, icons, placement, and
+      connector routing.
+    </td>
+  </tr>
+</table>
+
+Because the MarkdStage canvas contributes the active deck and Architecture DSL to the GitHub
+Copilot App context, you can describe the diagram you want and ask Copilot to write or revise the
+Markdown for you.
+
+For visual changes, import source Markdown with **📂**, choose **✎ → Advanced editing**, and use the
+dedicated Architecture Editor. It can add, remove, arrange, and inspect nodes, groups, images, and
+connectors; changes remain a draft until **Save** writes them back to Markdown.
+
+<p align="center">
+  <img src="./assets/readme/architecture-editor.png" alt="The MarkdStage Architecture Editor with an API node selected" width="100%">
+</p>
 
 ## Two ways to use MarkdStage
 
@@ -114,6 +155,7 @@ they appear only in presenter view.
 | `.github/skills/markdstage/SKILL.md` | Skill that formats Markdown into slide fragments and opens MarkdStage |
 | `apps/MarkdStage.Desktop/` | WinUI 3 desktop app |
 | `assets/brand/` | MarkdStage logo, lockup, and README banner |
+| `assets/readme/` | Rendered slide and Architecture Editor images used in this README |
 | `slides.md` | Sample deck that demonstrates the features |
 
 ## Breaking changes in v2
