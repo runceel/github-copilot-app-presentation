@@ -27,6 +27,18 @@ public sealed class SlideTitleDeriverTests
     }
 
     [Fact]
+    public void Derive_DoesNotExposeSpeakerNotesAsTheFallbackTitle()
+    {
+        var title = SlideTitleDeriver.Derive(
+            """
+            <!-- Internal talking point -->
+            Public body line
+            """);
+
+        Assert.Equal("Public body line", title);
+    }
+
+    [Fact]
     public void Derive_StripsLeadingSlideFrontMatter()
     {
         var title = SlideTitleDeriver.Derive(

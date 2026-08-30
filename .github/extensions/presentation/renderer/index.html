@@ -36,11 +36,18 @@
         <h2 id="presenterCurrentLabel">現在のスライド</h2>
         <iframe id="presenterCurrent" class="presenter-frame" title="現在のスライド"></iframe>
       </section>
-      <section class="presenter-preview" aria-labelledby="presenterNextLabel">
-        <h2 id="presenterNextLabel">次のスライド</h2>
-        <iframe id="presenterNext" class="presenter-frame" title="次のスライド"></iframe>
-        <p id="presenterNextEmpty" class="presenter-next-empty" hidden>次のスライドはありません</p>
-      </section>
+      <div class="presenter-sidebar">
+        <section class="presenter-preview" aria-labelledby="presenterNextLabel">
+          <h2 id="presenterNextLabel">次のスライド</h2>
+          <iframe id="presenterNext" class="presenter-frame" title="次のスライド"></iframe>
+          <p id="presenterNextEmpty" class="presenter-next-empty" hidden>次のスライドはありません</p>
+        </section>
+        <section class="presenter-notes" aria-labelledby="presenterNotesLabel">
+          <h2 id="presenterNotesLabel">スピーカーノート</h2>
+          <div id="presenterNotes" class="presenter-notes-body" tabindex="0" aria-live="polite"></div>
+          <p id="presenterNotesEmpty" class="presenter-notes-empty">スピーカーノートはありません</p>
+        </section>
+      </div>
     </div>
     <footer class="presenter-controls" aria-label="発表者ビューの操作">
       <button id="presenterPrevButton" class="presenter-button" type="button">前へ</button>

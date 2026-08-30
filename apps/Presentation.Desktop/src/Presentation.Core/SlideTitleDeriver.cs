@@ -9,7 +9,8 @@ public static partial class SlideTitleDeriver
 
     public static string Derive(string? markdown)
     {
-        var body = RemoveLeadingFrontMatter(markdown ?? string.Empty);
+        var body = SpeakerNotesExtractor.Remove(
+            RemoveLeadingFrontMatter(markdown ?? string.Empty));
         var fallback = string.Empty;
 
         foreach (var rawLine in body.Replace("\r\n", "\n", StringComparison.Ordinal)

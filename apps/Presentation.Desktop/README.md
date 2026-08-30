@@ -6,6 +6,7 @@ Markdown を presentation canvas と同じ renderer で表示し、GitHub Copilo
 
 - `.md` / `.markdown` を Windows のファイル選択ダイアログから開く
 - 現在のスライドと次のスライドを 16:9 でプレビュー
+- Slidev / Marp 形式の HTML コメントを現在ページのスピーカーノートとして表示
 - ツールバーまたは O キーでスライド一覧を開き、任意のページへ移動
 - 矢印、PageUp/PageDown、Space、Home、End で移動
 - 発表画面と発表者ビューの現在スライドは、余白の左クリック / タップで次へ、
@@ -74,6 +75,7 @@ Window で表示するため、別途 Edge / Chrome / Chromium を用意する�
 - Markdown と同じフォルダーの `assets\` を優先し、次に最寄りの Git ルートの `assets\` を参照します。
 - Git 管理外の Markdown は、そのファイルのフォルダーをルートとして扱います。
 - `theme-file` は Markdown のフォルダー、Git ルートの順で探索します。
+- スピーカーノートは各スライドのトップレベル HTML コメントへ記述します。コードフェンス内のコメントと `slide-size` ディレクティブはノートに含めません。
 - workspace 外へ出るパス、junction/symlink 越しの脱出、過大ファイルは拒否します。
 
-Markdown の編集、PDF export、Architecture editor、発表者ノート、タイマーは初版の対象外です。
+Markdown の編集、PDF export、Architecture editor、タイマーは初版の対象外です。

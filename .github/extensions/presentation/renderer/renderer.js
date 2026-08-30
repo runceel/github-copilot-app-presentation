@@ -5,6 +5,10 @@ import {
   normalizeTheme,
   parseFrontMatter,
 } from "./theme.mjs";
+import {
+  extractSpeakerNotes,
+  stripSpeakerNotes,
+} from "./speaker-notes.mjs";
 
 // Client-side slide renderer for the presentation canvas.
 //
@@ -361,7 +365,7 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
   const md = nonEmpty(markdown) ? markdown : PLACEHOLDER;
   const { meta, body: rawBody } = splitFrontMatter(md);
   const directive = extractSlideSizeDirective(rawBody);
-  const body = directive.body;
+  const body = stripSpeakerNotes(directive.body);
 
   const layout = (meta.layout || "").toLowerCase();
   const titleSlide = layout === "title";
@@ -740,7 +744,7 @@ let pdfExportPending = false;
 // non-empty body line, trimmed. Mirrors the skill's title rule.
 function deriveTitle(md) {
   const { body } = splitFrontMatter(typeof md === "string" ? md : "");
-  const lines = body.split("\n");
+  const lines = stripSpeakerNotes(body).split("\n");
   let fallback = "";
   for (const raw of lines) {
     const line = raw.trim();
@@ -1222,6 +1226,29 @@ function updatePresenterView() {
   const nextEmpty = document.getElementById("presenterNextEmpty");
   if (nextFrame) nextFrame.hidden = !hasNext;
   if (nextEmpty) nextEmpty.hidden = hasNext;
+  const currentMarkdown =
+    navMode === "deck" ? deckSlides[navIndex] ?? lastMarkdown : lastMarkdown;
+  renderPresenterNotes(currentMarkdown);
+}
+
+function renderPresenterNotes(markdown) {
+  const target = document.getElementById("presenterNotes");
+  const empty = document.getElementById("presenterNotesEmpty");
+  if (!target || !empty) return;
+
+  const { body } = splitFrontMatter(typeof markdown === "string" ? markdown : "");
+  const notes = extractSpeakerNotes(body);
+  target.replaceChildren();
+  empty.hidden = Boolean(notes);
+  target.hidden = !notes;
+  if (!notes) return;
+
+  target.innerHTML = window.DOMPurify.sanitize(window.marked.parse(notes));
+  target.querySelectorAll('img[src^="/assets/"]').forEach((image) => {
+    image.setAttribute("src", localAssetUrl(image.getAttribute("src")));
+  });
+  applyEmojiShortcodes(target);
+  applySyntaxHighlighting(target);
 }
 
 // --- overview --------------------------------------------------------------

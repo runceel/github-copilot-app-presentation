@@ -60,6 +60,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
     public partial string PageCounter { get; set; } = "0 / 0";
 
     [ObservableProperty]
+    public partial string CurrentSpeakerNotes { get; set; } = "スピーカーノートはありません";
+
+    [ObservableProperty]
     public partial string ErrorMessage { get; set; } = string.Empty;
 
     [ObservableProperty]
@@ -289,6 +292,10 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
         PageCounter = snapshot.Total == 0
             ? "0 / 0"
             : $"{snapshot.Index + 1} / {snapshot.Total}";
+        var notes = SpeakerNotesExtractor.Extract(snapshot.CurrentMarkdown);
+        CurrentSpeakerNotes = string.IsNullOrWhiteSpace(notes)
+            ? "スピーカーノートはありません"
+            : notes;
         PreviousCommand.NotifyCanExecuteChanged();
         NextCommand.NotifyCanExecuteChanged();
         TogglePresentationCommand.NotifyCanExecuteChanged();
