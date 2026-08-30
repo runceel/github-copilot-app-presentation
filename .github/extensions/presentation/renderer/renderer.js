@@ -731,7 +731,9 @@ let sourceBacked = false;
 let sourceMode = "snapshot";
 let sourceWatchStatus = "inactive";
 let sourceWatchError = "";
-let presenterLaunchPending = false;
+let presenterRequestPending = false;
+let presenterRunning = false;
+let presenterViewOpen = false;
 let pdfExportPending = false;
 
 // Derive a short overview title from a slide fragment: first heading, else first
@@ -1050,17 +1052,21 @@ function goToIndex(i) {
   closeOverview();
 }
 
-async function openPresenterWindow() {
-  if (presenterLaunchPending) return;
-  presenterLaunchPending = true;
+async function setPresenterRunning(running) {
+  if (presenterRequestPending) return;
+  presenterRequestPending = true;
   const button = document.getElementById("navPresent");
   const status = document.getElementById("presentStatus");
   if (button) button.disabled = true;
-  if (status) status.textContent = "外部プレゼン画面を起動しています。";
+  if (status) {
+    status.textContent = running
+      ? "外部プレゼン画面を起動しています。"
+      : "外部プレゼン画面を終了しています。";
+  }
 
   try {
     const response = await fetch("./present", {
-      method: "POST",
+      method: running ? "POST" : "DELETE",
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
@@ -1068,31 +1074,53 @@ async function openPresenterWindow() {
     if (!response.ok) {
       throw new Error(data.message || `External presenter failed (${response.status}).`);
     }
-    const message = data.alreadyRunning
-      ? "外部プレゼン画面は既に起動しています。"
-      : "外部プレゼン画面を起動しました。";
+    const message = running
+      ? data.alreadyRunning
+        ? "外部プレゼン画面は既に起動しています。"
+        : "外部プレゼン画面を起動しました。"
+      : "外部プレゼン画面を終了しました。";
     if (status) status.textContent = message;
-    updatePresenterButton(true, message);
+    updatePresenterButton(running, message);
   } catch (error) {
-    const message = error?.message || "外部プレゼン画面を起動できませんでした。";
-    console.error("External presenter launch failed", error);
+    const message =
+      error?.message ||
+      (running
+        ? "外部プレゼン画面を起動できませんでした。"
+        : "外部プレゼン画面を終了できませんでした。");
+    console.error("External presenter update failed", error);
     if (status) status.textContent = message;
     if (button) {
       button.dataset.state = "error";
       button.title = message;
     }
   } finally {
-    presenterLaunchPending = false;
+    presenterRequestPending = false;
     if (button) button.disabled = false;
   }
 }
 
+function openPresenterWindow() {
+  return setPresenterRunning(true);
+}
+
+function togglePresenterWindow() {
+  return setPresenterRunning(!presenterRunning);
+}
+
 function updatePresenterButton(running, message = "") {
+  presenterRunning = running;
   const button = document.getElementById("navPresent");
-  if (!button) return;
-  button.dataset.state = running ? "active" : "";
-  button.title =
-    message || (running ? "外部プレゼン画面は起動中です" : "外部ウィンドウで表示 (F11 で全画面)");
+  if (button) {
+    button.dataset.state = running ? "active" : "";
+    button.title =
+      message ||
+      (running ? "外部プレゼン画面は起動中です" : "外部ウィンドウで表示 (F11 で全画面)");
+  }
+  const toggle = document.getElementById("presenterToggleButton");
+  if (toggle) {
+    toggle.textContent = running ? "プレゼンを終了" : "プレゼンを開始";
+    toggle.dataset.state = running ? "active" : "";
+  }
 }
 
 async function exportPdfFromCanvas() {
@@ -1153,6 +1181,47 @@ function updateNav() {
   if (prev) prev.disabled = navMode === "deck" && navIndex <= 0;
   if (next) next.disabled = navMode === "deck" && navIndex >= navTotal - 1;
   highlightOverview();
+  updatePresenterView();
+}
+
+function openPresenterView() {
+  if (presenterMode || navTotal <= 0) return;
+  presenterViewOpen = true;
+  document.body.classList.add("presenter-view-mode");
+  const view = document.getElementById("presenterView");
+  if (view) view.hidden = false;
+  const current = document.getElementById("presenterCurrent");
+  const next = document.getElementById("presenterNext");
+  if (current && !current.getAttribute("src")) {
+    current.setAttribute("src", "./?preview=1&offset=0&navigate=1");
+  }
+  if (next && !next.getAttribute("src")) {
+    next.setAttribute("src", "./?preview=1&offset=1");
+  }
+  updatePresenterView();
+}
+
+function closePresenterView() {
+  presenterViewOpen = false;
+  document.body.classList.remove("presenter-view-mode");
+  const view = document.getElementById("presenterView");
+  if (view) view.hidden = true;
+  document.getElementById("navPresenterView")?.focus();
+}
+
+function updatePresenterView() {
+  if (!presenterViewOpen) return;
+  const counter = document.getElementById("presenterCounter");
+  if (counter) counter.textContent = navTotal ? `${navIndex + 1} / ${navTotal}` : "";
+  const prev = document.getElementById("presenterPrevButton");
+  const next = document.getElementById("presenterNextButton");
+  if (prev) prev.disabled = navMode === "deck" && navIndex <= 0;
+  if (next) next.disabled = navMode === "deck" && navIndex >= navTotal - 1;
+  const hasNext = navMode !== "deck" || navIndex < navTotal - 1;
+  const nextFrame = document.getElementById("presenterNext");
+  const nextEmpty = document.getElementById("presenterNextEmpty");
+  if (nextFrame) nextFrame.hidden = !hasNext;
+  if (nextEmpty) nextEmpty.hidden = hasNext;
 }
 
 // --- overview --------------------------------------------------------------
@@ -1443,12 +1512,18 @@ function wireControls() {
   bind("navNext", goNext);
   bind("navEdit", toggleArchitectureEditMode);
   bind("navPresent", openPresenterWindow);
+  bind("navPresenterView", openPresenterView);
   bind("navExport", exportPdfFromCanvas);
   bind("navImport", toggleImportPicker);
   bind("navSourceMode", toggleSourceMode);
   bind("navList", toggleOverview);
   bind("overviewClose", closeOverview);
   bind("importClose", closeImportPicker);
+  bind("presenterPrevButton", goPrev);
+  bind("presenterNextButton", goNext);
+  bind("presenterListButton", openOverview);
+  bind("presenterToggleButton", togglePresenterWindow);
+  bind("presenterReturnButton", closePresenterView);
 
   const importFilter = document.getElementById("importFilter");
   if (importFilter) {
@@ -1510,6 +1585,9 @@ function wireControls() {
           e.preventDefault();
         } else if (overviewOpen) {
           closeOverview();
+          e.preventDefault();
+        } else if (presenterViewOpen) {
+          closePresenterView();
           e.preventDefault();
         }
         break;

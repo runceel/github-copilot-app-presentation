@@ -1779,6 +1779,11 @@ async function startServer(inst) {
       return;
     }
     if (pathname === "/state") {
+      const offset = Math.max(
+        -1,
+        Math.min(1, Number.parseInt(requestUrl.searchParams.get("offset") || "0", 10) || 0),
+      );
+      const targetIndex = clampIndex(inst.index + offset, inst.slides.length);
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
@@ -1786,8 +1791,8 @@ async function startServer(inst) {
         JSON.stringify({
           version: inst.version,
           deckVersion: inst.deckVersion,
-          markdown: inst.markdown,
-          index: inst.index,
+          markdown: offset && inst.slides.length ? inst.slides[targetIndex] : inst.markdown,
+          index: offset ? targetIndex : inst.index,
           total: inst.slides.length,
           theme: inst.theme,
           themeLocked: inst.themeLocked,
@@ -1818,9 +1823,9 @@ async function startServer(inst) {
       return;
     }
     if (pathname === "/present") {
-      if (req.method !== "POST") {
+      if (req.method !== "POST" && req.method !== "DELETE") {
         res.statusCode = 405;
-        res.setHeader("Allow", "POST");
+        res.setHeader("Allow", "POST, DELETE");
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
         return;
@@ -1834,7 +1839,10 @@ async function startServer(inst) {
       }
       try {
         activateInstance(inst);
-        const result = await launchPresenter(inst);
+        const result =
+          req.method === "DELETE"
+            ? { ok: true, stopped: await stopPresenter(inst) }
+            : await launchPresenter(inst);
         res.statusCode = 200;
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         res.setHeader("Cache-Control", "no-store");

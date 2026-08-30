@@ -162,6 +162,7 @@ export async function startHarness({
     sourceWatchStatus: "inactive",
     sourceWatchError: "",
     sourceWatcher: null,
+    presenterRunning: false,
   };
   // renderer が POST してきた印刷結果。テスト側が "ready" を確認するために保持する。
   const printReports = [];
@@ -278,11 +279,19 @@ export async function startHarness({
     }
 
     if (pathname === "/state") {
+      const offset = Math.max(
+        -1,
+        Math.min(1, Number.parseInt(requestUrl.searchParams.get("offset") || "0", 10) || 0),
+      );
+      const targetIndex = Math.min(
+        Math.max(state.index + offset, 0),
+        state.slides.length - 1,
+      );
       sendJson(res, 200, {
         version: state.version,
         deckVersion: state.deckVersion,
-        markdown: state.slides[state.index] ?? "",
-        index: state.index,
+        markdown: state.slides[targetIndex] ?? "",
+        index: targetIndex,
         total: state.slides.length,
         theme: state.theme,
         mode: "deck",
@@ -290,7 +299,7 @@ export async function startHarness({
         sourceMode: state.sourceMode,
         sourceWatchStatus: state.sourceWatchStatus,
         sourceWatchError: state.sourceWatchError,
-        presenterRunning: false,
+        presenterRunning: state.presenterRunning,
         architectureEdit: state.architectureEdit,
       });
       return;
@@ -635,8 +644,22 @@ export async function startHarness({
       return;
     }
 
-    // presenter 起動と PDF 書き出しは SDK / 外部ブラウザ側の責務なのでスタブに留める。
-    if (pathname === "/present" || pathname === "/export") {
+    if (pathname === "/present") {
+      if (req.method === "POST") {
+        state.presenterRunning = true;
+      } else if (req.method === "DELETE") {
+        state.presenterRunning = false;
+      } else {
+        res.setHeader("Allow", "POST, DELETE");
+        sendJson(res, 405, { ok: false, error: "method_not_allowed" });
+        return;
+      }
+      sendJson(res, 200, { ok: true });
+      return;
+    }
+
+    // PDF 書き出しは SDK / 外部ブラウザ側の責務なのでスタブに留める。
+    if (pathname === "/export") {
       if (req.method !== "POST") {
         res.setHeader("Allow", "POST");
         sendJson(res, 405, { ok: false, error: "method_not_allowed" });
@@ -720,6 +743,9 @@ export async function startHarness({
     /** サーバー側の編集モード。URL パラメーター経由の有効化を検証するために公開する。 */
     get architectureEdit() {
       return state.architectureEdit;
+    },
+    get presenterRunning() {
+      return state.presenterRunning;
     },
     /** インポート済み Markdown の相対パス（未インポートなら空）。 */
     get sourceName() {
