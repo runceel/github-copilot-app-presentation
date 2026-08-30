@@ -38,6 +38,14 @@ public static class PresentationUiNative {
     [DllImport("user32.dll")]
     private static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
     [DllImport("user32.dll")]
+    private static extern IntPtr GetDC(IntPtr hWnd);
+    [DllImport("user32.dll")]
+    private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDc);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+    [DllImport("gdi32.dll")]
+    private static extern uint GetPixel(IntPtr hDc, int x, int y);
+    [DllImport("user32.dll")]
     private static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")]
     private static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
@@ -160,6 +168,60 @@ public static class PresentationUiNative {
         keybd_event(virtualKey, 0, keyUp, UIntPtr.Zero);
         keybd_event(leftWindows, 0, keyUp, UIntPtr.Zero);
     }
+
+    public static double GetClientAverageLuminance(IntPtr windowHandle) {
+        RECT rect;
+        var origin = new POINT();
+        if (!GetClientRect(windowHandle, out rect) ||
+            !ClientToScreen(windowHandle, ref origin)) {
+            throw new InvalidOperationException("Could not read the presenter client area.");
+        }
+
+        var width = rect.Right - rect.Left;
+        var height = rect.Bottom - rect.Top;
+        if (width <= 0 || height <= 0) {
+            throw new InvalidOperationException("The presenter client area is empty.");
+        }
+
+        var screenDc = GetDC(IntPtr.Zero);
+        if (screenDc == IntPtr.Zero) {
+            throw new InvalidOperationException("Could not capture the desktop.");
+        }
+
+        try {
+            long luminance = 0;
+            var samples = 0;
+            var stepX = Math.Max(1, width / 48);
+            var stepY = Math.Max(1, height / 27);
+            for (var y = stepY / 2; y < height; y += stepY) {
+                for (var x = stepX / 2; x < width; x += stepX) {
+                    var color = GetPixel(screenDc, origin.X + x, origin.Y + y);
+                    if (color == 0xFFFFFFFF) {
+                        continue;
+                    }
+
+                    var red = color & 0xFF;
+                    var green = (color >> 8) & 0xFF;
+                    var blue = (color >> 16) & 0xFF;
+                    luminance += (red * 299 + green * 587 + blue * 114) / 1000;
+                    samples++;
+                }
+            }
+
+            if (samples == 0) {
+                throw new InvalidOperationException("No presenter pixels could be sampled.");
+            }
+
+            return (double)luminance / samples;
+        }
+        finally {
+            ReleaseDC(IntPtr.Zero, screenDc);
+        }
+    }
+
+    public static bool IsForegroundWindow(IntPtr windowHandle) {
+        return GetForegroundWindow() == windowHandle;
+    }
 }
 "@
 
@@ -245,6 +307,27 @@ function Wait-PresenterRunning {
     throw "Presenter WebView and Surface Pen listener did not become ready."
 }
 
+function Wait-PresenterRendered {
+    param(
+        [IntPtr]$WindowHandle,
+        [int]$TimeoutMilliseconds = 12000
+    )
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        if ([PresentationUiNative]::IsForegroundWindow($WindowHandle)) {
+            $luminance = [PresentationUiNative]::GetClientAverageLuminance($WindowHandle)
+            # The dark fixture is well above 6; an unpainted black host is 0.
+            if ($luminance -ge 6) {
+                return
+            }
+        }
+        Start-Sleep -Milliseconds 100
+    } while ($timer.ElapsedMilliseconds -lt $TimeoutMilliseconds)
+
+    $actual = if ($null -eq $luminance) { "<not foreground>" } else { [Math]::Round($luminance, 2) }
+    throw "Presenter remained black after opening (average luminance: $actual)."
+}
+
 function Test-SameBounds {
     param(
         [object]$Left,
@@ -328,6 +411,7 @@ try {
         }
         if (-not $presenter) { throw "Presenter window did not open in the app process." }
         $script:presenterHwnd = $presenter.hwnd
+        Wait-PresenterRendered -WindowHandle ([IntPtr]$script:presenterHwnd)
         Wait-PresenterRunning
     }
 
