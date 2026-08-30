@@ -1792,7 +1792,7 @@ async function startServer(inst) {
           version: inst.version,
           deckVersion: inst.deckVersion,
           markdown: offset && inst.slides.length ? inst.slides[targetIndex] : inst.markdown,
-          index: targetIndex,
+          index: offset ? targetIndex : inst.index,
           total: inst.slides.length,
           theme: inst.theme,
           themeLocked: inst.themeLocked,
