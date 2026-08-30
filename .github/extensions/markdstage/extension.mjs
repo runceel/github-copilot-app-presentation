@@ -2489,6 +2489,7 @@ async function ensureInstance(ctx) {
     const repoRoot = resolveRepoRoot(ctx.session?.workingDirectory);
     inst = {
       key,
+      extensionId: ctx.extensionId,
       server: null,
       url: null,
       version: 0,

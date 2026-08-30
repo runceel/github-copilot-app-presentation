@@ -878,6 +878,7 @@ export function createArchitectureEditorManager({
         .digest("hex")
         .slice(0, 16);
       return copilotSession.rpc.canvas.open({
+        extensionId: inst.extensionId,
         canvasId: "architecture-editor",
         instanceId: `architecture-editor-${identity}`,
         input: {
