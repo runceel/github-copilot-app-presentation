@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.Web.WebView2.Core;
 using PresentationApp.Services;
 using Windows.Foundation;
@@ -26,6 +27,7 @@ public sealed partial class PresenterWindow : Window
     private CoreWebView2Controller? _controller;
     private Task? _initializationTask;
     private bool _closed;
+    private bool _displayReady;
     private bool _fullScreenRequestQueued;
 
     /// <summary>
@@ -55,6 +57,12 @@ public sealed partial class PresenterWindow : Window
     {
         try
         {
+            await WaitForHostLayoutAsync();
+            if (_closed)
+            {
+                return;
+            }
+
             var windowReference =
                 CoreWebView2ControllerWindowReference.CreateFromWindowHandle(
                     unchecked((ulong)_windowHandle));
@@ -68,6 +76,7 @@ public sealed partial class PresenterWindow : Window
             _controller = controller;
             controller.AcceleratorKeyPressed += OnAcceleratorKeyPressed;
             controller.DefaultBackgroundColor = Color.FromArgb(255, 0, 0, 0);
+            controller.IsVisible = false;
             UpdateControllerBounds();
 
             // This host creates the initialized Win32 controller directly; WUI4001 only recognizes
@@ -84,9 +93,8 @@ public sealed partial class PresenterWindow : Window
                 CoreWebView2 sender,
                 CoreWebView2NavigationCompletedEventArgs args) =>
                 navigationCompleted.TrySetResult(args);
-
             webView.NavigationCompleted += OnNavigationCompleted;
-            controller.IsVisible = true;
+            webView.NavigationCompleted += OnNavigationCompleted;
             webView.Navigate(_presenterUri.AbsoluteUri);
             CoreWebView2NavigationCompletedEventArgs navigation;
             try
@@ -107,6 +115,15 @@ public sealed partial class PresenterWindow : Window
             }
 
             UpdateControllerBounds();
+            await WaitForNextRenderAsync();
+            if (_closed)
+            {
+                return;
+            }
+
+            UpdateControllerBounds();
+            controller.IsVisible = true;
+            _displayReady = true;
             controller.MoveFocus(CoreWebView2MoveFocusReason.Programmatic);
         }
         catch (OperationCanceledException) when (_closed)
@@ -178,7 +195,7 @@ public sealed partial class PresenterWindow : Window
         }
 
         UpdateControllerBounds();
-        if (_controller is null)
+        if (!_displayReady || _controller is null)
         {
             WebViewHost.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
         }
@@ -199,6 +216,7 @@ public sealed partial class PresenterWindow : Window
     private void OnClosed(object sender, WindowEventArgs args)
     {
         _closed = true;
+        _displayReady = false;
         _lifetime.Cancel();
         Closed -= OnClosed;
         Activated -= OnActivated;
@@ -227,6 +245,65 @@ public sealed partial class PresenterWindow : Window
             clientRect.Right - clientRect.Left,
             clientRect.Bottom - clientRect.Top);
         _controller.NotifyParentWindowPositionChanged();
+    }
+
+    private async Task WaitForHostLayoutAsync()
+    {
+        if (IsHostLayoutReady())
+        {
+            return;
+        }
+
+        var ready = new TaskCompletionSource<object?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        void CompleteWhenReady()
+        {
+            if (IsHostLayoutReady())
+            {
+                ready.TrySetResult(null);
+            }
+        }
+
+        void OnLoaded(object sender, RoutedEventArgs args) => CompleteWhenReady();
+        void OnSizeChanged(object sender, SizeChangedEventArgs args) => CompleteWhenReady();
+
+        WebViewHost.Loaded += OnLoaded;
+        WebViewHost.SizeChanged += OnSizeChanged;
+        try
+        {
+            CompleteWhenReady();
+            await ready.Task.WaitAsync(NavigationTimeout, _lifetime.Token);
+        }
+        finally
+        {
+            WebViewHost.Loaded -= OnLoaded;
+            WebViewHost.SizeChanged -= OnSizeChanged;
+        }
+    }
+
+    private bool IsHostLayoutReady() =>
+        WebViewHost.IsLoaded &&
+        WebViewHost.ActualWidth > 0 &&
+        WebViewHost.ActualHeight > 0 &&
+        GetClientRect(_windowHandle, out var clientRect) &&
+        clientRect.Right > clientRect.Left &&
+        clientRect.Bottom > clientRect.Top;
+
+    private async Task WaitForNextRenderAsync()
+    {
+        var rendered = new TaskCompletionSource<object?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnRendering(object? sender, object args) => rendered.TrySetResult(null);
+
+        CompositionTarget.Rendering += OnRendering;
+        try
+        {
+            await rendered.Task.WaitAsync(NavigationTimeout, _lifetime.Token);
+        }
+        finally
+        {
+            CompositionTarget.Rendering -= OnRendering;
+        }
     }
 
     private bool IsFullScreen =>
