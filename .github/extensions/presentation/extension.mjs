@@ -1818,9 +1818,9 @@ async function startServer(inst) {
       return;
     }
     if (pathname === "/present") {
-      if (req.method !== "POST") {
+      if (req.method !== "POST" && req.method !== "DELETE") {
         res.statusCode = 405;
-        res.setHeader("Allow", "POST");
+        res.setHeader("Allow", "POST, DELETE");
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
         return;
@@ -1834,7 +1834,10 @@ async function startServer(inst) {
       }
       try {
         activateInstance(inst);
-        const result = await launchPresenter(inst);
+        const result =
+          req.method === "DELETE"
+            ? { ok: true, stopped: await stopPresenter(inst) }
+            : await launchPresenter(inst);
         res.statusCode = 200;
         res.setHeader("Content-Type", "application/json; charset=utf-8");
         res.setHeader("Cache-Control", "no-store");
