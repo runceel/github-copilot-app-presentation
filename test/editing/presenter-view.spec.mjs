@@ -26,6 +26,9 @@ test("presenter view provides presentation controls and returns to the slide", a
     await page.locator("#presenterNextButton").click();
     await expect.poll(() => harness.index).toBe(1);
     await expect(page.locator("#presenterCounter")).toHaveText("2 / 3");
+    await expect(
+      page.frameLocator("#presenterNext").getByRole("heading", { name: "Third slide" }),
+    ).toBeVisible();
 
     await page.locator("#presenterListButton").click();
     await page.getByRole("button", { name: "3 Third slide" }).click();

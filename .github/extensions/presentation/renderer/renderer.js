@@ -731,7 +731,7 @@ let sourceBacked = false;
 let sourceMode = "snapshot";
 let sourceWatchStatus = "inactive";
 let sourceWatchError = "";
-let presenterLaunchPending = false;
+let presenterRequestPending = false;
 let presenterRunning = false;
 let presenterViewOpen = false;
 let pdfExportPending = false;
@@ -1053,8 +1053,8 @@ function goToIndex(i) {
 }
 
 async function setPresenterRunning(running) {
-  if (presenterLaunchPending) return;
-  presenterLaunchPending = true;
+  if (presenterRequestPending) return;
+  presenterRequestPending = true;
   const button = document.getElementById("navPresent");
   const status = document.getElementById("presentStatus");
   if (button) button.disabled = true;
@@ -1094,7 +1094,7 @@ async function setPresenterRunning(running) {
       button.title = message;
     }
   } finally {
-    presenterLaunchPending = false;
+    presenterRequestPending = false;
     if (button) button.disabled = false;
   }
 }
