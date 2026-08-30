@@ -6,6 +6,7 @@ Markdown を presentation canvas と同じ renderer で表示し、GitHub Copilo
 
 - `.md` / `.markdown` を Windows のファイル選択ダイアログから開く
 - 現在のスライドと次のスライドを 16:9 でプレビュー
+- ツールバーまたは O キーでスライド一覧を開き、任意のページへ移動
 - 矢印、PageUp/PageDown、Space、Home、End で移動
 - 発表画面と発表者ビューの現在スライドは、余白の左クリック / タップで次へ、
   右クリックで前へ移動

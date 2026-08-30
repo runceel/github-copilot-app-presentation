@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -17,7 +18,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
     private readonly Func<nint> _windowHandle;
     private readonly SynchronizationContext _uiContext;
     private readonly SemaphoreSlim _loadGate = new(1, 1);
+    private readonly ObservableCollection<SlideOverviewItem> _slideOverviews = [];
     private string _currentPath = string.Empty;
+    private long _slideOverviewDeckVersion = -1;
 
     internal MainPageViewModel(
         PresentationSession session,
@@ -37,6 +40,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
         _windowHandle = windowHandle;
         _uiContext = SynchronizationContext.Current
             ?? throw new InvalidOperationException("The presenter must be created on the UI thread.");
+        SlideOverviews = new ReadOnlyObservableCollection<SlideOverviewItem>(_slideOverviews);
 
         _session.Changed += OnSessionChanged;
         _presenterWindow.StatusChanged += OnPresenterStatusChanged;
@@ -71,7 +75,12 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
     public partial bool IsPresenterRunning { get; set; }
 
     [ObservableProperty]
+    public partial int CurrentSlideIndex { get; set; } = -1;
+
+    [ObservableProperty]
     public partial string PresenterButtonText { get; set; } = "発表を開始";
+
+    public ReadOnlyObservableCollection<SlideOverviewItem> SlideOverviews { get; }
 
     public async Task InitializeAsync()
     {
@@ -127,6 +136,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
     }
 
     public void GoHome() => _session.NavigateTo(0);
+
+    public bool NavigateToSlide(int index) => _session.NavigateTo(index);
 
     public void GoEnd()
     {
@@ -258,7 +269,22 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
 
     private void ApplySnapshot(PresentationSnapshot snapshot)
     {
+        if (_slideOverviewDeckVersion != snapshot.DeckVersion)
+        {
+            _slideOverviewDeckVersion = snapshot.DeckVersion;
+            CurrentSlideIndex = -1;
+            _slideOverviews.Clear();
+            for (var index = 0; index < snapshot.Slides.Count; index++)
+            {
+                _slideOverviews.Add(new SlideOverviewItem(
+                    index,
+                    index + 1,
+                    SlideTitleDeriver.Derive(snapshot.Slides[index])));
+            }
+        }
+
         IsDeckLoaded = snapshot.Total > 0;
+        CurrentSlideIndex = snapshot.Total > 0 ? snapshot.Index : -1;
         HasNextSlide = snapshot.HasNext;
         PageCounter = snapshot.Total == 0
             ? "0 / 0"
@@ -291,4 +317,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IAsyncDisposab
 
         _uiContext.Post(_ => action(), null);
     }
+}
+
+public sealed record SlideOverviewItem(int Index, int PageNumber, string Title)
+{
+    public string AccessibleName => $"{PageNumber} ページ、{Title}";
 }

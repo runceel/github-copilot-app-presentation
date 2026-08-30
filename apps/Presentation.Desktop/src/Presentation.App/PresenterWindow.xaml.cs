@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Input;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.Web.WebView2.Core;
 using PresentationApp.Services;
 using Windows.System;
@@ -64,6 +65,12 @@ public sealed partial class PresenterWindow : Window
     {
         try
         {
+            await WaitForHostLayoutAsync();
+            if (_closed)
+            {
+                return;
+            }
+
             await PresenterWebView.EnsureCoreWebView2Async(_environment);
             if (_closed)
             {
@@ -109,6 +116,12 @@ public sealed partial class PresenterWindow : Window
             {
                 throw new InvalidOperationException(
                     $"The presentation renderer failed to load ({navigation.WebErrorStatus}).");
+            }
+
+            await WaitForNextRenderAsync();
+            if (_closed)
+            {
+                return;
             }
 
             PresenterWebView.Focus(FocusState.Programmatic);
@@ -208,6 +221,62 @@ public sealed partial class PresenterWindow : Window
         }
         PresenterWebView.Close();
         _lifetime.Dispose();
+    }
+
+    private async Task WaitForHostLayoutAsync()
+    {
+        if (IsHostLayoutReady())
+        {
+            return;
+        }
+
+        var ready = new TaskCompletionSource<object?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        void CompleteWhenReady()
+        {
+            if (IsHostLayoutReady())
+            {
+                ready.TrySetResult(null);
+            }
+        }
+
+        void OnLoaded(object sender, RoutedEventArgs args) => CompleteWhenReady();
+        void OnSizeChanged(object sender, SizeChangedEventArgs args) => CompleteWhenReady();
+
+        WebViewHost.Loaded += OnLoaded;
+        WebViewHost.SizeChanged += OnSizeChanged;
+        try
+        {
+            CompleteWhenReady();
+            await ready.Task.WaitAsync(NavigationTimeout, _lifetime.Token);
+        }
+        finally
+        {
+            WebViewHost.Loaded -= OnLoaded;
+            WebViewHost.SizeChanged -= OnSizeChanged;
+        }
+    }
+
+    private bool IsHostLayoutReady() =>
+        WebViewHost.IsLoaded &&
+        WebViewHost.ActualWidth > 0 &&
+        WebViewHost.ActualHeight > 0;
+
+    private async Task WaitForNextRenderAsync()
+    {
+        var rendered = new TaskCompletionSource<object?>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        void OnRendering(object? sender, object args) => rendered.TrySetResult(null);
+
+        CompositionTarget.Rendering += OnRendering;
+        try
+        {
+            await rendered.Task.WaitAsync(NavigationTimeout, _lifetime.Token);
+        }
+        finally
+        {
+            CompositionTarget.Rendering -= OnRendering;
+        }
     }
 
     private bool IsFullScreen =>

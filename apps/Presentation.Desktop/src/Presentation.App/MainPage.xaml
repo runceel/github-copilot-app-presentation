@@ -6,6 +6,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:local="using:PresentationApp"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewModels="using:PresentationApp.ViewModels"
     KeyDown="OnPageKeyDown"
     IsTabStop="True"
     mc:Ignorable="d">
@@ -27,6 +28,17 @@
                 Command="{x:Bind ViewModel.OpenMarkdownCommand}"
                 Icon="OpenFile"
                 Label="Markdown を開く" />
+            <AppBarButton
+                AutomationProperties.AutomationId="SlideOverviewButton"
+                Click="OnSlideOverviewClick"
+                Icon="List"
+                IsEnabled="{x:Bind ViewModel.IsDeckLoaded, Mode=OneWay}"
+                Label="スライド一覧"
+                KeyboardAcceleratorPlacementMode="Hidden">
+                <AppBarButton.KeyboardAccelerators>
+                    <KeyboardAccelerator Key="O" />
+                </AppBarButton.KeyboardAccelerators>
+            </AppBarButton>
             <AppBarButton
                 AutomationProperties.AutomationId="StartPresentationButton"
                 Command="{x:Bind ViewModel.TogglePresentationCommand}"
@@ -209,5 +221,54 @@
                 </Button.KeyboardAccelerators>
             </Button>
         </Grid>
+
+        <ContentDialog
+            x:Name="SlideOverviewDialog"
+            Grid.RowSpan="4"
+            AutomationProperties.AutomationId="SlideOverviewDialog"
+            CloseButtonText="閉じる"
+            Opened="OnSlideOverviewDialogOpened"
+            Title="スライド一覧">
+            <ListView
+                x:Name="SlideOverviewListView"
+                MinWidth="480"
+                MaxHeight="520"
+                AutomationProperties.AutomationId="SlideOverviewList"
+                AutomationProperties.Name="スライド一覧。ページ番号とタイトル"
+                IsItemClickEnabled="True"
+                ItemClick="OnSlideOverviewItemClick"
+                ItemsSource="{x:Bind ViewModel.SlideOverviews, Mode=OneWay}"
+                SelectedIndex="{x:Bind ViewModel.CurrentSlideIndex, Mode=OneWay}"
+                SelectionMode="Single">
+                <ListView.ItemContainerStyle>
+                    <Style TargetType="ListViewItem">
+                        <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                    </Style>
+                </ListView.ItemContainerStyle>
+                <ListView.ItemTemplate>
+                    <DataTemplate x:DataType="viewModels:SlideOverviewItem">
+                        <Grid
+                            Padding="4,8"
+                            ColumnSpacing="16"
+                            AutomationProperties.Name="{x:Bind AccessibleName}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="40" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock
+                                HorizontalAlignment="Right"
+                                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                Text="{x:Bind PageNumber}"
+                                VerticalAlignment="Center" />
+                            <TextBlock
+                                Grid.Column="1"
+                                Text="{x:Bind Title}"
+                                TextTrimming="CharacterEllipsis"
+                                VerticalAlignment="Center" />
+                        </Grid>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </ContentDialog>
     </Grid>
 </Page>
