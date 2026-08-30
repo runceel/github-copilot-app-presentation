@@ -279,11 +279,19 @@ export async function startHarness({
     }
 
     if (pathname === "/state") {
+      const offset = Math.max(
+        -1,
+        Math.min(1, Number.parseInt(requestUrl.searchParams.get("offset") || "0", 10) || 0),
+      );
+      const targetIndex = Math.min(
+        Math.max(state.index + offset, 0),
+        state.slides.length - 1,
+      );
       sendJson(res, 200, {
         version: state.version,
         deckVersion: state.deckVersion,
-        markdown: state.slides[state.index] ?? "",
-        index: state.index,
+        markdown: state.slides[targetIndex] ?? "",
+        index: targetIndex,
         total: state.slides.length,
         theme: state.theme,
         mode: "deck",

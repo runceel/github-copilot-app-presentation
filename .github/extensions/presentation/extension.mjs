@@ -1779,6 +1779,11 @@ async function startServer(inst) {
       return;
     }
     if (pathname === "/state") {
+      const offset = Math.max(
+        -1,
+        Math.min(1, Number.parseInt(requestUrl.searchParams.get("offset") || "0", 10) || 0),
+      );
+      const targetIndex = clampIndex(inst.index + offset, inst.slides.length);
       res.statusCode = 200;
       res.setHeader("Content-Type", "application/json; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
@@ -1786,8 +1791,8 @@ async function startServer(inst) {
         JSON.stringify({
           version: inst.version,
           deckVersion: inst.deckVersion,
-          markdown: inst.markdown,
-          index: inst.index,
+          markdown: offset && inst.slides.length ? inst.slides[targetIndex] : inst.markdown,
+          index: targetIndex,
           total: inst.slides.length,
           theme: inst.theme,
           themeLocked: inst.themeLocked,

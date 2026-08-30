@@ -20,3 +20,11 @@ test("preview mode only enables pointer navigation for an explicit current-slide
   assert.match(source, /nav\.hidden = previewMode \|\|/);
   assert.match(source, /img\[src\^="\/assets\/"\]/);
 });
+
+test("preview state resolves the requested slide offset", async () => {
+  const source = await readFile(join(extensionRoot, "extension.mjs"), "utf8");
+
+  assert.match(source, /requestUrl\.searchParams\.get\("offset"\)/);
+  assert.match(source, /targetIndex = clampIndex\(inst\.index \+ offset, inst\.slides\.length\)/);
+  assert.match(source, /inst\.slides\[targetIndex\]/);
+});
