@@ -75,12 +75,14 @@
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition x:Name="CurrentPreviewRow" Height="*" />
-                <RowDefinition x:Name="NextPreviewRow" Height="0" />
+                <RowDefinition x:Name="NextPreviewRow" Height="*" />
+                <RowDefinition x:Name="NotesPreviewRow" Height="0" />
             </Grid.RowDefinitions>
 
             <Border
                 x:Name="CurrentPreviewBorder"
                 Grid.Column="0"
+                Grid.RowSpan="2"
                 SizeChanged="OnPreviewBorderSizeChanged"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -117,6 +119,7 @@
             <Border
                 x:Name="NextPreviewBorder"
                 Grid.Column="2"
+                Grid.Row="0"
                 SizeChanged="OnPreviewBorderSizeChanged"
                 Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
@@ -158,6 +161,37 @@
                 </Grid>
             </Border>
 
+            <Border
+                x:Name="SpeakerNotesBorder"
+                Grid.Column="2"
+                Grid.Row="1"
+                Padding="16"
+                Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource ControlCornerRadius}">
+                <Grid RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <TextBlock
+                        Style="{StaticResource SubtitleTextBlockStyle}"
+                        Text="スピーカーノート" />
+                    <ScrollViewer
+                        Grid.Row="1"
+                        AutomationProperties.AutomationId="SpeakerNotesScrollViewer"
+                        HorizontalScrollBarVisibility="Disabled"
+                        VerticalScrollBarVisibility="Auto">
+                        <TextBlock
+                            AutomationProperties.AutomationId="SpeakerNotesText"
+                            IsTextSelectionEnabled="True"
+                            Text="{x:Bind ViewModel.CurrentSpeakerNotes, Mode=OneWay}"
+                            TextWrapping="Wrap" />
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
             <VisualStateManager.VisualStateGroups>
                 <VisualStateGroup>
                     <VisualState x:Name="Wide">
@@ -171,11 +205,16 @@
                         </VisualState.StateTriggers>
                         <VisualState.Setters>
                             <Setter Target="CurrentPreviewBorder.(Grid.ColumnSpan)" Value="3" />
+                            <Setter Target="CurrentPreviewBorder.(Grid.RowSpan)" Value="1" />
                             <Setter Target="NextPreviewBorder.(Grid.Column)" Value="0" />
                             <Setter Target="NextPreviewBorder.(Grid.ColumnSpan)" Value="3" />
                             <Setter Target="NextPreviewBorder.(Grid.Row)" Value="1" />
+                            <Setter Target="SpeakerNotesBorder.(Grid.Column)" Value="0" />
+                            <Setter Target="SpeakerNotesBorder.(Grid.ColumnSpan)" Value="3" />
+                            <Setter Target="SpeakerNotesBorder.(Grid.Row)" Value="2" />
                             <Setter Target="CurrentPreviewRow.Height" Value="2*" />
                             <Setter Target="NextPreviewRow.Height" Value="*" />
+                            <Setter Target="NotesPreviewRow.Height" Value="*" />
                         </VisualState.Setters>
                     </VisualState>
                 </VisualStateGroup>

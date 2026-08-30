@@ -33,6 +33,7 @@ canvas iframe（renderer/）
 - 配色は **dark（既定）/ light / microsoft / custom**。`open` の `input` または `load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。`microsoft` は組み込みの配色プリセット、`custom` は `themeFile` または front matter の `theme-file` で指定した CSS カスタムプロパティ専用ファイルです。テーマ指定は **明示的な依頼（canvas の theme） > Markdown front matter > dark** の順です。テーマファイルは元 Markdown と同じフォルダー、リポジトリルートの順で同じ相対パスを探索します。これによりリポジトリ共通テーマを、Markdown ごとの同名テーマで上書きできます。workspace 外や任意セレクターは拒否します。CSS と同じフォルダーに `theme.json` があれば、表紙背景・表紙/背表紙ロゴ・著作権表示を自動的に読み込みます。**どのテーマでもデッキ末尾に背表紙（`layout: backcover`）が自動追加**されます（既に背表紙があれば追加しません）。ロゴと著作権表示はメタデータまたは front matter で明示したときだけ表示されます。
 - カスタムテーマの詳細は [`docs/custom-theme-authoring.md`](docs/custom-theme-authoring.md) を参照してください。生成 AI からは `presentation_guide` の `custom-themes` / `theme-schema` トピックで同じ情報を取得できます。`schema/theme-v1.json` は標準カスタムプロパティ、`schema/theme-metadata-v1.schema.json` は `theme.json` の機械可読スキーマです。
 - コンテンツサイズは **auto（既定）/ normal / large / xlarge** の4段階。`auto` はコード・表・画像・Mermaidを含まない通常スライドを計測し、余白が大きい場合だけ安全な範囲で拡大します。
+- **スピーカーノート**は各スライドのトップレベル HTML コメントへ記述します。発表者ビューには現在ページのノートを Markdown として表示し、ページ送りへ追従します。ノートは通常のスライド、外部プレゼン画面、PDF には表示しません。
 - ナビゲーション UI（操作バー・✎ 編集モード・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。操作バーの ✎ を押すと `edit_architecture` と同じ位置調整モードを切り替えられます。📂 から読み込んだ Markdown の図では、位置調整ツールバーの **詳細編集**から専用の `architecture-editor` canvas を開けます。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。余白クリックは通常の canvas/presenter 表示でのみ有効で、PDF 印刷モードでは登録されません。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
 - **PDF Export は Canvas の操作バーにあるプリンターアイコンからも実行できます。** 元 Markdown のファイル名を `open` / `load_deck` の `sourceName` に渡すと、`<元ファイル名>.pdf` として workspace に保存します。AI から `export_pdf` action を呼ぶ場合は従来どおり任意の `outputPath` を指定できます。現在のデッキを hidden print mode で全ページ描画し、headless Edge/Chromeで背景・画像・コード強調・Mermaidを含む16:9 PDFへ変換します。
 - **外部プレゼン画面**は canvas の ⛶ ボタン、または明示的な `open_presenter` action で起動します。Edge / Chrome / Chromium を専用の一時プロファイルで移動・リサイズ可能な 1280x720 の app mode ウィンドウとして起動し、同じ `/state`・`/navigate`・SSE を使うため、canvas・キーボード・Surface Pen のページ位置が同期します。必要ならウィンドウを対象モニターへ移動し、ブラウザーや OS の標準操作（Windows では `F11`）で全画面化します。外部ウィンドウを閉じるには `Alt+F4`、または AI から `close_presenter` を使います。canvas を閉じた場合も自動終了します。
@@ -130,6 +131,23 @@ Extension 単体をユーザースコープへ導入した場合も同じ仕様�
 先頭スライドは `layout: title` の表紙として作ります。デッキ末尾の
 `layout: backcover` は Extension が自動追加します。本文では見出し、リスト、表、画像、
 コード、`mermaid`、`architecture` を利用できます。
+
+スピーカーノートは Slidev / Marp と同じく、スライド本文のトップレベル HTML コメントへ
+記述します。コメント内では Markdown を使用でき、複数のコメントは空行で連結して表示します。
+コードフェンス内のコメント例と `<!-- slide-size: ... -->` ディレクティブはノートに含めません。
+
+```markdown
+## デモ
+
+- 画面にはこの内容だけを表示
+
+<!--
+最初に **前提条件** を説明する。
+
+1. 操作を実演する
+2. 質問を受ける
+-->
+```
 
 ローカル画像は `![代替テキスト](/assets/foo.png)` と書きます。`open` / `load_deck` には
 元 Markdown の workspace 相対パスを `sourceName` として渡してください。`/assets/...` は
