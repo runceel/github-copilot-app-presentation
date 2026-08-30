@@ -7,6 +7,7 @@ Markdown を presentation canvas と同じ renderer で表示し、GitHub Copilo
 - `.md` / `.markdown` を Windows のファイル選択ダイアログから開く
 - 現在のスライドと次のスライドを 16:9 でプレビュー
 - 矢印、PageUp/PageDown、Space、Home、End で移動
+- 発表画面の余白クリック / タップ、および Surface Pen の末尾ボタンで移動
 - Markdown 保存時に自動再読込し、現在ページを維持
 - 読込失敗時は最後の正常なデッキを維持
 - 発表画面はネイティブ WinUI 3 Window（WebView2 全面表示）として、アプリと同じプロセス内で起動
@@ -16,6 +17,10 @@ Markdown を presentation canvas と同じ renderer で表示し、GitHub Copilo
 F11 で全画面に切り替え、Esc で全画面から通常表示に戻ります（通常表示時の Esc はスライド側の
 既存の挙動を妨げません）。メイン画面の開始 / 終了ボタン、発表ウィンドウ自身を閉じる操作、
 アプリ終了時の一括終了のいずれからも状態が同期します。
+
+Surface Pen は、ユーザーがメイン画面から発表画面を開いている間だけ有効です。末尾ボタンの
+1 回押しで次へ、長押しで前へ移動します。ペンの取り外し、接続、ドッキングではアプリや
+発表画面を自動起動せず、ペン操作で発表画面を開閉することもありません。
 
 ## 開発環境
 
@@ -66,4 +71,4 @@ Window で表示するため、別途 Edge / Chrome / Chromium を用意する�
 - `theme-file` は Markdown のフォルダー、Git ルートの順で探索します。
 - workspace 外へ出るパス、junction/symlink 越しの脱出、過大ファイルは拒否します。
 
-Markdown の編集、PDF export、Architecture editor、発表者ノート、タイマー、Surface Pen 専用操作は初版の対象外です。
+Markdown の編集、PDF export、Architecture editor、発表者ノート、タイマーは初版の対象外です。

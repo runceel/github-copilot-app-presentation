@@ -147,8 +147,7 @@ let activeInstanceKey = null;
 let penListenerProcess = null;
 let penListenerSupported = null;
 let penListenerStopping = false;
-// Serializes every Surface Pen gesture (navigation *and* the presenter toggle)
-// so a burst of presses can't interleave a launch with a page change.
+// Serializes Surface Pen navigation so a burst of presses is applied in order.
 let penActionQueue = Promise.resolve();
 
 // Clamp an arbitrary index into [0, total-1] (or 0 when the deck is empty), so
@@ -873,24 +872,6 @@ function queuePenNavigation(delta) {
   });
 }
 
-// Surface Pen double click toggles the external presenter window: start it when
-// it isn't running, close it when it is. Failures (no deck loaded, no Chromium
-// browser installed) stay warnings so a stray press never breaks the session.
-function queuePenPresenterToggle() {
-  queuePenAction("presenter toggle", async (inst) => {
-    if (isProcessRunning(inst.presenterProcess)) {
-      await stopPresenter(inst);
-      log("presentation: external presenter closed by Surface Pen double click");
-    } else {
-      await launchPresenter(inst);
-      log("presentation: external presenter opened by Surface Pen double click");
-    }
-    // Nudge connected clients so the ⛶ button reflects presenterRunning without
-    // waiting for the renderer's slow safety poll.
-    broadcast(inst);
-  });
-}
-
 function handlePenListenerMessage(child, line) {
   if (penListenerProcess !== child || !line.trim()) return;
   let message;
@@ -909,18 +890,6 @@ function handlePenListenerMessage(child, line) {
     } else {
       log(
         `presentation: ignored unknown Surface Pen action: ${message.action}`,
-        "warning",
-      );
-    }
-    return;
-  }
-
-  if (message.type === "command") {
-    if (message.action === "toggle-presenter") {
-      queuePenPresenterToggle();
-    } else {
-      log(
-        `presentation: ignored unknown Surface Pen command: ${message.action}`,
         "warning",
       );
     }
@@ -2663,7 +2632,7 @@ const session = await joinSession({
       id: "presentation",
       displayName: "Presentation",
       description:
-        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。open 時に slides/index/theme を渡すと最初からデッキを表示できる（プレースホルダーを挟まない）。発表途中の再ロードや差し替えは load_deck で行う。以降のページ送りは canvas 内の ◀ ▶・矢印キー・スライド一覧、対応する Windows 環境では Surface Pen の末尾ボタン（1回押しで次へ、長押しで前へ、2回押しで外部プレゼン画面の起動・終了）で完結する。open_presenter で同期された外部ウィンドウを起動し、必要に応じてブラウザーや OS の標準操作で全画面化できる。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替え、export_pdf で表示中のデッキを16:9 PDFへ書き出せる。",
+        "Markdown スライドをテーマ付きで表示するプレゼン用 canvas。open 時に slides/index/theme を渡すと最初からデッキを表示できる（プレースホルダーを挟まない）。発表途中の再ロードや差し替えは load_deck で行う。以降のページ送りは canvas 内の ◀ ▶・矢印キー・スライド一覧、対応する Windows 環境では Surface Pen の末尾ボタン（1回押しで次へ、長押しで前へ）で完結する。open_presenter で同期された外部ウィンドウを起動し、必要に応じてブラウザーや OS の標準操作で全画面化できる。Surface Pen から外部ウィンドウは起動しない。goto_slide はチャットからページを指定したいときに使う。show_slide で1枚だけ差し替え、export_pdf で表示中のデッキを16:9 PDFへ書き出せる。",
       inputSchema: {
         type: "object",
         properties: {
@@ -2928,7 +2897,7 @@ const session = await joinSession({
         {
           name: "open_presenter",
           description:
-            "表示中のデッキを同期した移動・リサイズ可能な 1280x720 の外部プレゼン画面として開く。Microsoft Edge / Google Chrome / Chromium を専用プロファイルの app mode で起動し、canvas と同じページ位置・キーボード操作・Surface Pen 操作を共有する。全画面化はブラウザーや OS の標準操作（Windows では F11）で行う。既に起動中なら新しいウィンドウは増やさない。Surface Pen の末尾ボタン2回押しでも同じ起動・終了トグルができる。",
+            "表示中のデッキを同期した移動・リサイズ可能な 1280x720 の外部プレゼン画面として開く。Microsoft Edge / Google Chrome / Chromium を専用プロファイルの app mode で起動し、canvas と同じページ位置・キーボード操作・Surface Pen 操作を共有する。全画面化はブラウザーや OS の標準操作（Windows では F11）で行う。既に起動中なら新しいウィンドウは増やさない。Surface Pen からは起動しない。",
           handler: async (ctx) => {
             const inst = instances.get(keyOf(ctx));
             if (!inst) {
@@ -2944,7 +2913,7 @@ const session = await joinSession({
         {
           name: "close_presenter",
           description:
-            "open_presenter で起動した外部プレゼン画面を閉じ、専用ブラウザープロファイルを削除する。Surface Pen の末尾ボタン2回押しでも閉じられる。",
+            "open_presenter で起動した外部プレゼン画面を閉じ、専用ブラウザープロファイルを削除する。",
           handler: async (ctx) => {
             const inst = instances.get(keyOf(ctx));
             if (!inst) {

@@ -17,6 +17,7 @@ Copy-Item $FixturePath $tempDeck
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 public static class PresentationUiNative {
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hWnd);
@@ -33,6 +34,16 @@ public static class PresentationUiNative {
     [DllImport("user32.dll")]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
     [DllImport("user32.dll")]
+    private static extern bool GetClientRect(IntPtr hWnd, out RECT rect);
+    [DllImport("user32.dll")]
+    private static extern bool ClientToScreen(IntPtr hWnd, ref POINT point);
+    [DllImport("user32.dll")]
+    private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")]
+    private static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extraInfo);
+    [DllImport("user32.dll")]
+    private static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
+    [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
     [DllImport("user32.dll")]
     private static extern bool GetGUIThreadInfo(uint threadId, ref GUITHREADINFO info);
@@ -43,6 +54,12 @@ public static class PresentationUiNative {
         public int Top;
         public int Right;
         public int Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT {
+        public int X;
+        public int Y;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -72,6 +89,76 @@ public static class PresentationUiNative {
             0x0101,
             (IntPtr)virtualKey,
             new IntPtr(unchecked((long)0xC0000001)));
+    }
+
+    public static void SendKeyWithRepeat(IntPtr windowHandle, int virtualKey) {
+        var info = new GUITHREADINFO();
+        info.Size = Marshal.SizeOf<GUITHREADINFO>();
+        var threadId = GetWindowThreadProcessId(windowHandle, IntPtr.Zero);
+        if (!GetGUIThreadInfo(threadId, ref info) || info.Focus == IntPtr.Zero) {
+            throw new InvalidOperationException("The presenter does not have a focused WebView2 window.");
+        }
+
+        SendMessage(info.Focus, 0x0100, (IntPtr)virtualKey, (IntPtr)1);
+        SendMessage(
+            info.Focus,
+            0x0100,
+            (IntPtr)virtualKey,
+            new IntPtr(unchecked((long)0x40000001)));
+        SendMessage(
+            info.Focus,
+            0x0101,
+            (IntPtr)virtualKey,
+            new IntPtr(unchecked((long)0xC0000001)));
+    }
+
+    public static void ClickPresenterMargin(IntPtr windowHandle, bool rightButton) {
+        var info = new GUITHREADINFO();
+        var threadId = GetWindowThreadProcessId(windowHandle, IntPtr.Zero);
+        ShowWindow(windowHandle, 5);
+        SetForegroundWindow(windowHandle);
+        for (var attempt = 0; attempt < 20; attempt++) {
+            info = new GUITHREADINFO();
+            info.Size = Marshal.SizeOf<GUITHREADINFO>();
+            if (GetGUIThreadInfo(threadId, ref info) &&
+                info.Active == windowHandle &&
+                info.Focus != IntPtr.Zero) {
+                break;
+            }
+            Thread.Sleep(25);
+        }
+        if (info.Active != windowHandle || info.Focus == IntPtr.Zero) {
+            throw new InvalidOperationException("The presenter does not have a focused WebView2 window.");
+        }
+
+        RECT rect;
+        if (!GetClientRect(info.Focus, out rect)) {
+            throw new InvalidOperationException("Could not read the focused WebView2 bounds.");
+        }
+
+        var x = Math.Min(24, Math.Max(1, rect.Right - rect.Left - 1));
+        var y = Math.Max(1, (rect.Bottom - rect.Top) / 2);
+        var position = new IntPtr((y << 16) | (x & 0xFFFF));
+        SendMessage(info.Focus, 0x0200, IntPtr.Zero, position);
+        SendMessage(
+            info.Focus,
+            rightButton ? 0x0204u : 0x0201u,
+            rightButton ? new IntPtr(2) : new IntPtr(1),
+            position);
+        SendMessage(
+            info.Focus,
+            rightButton ? 0x0205u : 0x0202u,
+            IntPtr.Zero,
+            position);
+    }
+
+    public static void SendPenShortcut(byte virtualKey) {
+        const byte leftWindows = 0x5B;
+        const uint keyUp = 0x0002;
+        keybd_event(leftWindows, 0, 0, UIntPtr.Zero);
+        keybd_event(virtualKey, 0, 0, UIntPtr.Zero);
+        keybd_event(virtualKey, 0, keyUp, UIntPtr.Zero);
+        keybd_event(leftWindows, 0, keyUp, UIntPtr.Zero);
     }
 }
 "@
@@ -117,6 +204,45 @@ function Get-WindowBounds {
         right = $rect.Right
         bottom = $rect.Bottom
     }
+}
+
+function Wait-PageCounter {
+    param(
+        [string]$Expected,
+        [int]$TimeoutMilliseconds = 3000
+    )
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        $tree = winapp ui inspect -w $script:mainHwnd --depth 12 --json | ConvertFrom-Json
+        $elements = @(Get-UiElements -Elements $tree.windows[0].elements)
+        $counter = $elements | Where-Object automationId -eq "PageCounterText"
+        if ($counter -and ($counter.name -eq $Expected -or $counter.value -eq $Expected)) {
+            return
+        }
+        Start-Sleep -Milliseconds 100
+    } while ($timer.ElapsedMilliseconds -lt $TimeoutMilliseconds)
+
+    $actual = if ($counter) { "$($counter.name)" } else { "<missing>" }
+    throw "Page counter did not become '$Expected' within ${TimeoutMilliseconds}ms (actual: '$actual')."
+}
+
+function Wait-PresenterRunning {
+    $expected = [string]::Concat(
+        [char]0x767A,
+        [char]0x8868,
+        [char]0x3092,
+        [char]0x7D42,
+        [char]0x4E86)
+    for ($attempt = 0; $attempt -lt 50; $attempt++) {
+        $tree = winapp ui inspect -w $script:mainHwnd --interactive --json | ConvertFrom-Json
+        $elements = @(Get-UiElements -Elements $tree.windows[0].elements)
+        $button = $elements | Where-Object automationId -eq "StartPresentationButton"
+        if ($button -and $button.name -eq $expected) {
+            return
+        }
+        Start-Sleep -Milliseconds 100
+    }
+    throw "Presenter WebView and Surface Pen listener did not become ready."
 }
 
 function Test-SameBounds {
@@ -190,6 +316,7 @@ try {
 
     Invoke-Test "Presenter opens a second top-level window in the same process" {
         $before = @(winapp ui list-windows -a $AppPid --json | ConvertFrom-Json | Select-Object -ExpandProperty hwnd)
+        $script:mainHwnd = $before[0]
         Invoke-WinApp ui invoke StartPresentationButton -a $AppPid | Out-Null
         $presenter = $null
         for ($attempt = 0; $attempt -lt 50 -and -not $presenter; $attempt++) {
@@ -201,12 +328,29 @@ try {
         }
         if (-not $presenter) { throw "Presenter window did not open in the app process." }
         $script:presenterHwnd = $presenter.hwnd
+        Wait-PresenterRunning
+    }
+
+    Invoke-Test "Presenter slide margins navigate through the shared renderer" {
+        $windowHandle = [IntPtr]$script:presenterHwnd
+        [PresentationUiNative]::SetForegroundWindow($windowHandle) | Out-Null
+        [PresentationUiNative]::ClickPresenterMargin($windowHandle, $false)
+        Wait-PageCounter -Expected "3 / 4"
+        [PresentationUiNative]::ClickPresenterMargin($windowHandle, $true)
+        Wait-PageCounter -Expected "2 / 4"
+    }
+
+    Invoke-Test "Surface Pen shortcuts navigate only while the presenter is active" {
+        [PresentationUiNative]::SendPenShortcut(0x83)
+        Wait-PageCounter -Expected "3 / 4"
+        [PresentationUiNative]::SendPenShortcut(0x81)
+        Wait-PageCounter -Expected "2 / 4"
     }
 
     Invoke-Test "F11 and Escape toggle native fullscreen" {
         $windowHandle = [IntPtr]$script:presenterHwnd
         $windowedBounds = Get-WindowBounds -WindowHandle $windowHandle
-        [PresentationUiNative]::SendKey($windowHandle, 0x7A)
+        [PresentationUiNative]::SendKeyWithRepeat($windowHandle, 0x7A)
 
         $fullScreenBounds = $windowedBounds
         for ($attempt = 0; $attempt -lt 30; $attempt++) {
@@ -228,6 +372,9 @@ try {
         if (Test-SameBounds $fullScreenBounds $restoredBounds) {
             throw "Escape did not leave fullscreen: fullscreen $($fullScreenBounds | ConvertTo-Json -Compress), actual $($restoredBounds | ConvertTo-Json -Compress)."
         }
+        if (-not (Test-SameBounds $windowedBounds $restoredBounds)) {
+            throw "Escape did not restore the original bounds: expected $($windowedBounds | ConvertTo-Json -Compress), actual $($restoredBounds | ConvertTo-Json -Compress)."
+        }
     }
 
     Invoke-Test "Closing the presenter window restores the main screen state" {
@@ -243,6 +390,11 @@ try {
             ConvertFrom-Json |
             Where-Object { $_.hwnd -eq $script:presenterHwnd }
         if ($remaining) { throw "Presenter window did not close." }
+
+        Start-Sleep -Milliseconds 300
+        [PresentationUiNative]::SendPenShortcut(0x83)
+        Start-Sleep -Milliseconds 300
+        Wait-PageCounter -Expected "2 / 4"
 
         $tree = winapp ui inspect -a $AppPid --interactive --json | ConvertFrom-Json
         $elements = @(Get-UiElements -Elements $tree.windows[0].elements)
@@ -275,6 +427,31 @@ try {
     }
 
     winapp ui screenshot -a $AppPid -o (Join-Path $screenshotDir "final.png") | Out-Null
+
+    Invoke-Test "Top-right Close exits promptly with active WebViews" {
+        Invoke-WinApp ui invoke StartPresentationButton -a $AppPid | Out-Null
+        $presenter = $null
+        for ($attempt = 0; $attempt -lt 50 -and -not $presenter; $attempt++) {
+            Start-Sleep -Milliseconds 100
+            $windows = @(winapp ui list-windows -a $AppPid --json | ConvertFrom-Json)
+            $presenter = $windows |
+                Where-Object { $_.hwnd -ne $script:mainHwnd } |
+                Select-Object -First 1
+        }
+        if (-not $presenter) { throw "Presenter did not reopen before the shutdown test." }
+
+        Wait-PresenterRunning
+
+        $timer = [Diagnostics.Stopwatch]::StartNew()
+        Invoke-WinApp ui invoke Close -w $script:mainHwnd | Out-Null
+        while ((Get-Process -Id $AppPid -ErrorAction SilentlyContinue) -and $timer.ElapsedMilliseconds -lt 3000) {
+            Start-Sleep -Milliseconds 50
+        }
+        $timer.Stop()
+        if (Get-Process -Id $AppPid -ErrorAction SilentlyContinue) {
+            throw "The app was still running $($timer.ElapsedMilliseconds) ms after Close."
+        }
+    }
 }
 finally {
     Remove-Item $tempDeck -Force -ErrorAction SilentlyContinue

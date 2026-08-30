@@ -43,14 +43,14 @@ internal sealed class DeckWatcher : IAsyncDisposable
     public async ValueTask StopAsync()
     {
         Task activeTasks;
+        CancellationTokenSource? debounce;
+        CancellationTokenSource? lifetime;
         lock (_gate)
         {
             _generation++;
-            _debounce?.Cancel();
-            _debounce?.Dispose();
+            debounce = _debounce;
             _debounce = null;
-            _lifetime?.Cancel();
-            _lifetime?.Dispose();
+            lifetime = _lifetime;
             _lifetime = null;
 
             if (_watcher is not null)
@@ -67,14 +67,23 @@ internal sealed class DeckWatcher : IAsyncDisposable
 
             activeTasks = _activeTasks;
             _activeTasks = Task.CompletedTask;
+            _reload = null;
+            _targetName = string.Empty;
         }
 
+        debounce?.Cancel();
+        lifetime?.Cancel();
         try
         {
             await activeTasks;
         }
         catch (OperationCanceledException)
         {
+        }
+        finally
+        {
+            debounce?.Dispose();
+            lifetime?.Dispose();
         }
     }
 

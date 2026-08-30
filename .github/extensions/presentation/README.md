@@ -14,7 +14,7 @@ extension.mjs（Node / @github/copilot-sdk）
   │ open 時に input.slides を受け取り、URL を返す前にデッキを適用（プレースホルダーを挟まない）
   │ デッキ（全スライド）と現在 index を保持し、/state に現在スライドを公開
   │ canvas からの POST /navigate でページ送りを受け付ける
-  │ Windows では Surface Pen の Win+F20 / Win+F19 / Win+F18 ショートカットを監視
+  │ Windows では Surface Pen の Win+F20 / Win+F18 ショートカットを監視
   │ /events(SSE) で更新を通知
   ▼
 canvas iframe（renderer/）
@@ -29,13 +29,13 @@ canvas iframe（renderer/）
 ```
 
 - **全スライドはプレゼン開始時に `open_canvas` の `input`（`slides`）で一括登録**します。open ハンドラーが URL を返す前にデッキを適用するため、canvas を開いた瞬間に最初のスライドが表示され、「スライド未読込」のプレースホルダーを挟みません。発表途中の差し替え・テーマ変更は `load_deck` で行います。**ページ送りは canvas 内のボタン（◀ ▶）・スライド面の余白を左クリック/右クリックする操作・矢印キー・スライド一覧（☰）で完結**し、その操作は拡張機能のループバックサーバー（`POST /navigate`）に送られて全クライアントへ反映されます。余白の左クリックは次のスライド、右クリックは前のスライドです。本文、リンク、画像、ナビゲーション UI、スライド一覧では既存の操作を優先し、右クリックのコンテキストメニューも維持します。外部サーバーや `localhost` ポートの手動起動は不要です。
-- Windows では、**Surface Pen の末尾ボタンを 1 回押すと次へ、長押しすると前へ**移動し、**2 回押し（ダブルクリック）で外部プレゼン画面を起動 / 終了**します。末尾ボタンが生成する `Win+F20`（1 回押し）・`Win+F19`（2 回押し）・`Win+F18`（長押し）を小さな Windows PowerShell ヘルパーのキーボードフックで受け取り、既存のナビゲーション処理と外部プレゼン画面の制御へ渡します。ジェスチャーの判定は Windows 側が行い、2 回押しのときに 1 回押しの `Win+F20` は送られないため、ページ送りの応答が遅くなることはありません。公式 `PenButtonListener` に必要なアプリのパッケージ ID には依存しません。
+- Windows では、**Surface Pen の末尾ボタンを 1 回押すと次へ、長押しすると前へ**移動します。末尾ボタンが生成する `Win+F20`（1 回押し）と `Win+F18`（長押し）を小さな Windows PowerShell ヘルパーのキーボードフックで受け取り、既存のナビゲーション処理へ渡します。`Win+F19`（2 回押し）、Pen の接続、取り出し、収納から外部プレゼン画面を起動することはありません。公式 `PenButtonListener` に必要なアプリのパッケージ ID には依存しません。
 - 配色は **dark（既定）/ light / microsoft / custom**。`open` の `input` または `load_deck` の `theme` でデッキ全体に適用し、レンダラーが `<html data-theme>` 経由で `slides.css` の配色を切り替えます。`microsoft` は組み込みの配色プリセット、`custom` は `themeFile` または front matter の `theme-file` で指定した CSS カスタムプロパティ専用ファイルです。テーマ指定は **明示的な依頼（canvas の theme） > Markdown front matter > dark** の順です。テーマファイルは元 Markdown と同じフォルダー、リポジトリルートの順で同じ相対パスを探索します。これによりリポジトリ共通テーマを、Markdown ごとの同名テーマで上書きできます。workspace 外や任意セレクターは拒否します。CSS と同じフォルダーに `theme.json` があれば、表紙背景・表紙/背表紙ロゴ・著作権表示を自動的に読み込みます。**どのテーマでもデッキ末尾に背表紙（`layout: backcover`）が自動追加**されます（既に背表紙があれば追加しません）。ロゴと著作権表示はメタデータまたは front matter で明示したときだけ表示されます。
 - カスタムテーマの詳細は [`docs/custom-theme-authoring.md`](docs/custom-theme-authoring.md) を参照してください。生成 AI からは `presentation_guide` の `custom-themes` / `theme-schema` トピックで同じ情報を取得できます。`schema/theme-v1.json` は標準カスタムプロパティ、`schema/theme-metadata-v1.schema.json` は `theme.json` の機械可読スキーマです。
 - コンテンツサイズは **auto（既定）/ normal / large / xlarge** の4段階。`auto` はコード・表・画像・Mermaidを含まない通常スライドを計測し、余白が大きい場合だけ安全な範囲で拡大します。
 - ナビゲーション UI（操作バー・✎ 編集モード・スライド一覧）と現在位置の管理は **canvas（renderer）側**が担当します。操作バーの ✎ を押すと `edit_architecture` と同じ位置調整モードを切り替えられます。📂 から読み込んだ Markdown の図では、位置調整ツールバーの **詳細編集**から専用の `architecture-editor` canvas を開けます。エージェントは開始時に `open_canvas`（`input`）を呼ぶだけで、ページ送りの `ask_user` ループは不要です。余白クリックは通常の canvas/presenter 表示でのみ有効で、PDF 印刷モードでは登録されません。`goto_slide` はチャットから特定ページへ飛びたいときに使えます。
 - **PDF Export は Canvas の操作バーにあるプリンターアイコンからも実行できます。** 元 Markdown のファイル名を `open` / `load_deck` の `sourceName` に渡すと、`<元ファイル名>.pdf` として workspace に保存します。AI から `export_pdf` action を呼ぶ場合は従来どおり任意の `outputPath` を指定できます。現在のデッキを hidden print mode で全ページ描画し、headless Edge/Chromeで背景・画像・コード強調・Mermaidを含む16:9 PDFへ変換します。
-- **外部プレゼン画面**は canvas の ⛶ ボタン、`open_presenter` action、または **Surface Pen の末尾ボタン 2 回押し**で起動します。Edge / Chrome / Chromium を専用の一時プロファイルで移動・リサイズ可能な 1280x720 の app mode ウィンドウとして起動し、同じ `/state`・`/navigate`・SSE を使うため、canvas・キーボード・Surface Pen のページ位置が同期します。必要ならウィンドウを対象モニターへ移動し、ブラウザーや OS の標準操作（Windows では `F11`）で全画面化します。外部ウィンドウを閉じるには **もう一度ペンを 2 回押し**、`Alt+F4`、または AI から `close_presenter` を使います。canvas を閉じた場合も自動終了します。
+- **外部プレゼン画面**は canvas の ⛶ ボタン、または明示的な `open_presenter` action で起動します。Edge / Chrome / Chromium を専用の一時プロファイルで移動・リサイズ可能な 1280x720 の app mode ウィンドウとして起動し、同じ `/state`・`/navigate`・SSE を使うため、canvas・キーボード・Surface Pen のページ位置が同期します。必要ならウィンドウを対象モニターへ移動し、ブラウザーや OS の標準操作（Windows では `F11`）で全画面化します。外部ウィンドウを閉じるには `Alt+F4`、または AI から `close_presenter` を使います。canvas を閉じた場合も自動終了します。
 - ローカル画像は元 Markdown と同じ場所の `assets/`、リポジトリ直下の `assets/` の順で
   `/assets/...` を探索します。同名のリポジトリ共通画像をデッキ固有画像で上書きできます。
   Markdown の場所は `open` / `load_deck` の `sourceName` から決まります。
@@ -826,11 +826,10 @@ size: xlarge
 | --- | --- | --- |
 | 1 回押し | `Win+F20` | 次のスライドへ |
 | 長押し | `Win+F18` | 前のスライドへ |
-| 2 回押し | `Win+F19` | 外部プレゼン画面を起動 / 終了（トグル） |
 
-2 回押しは、外部プレゼン画面が起動していなければ起動し、起動中であれば終了します。デッキ未ロードや Edge / Chrome / Chromium が見つからない場合は警告ログのみを残し、表示は変わりません。
+`Win+F19`（2 回押し）と Pen の接続・取り出し・収納は presentation canvas の起動操作に使いません。外部プレゼン画面は canvas の ⛶ ボタン、または明示的な `open_presenter` action で開始します。
 
-「アプリによるショートカットボタン動作の上書き」設定はオンのままで構いませんが、この実装は `PenButtonListener` ではなく Windows のペンショートカットを直接受け取ります。3 つのショートカットはフックで抑止するため、Windows Ink 側の既定動作（画面領域切り取りなど）は同時に発火しません。ペン操作を利用できない場合も、canvas の ◀ ▶ ⛶ ボタンとキーボード操作はそのまま使えます。
+「アプリによるショートカットボタン動作の上書き」設定はオンのままで構いませんが、この実装は `PenButtonListener` ではなく Windows のペンショートカットを直接受け取ります。`Win+F20` と `Win+F18` はフックで抑止するため、Windows Ink 側の既定動作は同時に発火しません。`Win+F19` はフックせず Windows に任せます。ペン操作を利用できない場合も、canvas の ◀ ▶ ⛶ ボタンとキーボード操作はそのまま使えます。
 
 ## アクション
 
@@ -842,8 +841,8 @@ size: xlarge
 | `goto_slide` | `{ index: number }` | 登録済みデッキ内で表示スライドを 0 始まりインデックスで切り替える。範囲外は端に丸める。通常のページ送りは canvas 内で行われるため不要だが、チャットからの指定に使う。戻り値 `{ ok, changed, version, index, total }`。 |
 | `show_slide` | `{ markdown: string }` | 現在のスライドを1枚だけ差し替える（単発表示・その場限りの差し替え用）。フロントマター（`deck`/`kicker`/`page`/`total`/`title`/`layout`/`size`/`theme`）＋本文 Markdown。`theme` 省略時は現在のデッキテーマを引き継ぐ。 |
 | `get_architecture_errors` | `{ index?: number }` | 表示対象の Architecture DSL 文法エラーを AI が取得する。`index` 省略時はデッキ全体、0 始まりの `index` 指定時はそのスライドだけを検証し、`show_slide` の一時差し替えも反映する。戻り値 `{ ok, scope, index?, page?, total, errorCount, errors }`。各 error は `{ slideIndex, page, blockIndex, architecture, code, message }`。デッキ未読込と範囲外 index はエラーにする。 |
-| `open_presenter` | なし | 同期された外部プレゼン画面を Edge / Chrome / Chromium の移動・リサイズ可能な 1280x720 app mode ウィンドウで起動する。全画面化はブラウザーや OS の標準操作（Windows では `F11`）で行う。既に起動中なら新しいウィンドウは増やさない。Surface Pen の末尾ボタン 2 回押しでも同じトグルができる。戻り値 `{ ok, started, alreadyRunning, browser?, pid? }`。 |
-| `close_presenter` | なし | 外部プレゼン画面を終了し、専用の一時ブラウザープロファイルを削除する。Surface Pen の末尾ボタン 2 回押しでも終了できる。戻り値 `{ ok, stopped }`。 |
+| `open_presenter` | なし | 同期された外部プレゼン画面を Edge / Chrome / Chromium の移動・リサイズ可能な 1280x720 app mode ウィンドウで起動する。全画面化はブラウザーや OS の標準操作（Windows では `F11`）で行う。既に起動中なら新しいウィンドウは増やさない。Surface Pen からは起動しない。戻り値 `{ ok, started, alreadyRunning, browser?, pid? }`。 |
+| `close_presenter` | なし | 外部プレゼン画面を終了し、専用の一時ブラウザープロファイルを削除する。戻り値 `{ ok, stopped }`。 |
 | `export_pdf` | `{ outputPath?: string, theme?: "dark"｜"light"｜"microsoft"｜"custom" }` | 表示中のデッキを1スライド1ページの16:9 PDFへ書き出すAI用action。相対パスはworkspace基準、省略時は `presentation.pdf`。Canvas のプリンターアイコンは `sourceName` から `<元ファイル名>.pdf` を自動保存する。`theme` はPDFだけに適用し、canvasの表示テーマは変えない（PDF側にも背表紙を補う）。workspace外と `.pdf` 以外は拒否する。`show_slide` による現在ページの一時差し替えも反映する。戻り値 `{ ok, path, total, theme, bytes }`。Microsoft Edge / Google Chrome / Chromiumのいずれかが必要。 |
 | `edit_architecture` | `{ enabled: boolean }` | Architecture 図の編集モードを切り替える。有効にすると canvas 上で node をドラッグ／キーボード操作できる。📂 インポートしたデッキは元 Markdown の ```architecture フェンスにも書き戻し、それ以外は canvas 状態へ保存する。presenter と印刷では編集 UI を出さない。編集モード自体はデッキと一緒には永続化せず、`reset` で解除する。戻り値 `{ ok, enabled, version }`。 |
 | `reset` | なし | スライドとデッキをクリアして待機プレースホルダーに戻す。編集モードも解除する。 |
@@ -888,7 +887,7 @@ action は `save`（入力なし）と、`reload`（`{ discard?: boolean }`）�
     markdown-files.mjs     # workspace の Markdown 走査（extension とテストで共有）
     markdown-watcher.mjs   # source-backed Markdown の保存監視と debounce
   windows/
-    pen-button-listener.ps1 # Surface Pen の Win+F20 / Win+F19 / Win+F18 を Node へ中継
+    pen-button-listener.ps1 # Surface Pen の Win+F20 / Win+F18 を Node へ中継
   renderer/
     index.html             # iframe シェル・操作バー・スライド一覧/インポートのオーバーレイ
     slides.css             # 3 組み込みテーマ（dark/light/microsoft）の配色定義・ナビ UI のスタイル
