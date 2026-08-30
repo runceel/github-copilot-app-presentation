@@ -16,6 +16,7 @@ public sealed partial class MainPage : Page
     private readonly PresenterWindowService _presenterWindowService;
     private CoreWebView2Environment? _webViewEnvironment;
     private bool _shutdownStarted;
+    private bool _isSlideOverviewDialogOpen;
 
     public MainPageViewModel ViewModel { get; }
 
@@ -60,6 +61,11 @@ public sealed partial class MainPage : Page
         _shutdownStarted = true;
         Loaded -= OnLoaded;
         ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        if (_isSlideOverviewDialogOpen)
+        {
+            SlideOverviewDialog.Hide();
+        }
+
         CurrentSlideWebView.Close();
         NextSlideWebView.Close();
         await ViewModel.DisposeAsync();
@@ -171,7 +177,7 @@ public sealed partial class MainPage : Page
 
     private void OnPageKeyDown(object sender, KeyRoutedEventArgs args)
     {
-        if (args.Handled || args.KeyStatus.IsMenuKeyDown)
+        if (args.Handled || args.KeyStatus.IsMenuKeyDown || _isSlideOverviewDialogOpen)
         {
             return;
         }
@@ -186,6 +192,69 @@ public sealed partial class MainPage : Page
                 ViewModel.GoEnd();
                 args.Handled = true;
                 break;
+        }
+    }
+
+    private async void OnSlideOverviewClick(object sender, RoutedEventArgs args)
+    {
+        if (_isSlideOverviewDialogOpen || !ViewModel.IsDeckLoaded)
+        {
+            return;
+        }
+
+        _isSlideOverviewDialogOpen = true;
+        SlideOverviewDialog.XamlRoot = XamlRoot;
+        try
+        {
+            await SlideOverviewDialog.ShowAsync();
+        }
+        finally
+        {
+            _isSlideOverviewDialogOpen = false;
+            if (!_shutdownStarted)
+            {
+                Focus(FocusState.Programmatic);
+            }
+        }
+    }
+
+    private void OnSlideOverviewDialogOpened(
+        ContentDialog sender,
+        ContentDialogOpenedEventArgs args) =>
+        DispatcherQueue.TryEnqueue(FocusCurrentSlideOverview);
+
+    private void OnSlideOverviewItemClick(object sender, ItemClickEventArgs args)
+    {
+        if (args.ClickedItem is not SlideOverviewItem item)
+        {
+            return;
+        }
+
+        ViewModel.NavigateToSlide(item.Index);
+        SlideOverviewDialog.Hide();
+    }
+
+    private void FocusCurrentSlideOverview()
+    {
+        var index = ViewModel.CurrentSlideIndex;
+        if (index < 0 || index >= ViewModel.SlideOverviews.Count)
+        {
+            SlideOverviewListView.Focus(FocusState.Programmatic);
+            return;
+        }
+
+        var currentItem = ViewModel.SlideOverviews[index];
+        SlideOverviewListView.SelectedItem = currentItem;
+        SlideOverviewListView.ScrollIntoView(currentItem, ScrollIntoViewAlignment.Leading);
+        SlideOverviewListView.UpdateLayout();
+
+        if (SlideOverviewListView.ContainerFromItem(currentItem) is ListViewItem container)
+        {
+            container.Focus(FocusState.Programmatic);
+        }
+        else
+        {
+            SlideOverviewListView.Focus(FocusState.Programmatic);
         }
     }
 
