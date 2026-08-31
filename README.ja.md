@@ -30,26 +30,26 @@
   <a href="https://github.com/runceel/markdstage/releases">リリース</a>
 </p>
 
-MarkdStage は、Markdown を直接洗練されたスライドに変換するオープンソースのプレゼンテーションツールです。
-編集、同期されたプレゼンテーション、スピーカーノート、PDF エクスポートに対応しています。
-GitHub Copilot ネイティブの Canvas Extension とスタンドアロンの Windows アプリは同じレンダラーを共有するため、
-最初の下書きから登壇まで Markdown を信頼できる唯一の情報源として維持できます。
+MarkdStage は、Markdown をそのまま洗練されたスライドに変換するオープンソースのプレゼンテーションツールです。
+編集、操作が同期するプレゼンテーション、スピーカーノート、PDF エクスポートに対応しています。
+GitHub Copilot ネイティブの Canvas Extension とスタンドアロンの Windows アプリは同じレンダラーで描画するため、
+最初の下書きから本番の登壇まで、Markdown を正本として扱えます。
 
 ## MarkdStage を選ぶ理由
 
-- **Markdown がソース**: 独自形式へ移行せず、`.md` を信頼できる唯一の情報源として維持できます
-- **書いたらすぐに発表**: Canvas または Desktop でファイルを開くだけでスライドデッキになります
-- **技術コンテンツをそのまま表示**: コード、Mermaid、Architecture DSL、画像、表、スピーカーノートに対応します
-- **出力の一貫性を維持**: Canvas、プレゼンテーションウィンドウ、Desktop、PDF で同じレンダラーを使用します
-- **エクスポート前に PDF への収まりを確認**: 固定 16:9 レイアウトをプレビューし、クリッピングを検出して、必要なページだけを画像で確認できます
-- **発表に集中できる操作**: ボタン、キーボード、対応環境の Surface Pen で移動できます
+- **Markdown がソース**: 独自形式に乗り換えず、`.md` をそのまま正本として使い続けられます
+- **書いたらすぐに発表**: Canvas でも Desktop でも、ファイルを開けばそのままスライドになります
+- **技術的な内容をそのまま見せられる**: コード、Mermaid、Architecture DSL、画像、表、スピーカーノートに対応します
+- **どこで見ても同じ仕上がり**: Canvas、投影用ウィンドウ、Desktop、PDF を同じレンダラーで描画します
+- **書き出す前に PDF への収まりを確認できる**: 固定 16:9 レイアウトをプレビューしてクリッピングを検出し、気になるページだけを画像で確かめられます
+- **発表に集中できる操作**: ボタン、キーボード、対応環境では Surface Pen でスライドを送れます
 
 <a id="examples"></a>
 
 ## Markdown をステージへ
 
-GitHub Copilot Canvas、プレゼンテーションウィンドウ、Desktop アプリ、PDF エクスポートは、
-すべて同じ Markdown レンダラーを使用します。
+GitHub Copilot Canvas、投影用ウィンドウ、Desktop アプリ、PDF エクスポートは、
+すべて同じ Markdown レンダラーで描画されます。
 
 <table>
   <tr>
@@ -63,24 +63,24 @@ GitHub Copilot Canvas、プレゼンテーションウィンドウ、Desktop ア
   <tr>
     <td valign="top">
       <strong>標準 Markdown</strong><br>
-      見出し、リスト、強調、コード、表、画像を直接記述できます。自動レイアウトが便利な場合は
-      Mermaid も使用できます。
+      見出し、リスト、強調、コード、表、画像をそのまま書けます。図の配置を自動で任せたいときは
+      Mermaid も使えます。
     </td>
     <td valign="top">
       <strong>Architecture DSL</strong><br>
-      安定したグループ、アイコン、配置、コネクタールーティングが必要な場合は、
-      <code>architecture</code> フェンス内に JSON を記述します。
+      グループやアイコンの位置、コネクターの経路を固定したいときは、
+      <code>architecture</code> フェンスに JSON を書きます。
     </td>
   </tr>
 </table>
 
-MarkdStage Canvas はアクティブなデッキと Architecture DSL を GitHub Copilot App のコンテキストへ提供します。
-そのため、作成したい図を自然言語で説明し、Copilot に Markdown の作成や修正を依頼できます。
+MarkdStage Canvas は、表示中のデッキと Architecture DSL を GitHub Copilot App のコンテキストに渡します。
+そのため、描きたい図をことばで説明するだけで、Markdown の作成や修正を Copilot に任せられます。
 
-視覚的に編集する場合は、**📂** でソース Markdown を読み込み、
-**✎ → Advanced editing** を選択して専用の Architecture Editor を使用します。
-ノード、グループ、画像、コネクターの追加、削除、配置、確認が可能です。
-変更は **Save** で Markdown に書き戻すまでドラフトとして保持されます。
+画面上で図を編集したいときは、**📂** でソースの Markdown を読み込み、
+**✎ → Advanced editing** から専用の Architecture Editor を開きます。
+ノード、グループ、画像、コネクターの追加、削除、配置、確認ができます。
+変更は下書きとして保持され、**Save** を選ぶと Markdown に書き戻されます。
 
 <p align="center">
   <img src="./assets/readme/architecture-editor.png" alt="API ノードを選択した MarkdStage Architecture Editor" width="100%">
@@ -88,10 +88,10 @@ MarkdStage Canvas はアクティブなデッキと Architecture DSL を GitHub 
 
 ## MarkdStage の2つの使い方
 
-| サーフェス | 用途 |
+| 利用環境 | 用途 |
 | --- | --- |
-| **MarkdStage Canvas** | GitHub Copilot に Markdown の要約やスライド化を依頼するか、Canvas の 📂 ボタンから直接読み込みます |
-| **MarkdStage Desktop** | GitHub Copilot を開かずに、Markdown、次のスライド、スピーカーノートを確認しながら Windows で発表します |
+| **MarkdStage Canvas** | GitHub Copilot に Markdown の要約やスライド化を任せるか、Canvas の 📂 ボタンから直接読み込みます |
+| **MarkdStage Desktop** | GitHub Copilot を開かずに、Markdown、次のスライド、スピーカーノートを手元で見ながら Windows で発表します |
 
 <a id="canvas-extension"></a>
 
@@ -106,20 +106,20 @@ GitHub Copilot に依頼します。
 >
 > `https://github.com/runceel/markdstage/tree/v2.1.2/.github/extensions/markdstage`
 
-Extension はユーザー環境でローカルコードを実行します。インストール前に内容を確認し、
-再現可能なインストールには信頼できるリリースタグまたはコミット SHA を使用してください。
-`main` ブランチは最新の開発版です。
+Extension は利用者の環境でローカルのコードを実行します。インストールする前に中身を確認し、
+同じ状態を再現できるよう、信頼できるリリースタグかコミット SHA を指定してください。
+`main` ブランチは開発中の最新版です。
 
 ### 最小ワークフロー
 
 1. `slides.md` を編集し、空行の後の `---` でスライドを区切ります。
 2. Copilot に「`slides.md` を使ってこのデッキをプレゼンテーションしてください」と依頼します。
-3. MarkdStage Canvas の **◀ ▶**、**矢印キー**、または **☰ スライド一覧**で移動します。
-4. PDF エクスポート前に **16:9** を使用します。Copilot は先に `inspect_layout` を実行し、必要なページだけを PNG プレビューとして生成できます。
+3. MarkdStage Canvas の **◀ ▶**、**矢印キー**、または **☰ スライド一覧**でスライドを送ります。
+4. PDF に書き出す前に **16:9** で確認します。Copilot に `inspect_layout` を先に実行させれば、確認が必要なページだけを PNG プレビューにできます。
 
-Canvas の **📂** ボタンまたは `I` キーを使用すると、AI を介さずにワークスペースから Markdown を
-直接開くこともできます。Git リポジトリではリポジトリルート、それ以外では現在のセッションで開いている
-フォルダーがワークスペースになります。`open_canvas` を直接呼び出す場合の Canvas ID は
+Canvas の **📂** ボタンか `I` キーを使えば、AI を介さずにワークスペースの Markdown をそのまま開けます。
+Git リポジトリではリポジトリルート、それ以外では現在のセッションで開いているフォルダーが
+ワークスペースになります。`open_canvas` を直接呼び出す場合の Canvas ID は
 **`MarkdStage`** です。
 
 ```text
@@ -131,8 +131,8 @@ canvasId: MarkdStage
 ## MarkdStage Desktop を使う
 
 [MarkdStage Desktop](./apps/MarkdStage.Desktop/README.md) は、ファイルピッカーから Markdown を開く
-WinUI 3 アプリです。現在のスライド、次のスライド、現在のスピーカーノートを表示し、
-同期されたネイティブのプレゼンテーションウィンドウを起動します。
+WinUI 3 アプリです。現在のスライドと次のスライド、そのスライドのスピーカーノートを並べて表示し、
+操作が同期するネイティブの投影用ウィンドウを開けます。
 
 現在の **[v2.1.2 リリース](https://github.com/runceel/markdstage/releases/tag/v2.1.2)** には、
 Windows x64 / ARM64 向けのポータブルビルドと SHA-256 チェックサムファイルが含まれます。
@@ -161,9 +161,9 @@ layout: title
 - Write code and Mermaid directly
 ```
 
-先頭のフロントマターはデッキ全体の設定を提供します。各スライドのフロントマターでは、
-`layout`、`size`、`theme` などを上書きできます。スピーカーノートは各スライドのトップレベル
-HTML コメントに記述し、発表者ビューだけに表示されます。
+先頭のフロントマターがデッキ全体の設定になります。各スライドのフロントマターでは、
+`layout`、`size`、`theme` などを個別に上書きできます。スピーカーノートは、コードフェンスの外側で
+スライドに直接書いた HTML コメントに記述します。発表者ビューにだけ表示されます。
 
 ## リポジトリ構成
 
@@ -173,12 +173,12 @@ HTML コメントに記述し、発表者ビューだけに表示されます。
 | `.github/skills/markdstage/SKILL.md` | Markdown をスライド断片へ整形して MarkdStage を開く Skill |
 | `apps/MarkdStage.Desktop/` | WinUI 3 Desktop アプリ |
 | `assets/brand/` | MarkdStage のロゴ、ロックアップ、README バナー |
-| `assets/readme/` | この README で使用するスライドと Architecture Editor の画像 |
+| `assets/readme/` | この README に掲載しているスライドと Architecture Editor の画像 |
 | `slides.md` | 機能を紹介するサンプルデッキ |
 
 ## v2.0.0 の破壊的変更
 
-MarkdStage への移行では、以前のブランド名に対する互換エイリアスは提供されません。
+MarkdStage への移行にあたり、旧ブランド名の互換エイリアスは用意していません。
 
 | 変更前 | 変更後 |
 | --- | --- |
@@ -189,7 +189,7 @@ MarkdStage への移行では、以前のブランド名に対する互換エイ
 | `Presentation-win-*.zip` | `MarkdStage-win-*.zip` |
 
 既存の Markdown 構文、テーマ、Architecture DSL、`load_deck` や `goto_slide` などの
-アクションコントラクトは変更されません。
+アクション仕様は変更していません。
 
 <a id="documentation"></a>
 
@@ -210,6 +210,6 @@ MarkdStage への移行では、以前のブランド名に対する互換エイ
 
 ## ライセンス
 
-このリポジトリのオリジナル部分は MIT License で公開されています。同梱されるオープンソースソフトウェアの
-ライセンスと著作権表示については、
+このリポジトリの独自部分は MIT License で公開しています。同梱しているオープンソースソフトウェアの
+ライセンスと著作権表示は、
 [THIRD-PARTY-NOTICES.md](./.github/extensions/markdstage/THIRD-PARTY-NOTICES.md) を参照してください。
