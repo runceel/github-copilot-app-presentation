@@ -60,7 +60,7 @@ test("prefers a Markdown-relative theme and falls back to the repository theme",
   });
 });
 
-test("deduplicates theme candidates for Markdown at the repository root", async () => {
+test("deduplicates theme candidates for Markdown at the workspace root", async () => {
   await withWorkspace(async (workspace) => {
     assert.deepEqual(
       themeFileCandidates(workspace, join(workspace, "slides.md"), "./themes/brand/theme.css"),

@@ -109,7 +109,9 @@ the latest development version.
 4. Use **16:9** before PDF export. Copilot can run `inspect_layout` first and generate selected PNG previews only when needed.
 
 You can also open Markdown directly from the workspace with the canvas **📂** button or the `I`
-key, without using AI. When calling `open_canvas` directly, use canvas ID **`MarkdStage`**.
+key, without using AI. In a Git repository, the workspace is the repository root; otherwise it
+is the folder opened for the current session. When calling `open_canvas` directly, use canvas ID
+**`MarkdStage`**.
 
 ```text
 canvasId: MarkdStage
