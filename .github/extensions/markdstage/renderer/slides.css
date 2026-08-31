@@ -94,6 +94,11 @@
    scrollbars from appearing on slides that actually fit. */
 html,body{height:100%;margin:0;overflow:hidden}
 #stage{height:100%}
+body.fixed-preview-mode #stage{
+  position:fixed;left:50%;top:calc(50% - 24px);width:1280px;height:720px;
+  transform:translate(-50%,-50%) scale(var(--fixed-preview-scale,1));
+  transform-origin:center;box-shadow:0 18px 60px rgba(0,0,0,.38);
+}
 .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;
          clip:rect(0,0,0,0);white-space:nowrap;border:0;}
 body{
@@ -395,9 +400,15 @@ footer .page{color:var(--accent-strong);font-weight:600;background:var(--accent-
 .nav-btn:disabled{opacity:.32;cursor:default;}
 .nav-btn[data-state="active"]{color:var(--accent-strong);background:var(--accent-soft);}
 .nav-btn[data-state="error"]{color:#d13438;}
+.nav-fixed-preview{min-width:3.25em;font-size:clamp(11px,1.55vh,14px);font-weight:700;}
 .nav-counter{min-width:4.2em;text-align:center;font-variant-numeric:tabular-nums;
      font-weight:600;color:var(--accent-strong);font-size:clamp(12px,1.7vh,16px);
      padding:0 .3em;user-select:none;}
+.layout-warning{position:fixed;top:14px;right:14px;z-index:55;
+     max-width:min(420px,calc(100vw - 28px));padding:.55em .8em;border-radius:8px;
+     color:#fff;background:#a4262c;border:1px solid #f1aeb5;
+     box-shadow:0 6px 22px rgba(0,0,0,.25);font-size:14px;font-weight:650;}
+.layout-warning[hidden]{display:none;}
 body.presenter-mode .nav{opacity:0;}
 body.presenter-mode .nav:hover,body.presenter-mode .nav:focus-within{opacity:1;}
 body.presenter-mode #navPresent{display:none;}
@@ -464,7 +475,8 @@ body.markdstage-empty #navImport:hover{background:#ffd77a;color:#0b1020;}
 .presenter-toggle[data-state="active"]{background:#d13438;border-color:#d13438;color:#fff;}
 .presenter-counter{min-width:5em;text-align:center;font-weight:700;
      font-variant-numeric:tabular-nums;color:var(--accent-strong);}
-body.presenter-view-mode #stage,body.presenter-view-mode #nav{display:none;}
+body.presenter-view-mode #stage,body.presenter-view-mode #nav,
+body.presenter-view-mode .layout-warning{display:none;}
 @media (max-width:800px){
   .presenter-view{overflow:auto;}
   .presenter-previews{grid-template-columns:1fr;align-items:start;}
@@ -521,46 +533,69 @@ body.presenter-view-mode #stage,body.presenter-view-mode #nav{display:none;}
 .import-path{flex:1 1 auto;font-size:.94em;line-height:1.35;
      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
+/* ===== Fixed 16:9 output surface ===== */
+/* PDF, PNG capture, and the in-canvas fixed preview share these rules. At the
+   CSS reference pixel density, 1280x720 equals the PDF's 13.333333in x 7.5in. */
+body.fixed-output-mode .deck{
+  width:1280px;height:720px;min-width:1280px;max-width:1280px;
+  min-height:720px;max-height:720px;
+  --deck-pad-y:40px;--deck-pad-x:84px;
+  --slide-h1-size:48px;--slide-h2-size:36px;--slide-h3-size:24px;
+  --slide-body-size:22px;--slide-code-size:15px;
+  overflow:hidden;animation:none;
+}
+body.fixed-output-mode .deck.size-large{
+  --slide-h1-size:53px;--slide-h2-size:42px;--slide-h3-size:29px;
+  --slide-body-size:25px;--slide-code-size:17px;
+}
+body.fixed-output-mode .deck.size-xlarge{
+  --slide-h1-size:60px;--slide-h2-size:48px;--slide-h3-size:33px;
+  --slide-body-size:28px;--slide-code-size:19px;
+}
+body.fixed-output-mode .deck:not(.title-slide):not(.section-slide):not(.backcover-slide){
+  background:var(--print-slide-bg,var(--bg));
+}
+body.fixed-output-mode .deck.title-slide{background:var(--print-cover-bg,var(--cover-bg));}
+body.fixed-output-mode .deck.section-slide{
+  background:var(--print-section-bg,var(--section-bg,var(--bg)));
+}
+body.fixed-output-mode .deck.backcover-slide{background:var(--backcover-bg,var(--accent));}
+body.fixed-output-mode .deck::before{position:absolute;}
+body.fixed-output-mode .body{overflow:hidden;}
+body.fixed-output-mode .kicker{font-size:12px;}
+body.fixed-output-mode img{max-height:346px;}
+body.fixed-output-mode pre.mermaid svg{max-height:317px;}
+body.fixed-output-mode .architecture-svg{max-height:504px;}
+body.fixed-output-mode footer{gap:.65em;font-size:11px;margin-top:16px;}
+body.fixed-output-mode .theme-cover-logo,
+body.fixed-output-mode .theme-backcover-logo{width:var(--cover-logo-width,205px);}
+body.fixed-output-mode .theme-backcover-logo{width:var(--backcover-logo-width,205px);}
+body.fixed-output-mode .theme-backcover-logo-text{width:auto;font-size:19px;}
+body.fixed-output-mode .theme-backcover-copyright{font-size:10px;}
+body.fixed-output-mode .architecture-editor-toolbar{display:none!important;}
+
+body.capture-mode{width:1280px;height:720px;background:none;}
+body.capture-mode #stage{display:block;width:1280px;height:720px;}
+body.capture-mode .nav,body.capture-mode .overview,body.capture-mode .layout-warning{
+  display:none!important;
+}
+
 /* ===== Headless PDF export ===== */
 @page{size:13.333333in 7.5in;margin:0;}
 @media print{
   /* The screen rules clip everything to one viewport; printing needs the whole
      stack of pages to flow, so the scroll containment is lifted here. */
-  html,body{width:13.333333in;height:auto;overflow:visible;}
+  html,body{width:1280px;height:auto;overflow:visible;}
   body.print-mode{
     overflow:visible;background:none;
     -webkit-print-color-adjust:exact;print-color-adjust:exact;
   }
 
-  body.print-mode #stage{display:block;width:13.333333in;height:auto;}
+  body.print-mode #stage{display:block;width:1280px;height:auto;}
   body.print-mode .deck{
-    width:13.333333in;height:7.5in;min-height:7.5in;max-height:7.5in;
-    --deck-pad-y:40px;--deck-pad-x:84px;
-    --slide-h1-size:48px;--slide-h2-size:36px;--slide-h3-size:24px;
-    --slide-body-size:22px;--slide-code-size:15px;
-    overflow:hidden;animation:none;break-after:page;page-break-after:always;
+    break-after:page;page-break-after:always;
   }
-  body.print-mode .deck.size-large{
-    --slide-h1-size:53px;--slide-h2-size:42px;--slide-h3-size:29px;
-    --slide-body-size:25px;--slide-code-size:17px;
-  }
-  body.print-mode .deck.size-xlarge{
-    --slide-h1-size:60px;--slide-h2-size:48px;--slide-h3-size:33px;
-    --slide-body-size:28px;--slide-code-size:19px;
-  }
-  body.print-mode .deck:not(.title-slide):not(.section-slide):not(.backcover-slide){
-    background:var(--print-slide-bg,var(--bg));
-  }
-  body.print-mode .deck.title-slide{background:var(--print-cover-bg,var(--cover-bg));}
-  body.print-mode .deck.section-slide{
-    background:var(--print-section-bg,var(--section-bg,var(--bg)));
-  }
-  body.print-mode .deck.backcover-slide{background:var(--backcover-bg,var(--accent));}
   body.print-mode .deck:last-child{break-after:auto;page-break-after:auto;}
-  body.print-mode .deck::before{position:absolute;}
-  body.print-mode .body{overflow:hidden;}
-  body.print-mode .architecture-svg{max-height:5.25in;}
-  body.print-mode .architecture-editor-toolbar{display:none!important;}
   /* Mermaid appends a tooltip host to <body> on render. It sits just past the
      720px page boundary and forces an extra blank page in the exported PDF. */
   body.print-mode .mermaidTooltip{display:none!important;}

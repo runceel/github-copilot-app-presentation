@@ -24,6 +24,7 @@ Use this title slide to explain that Markdown supports the entire workflow from 
 - **Arrow keys**: Press `→` for next or `←` for previous
 - **☰**: Open the slide list and jump to any slide
 - **⛶**: Start presenting in a 1280x720 external window (press `F11` for full screen on Windows)
+- **16:9**: Preview the fixed PDF layout and warn about clipped content
 - **Print icon**: Save the deck as a 16:9 PDF
 
 Navigation happens in the canvas. You can also request "Go to slide 3" in chat.

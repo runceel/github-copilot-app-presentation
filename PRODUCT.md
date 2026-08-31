@@ -25,12 +25,16 @@ MarkdStage combines an AI-addressable GitHub Copilot canvas with a standalone Wi
 - A WinUI 3 desktop app opens Markdown independently of GitHub Copilot and provides current-slide, next-slide, and speaker-note views.
 - Presentations are controlled through canvas controls, keyboard navigation, and supported Surface Pen actions.
 - Decks may be exported as 16:9 PDF files.
+- The canvas can preview the PDF-equivalent fixed 16:9 surface and warn when
+  content will be clipped.
 
 ## Capabilities and Constraints
 
 - Markdown remains the source format and uses `---` slide separators plus optional front matter.
 - The renderer supports GFM content, syntax-highlighted code, Mermaid, Architecture DSL, local images, speaker notes, and custom themes.
 - Canvas, presenter, and PDF output must preserve equivalent slide rendering.
+- AI-facing layout inspection should return compact geometry first and generate
+  1280×720 PNGs only for pages that require visual analysis.
 - Local Extension distribution must remain self-contained with no runtime npm dependency.
 - Workspace path and asset access stay constrained by the existing security model.
 - The primary canvas ID is `MarkdStage`; the former `presentation` ID will not remain as an alias.

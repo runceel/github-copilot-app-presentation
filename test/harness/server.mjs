@@ -352,6 +352,7 @@ export async function startHarness({
       printReports.push({
         status: typeof body.status === "string" ? body.status : "",
         error: typeof body.error === "string" ? body.error : "",
+        layout: body.layout && typeof body.layout === "object" ? body.layout : null,
       });
       sendJson(res, 200, { ok: true });
       return;

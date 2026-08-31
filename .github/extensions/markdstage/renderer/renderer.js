@@ -94,6 +94,7 @@ let presenterMode = false;
 let previewMode = false;
 let previewOffset = 0;
 let navigationEnabled = true;
+let fixedPreviewMode = false;
 // Markdown for the most recently rendered slide, retained for editing-mode rerenders.
 let lastMarkdown = "";
 // Editing UI attached to the rendered slide; destroyed on every rerender.
@@ -107,6 +108,9 @@ let layoutFrame = 0;
 // past clientHeight, which is invisible but still enough for `overflow:auto` to
 // draw a scrollbar.
 const SCROLL_EPSILON = 2;
+const OUTPUT_WIDTH = 1280;
+const OUTPUT_HEIGHT = 720;
+const LAYOUT_HINT_LIMIT = 5;
 
 function applyCustomThemeCss(css) {
   customThemeCss = typeof css === "string" ? css : "";
@@ -225,11 +229,210 @@ function updateBodyScroll(bodyEl) {
   if (overflows) bodyEl.classList.add("is-scrollable");
 }
 
+function roundedMetric(value) {
+  return Math.round(Math.max(0, Number(value) || 0) * 10) / 10;
+}
+
+function elementPath(element, root) {
+  const parts = [];
+  let current = element;
+  while (current && current !== root && current.nodeType === Node.ELEMENT_NODE) {
+    let part = current.tagName.toLowerCase();
+    const classes = [...current.classList]
+      .filter((name) => name !== "is-scrollable")
+      .slice(0, 2);
+    if (classes.length) part += `.${classes.join(".")}`;
+    const parent = current.parentElement;
+    if (parent) {
+      const siblings = [...parent.children].filter((child) => child.tagName === current.tagName);
+      if (siblings.length > 1) part += `:nth-of-type(${siblings.indexOf(current) + 1})`;
+    }
+    parts.unshift(part);
+    current = parent;
+  }
+  return parts.join(" > ");
+}
+
+function elementHint(element, root, bounds, kind) {
+  const rect = element.getBoundingClientRect();
+  const verticalOverflow = Math.max(
+    rect.bottom - bounds.bottom,
+    element.scrollHeight - element.clientHeight,
+    0,
+  );
+  const horizontalOverflow = Math.max(
+    rect.right - bounds.right,
+    element.scrollWidth - element.clientWidth,
+    0,
+  );
+  const text = (element.textContent || "").replace(/\s+/g, " ").trim();
+  return {
+    kind,
+    path: elementPath(element, root),
+    tag: element.tagName.toLowerCase(),
+    classes: [...element.classList].slice(0, 4),
+    ...(text ? { text: text.slice(0, 96) } : {}),
+    verticalOverflowPx: roundedMetric(verticalOverflow),
+    horizontalOverflowPx: roundedMetric(horizontalOverflow),
+  };
+}
+
+function collectSlideLayout(slide, index) {
+  const { deck, bodyEl } = slide;
+  const deckRect = deck.getBoundingClientRect();
+  const bodyRect = bodyEl.getBoundingClientRect();
+  const bodyVertical = Math.max(bodyEl.scrollHeight - bodyEl.clientHeight, 0);
+  const bodyHorizontal = Math.max(bodyEl.scrollWidth - bodyEl.clientWidth, 0);
+
+  let deckVertical = 0;
+  let deckHorizontal = 0;
+  for (const child of deck.children) {
+    const rect = child.getBoundingClientRect();
+    deckVertical = Math.max(deckVertical, rect.bottom - deckRect.bottom);
+    deckHorizontal = Math.max(deckHorizontal, rect.right - deckRect.right);
+  }
+
+  const hints = [];
+  const seen = new Set();
+  const addHint = (element, bounds, kind) => {
+    if (!element || seen.has(element) || hints.length >= LAYOUT_HINT_LIMIT) return;
+    seen.add(element);
+    hints.push(elementHint(element, deck, bounds, kind));
+  };
+
+  for (const child of bodyEl.children) {
+    const rect = child.getBoundingClientRect();
+    if (
+      rect.bottom - bodyRect.bottom > SCROLL_EPSILON ||
+      rect.right - bodyRect.right > SCROLL_EPSILON
+    ) {
+      addHint(child, bodyRect, "outside-body");
+    }
+  }
+
+  const scrollContainers = [];
+  for (const element of bodyEl.querySelectorAll("*")) {
+    if (element.clientWidth <= 0 || element.clientHeight <= 0) continue;
+    const style = getComputedStyle(element);
+    const clipsVertical = ["auto", "scroll", "hidden", "clip"].includes(style.overflowY);
+    const clipsHorizontal = ["auto", "scroll", "hidden", "clip"].includes(style.overflowX);
+    const vertical = element.scrollHeight - element.clientHeight;
+    const horizontal = element.scrollWidth - element.clientWidth;
+    if (
+      (!clipsVertical || vertical <= SCROLL_EPSILON) &&
+      (!clipsHorizontal || horizontal <= SCROLL_EPSILON)
+    ) {
+      continue;
+    }
+    const hint = elementHint(element, deck, element.getBoundingClientRect(), "scroll-container");
+    scrollContainers.push(hint);
+    addHint(element, element.getBoundingClientRect(), "scroll-container");
+    if (scrollContainers.length >= LAYOUT_HINT_LIMIT) break;
+  }
+
+  for (const child of deck.children) {
+    if (child === bodyEl) continue;
+    const rect = child.getBoundingClientRect();
+    if (
+      rect.bottom - deckRect.bottom > SCROLL_EPSILON ||
+      rect.right - deckRect.right > SCROLL_EPSILON
+    ) {
+      addHint(child, deckRect, "outside-slide");
+    }
+  }
+
+  const nestedVertical = scrollContainers.reduce(
+    (max, hint) => Math.max(max, hint.verticalOverflowPx),
+    0,
+  );
+  const nestedHorizontal = scrollContainers.reduce(
+    (max, hint) => Math.max(max, hint.horizontalOverflowPx),
+    0,
+  );
+  const verticalOverflow = Math.max(bodyVertical, deckVertical, nestedVertical, 0);
+  const horizontalOverflow = Math.max(bodyHorizontal, deckHorizontal, nestedHorizontal, 0);
+  const hasIssue =
+    verticalOverflow > SCROLL_EPSILON || horizontalOverflow > SCROLL_EPSILON;
+
+  return {
+    index,
+    page: index + 1,
+    title: slide.title,
+    status: hasIssue ? "pdf-clipped" : "fits",
+    pdfClipped: hasIssue,
+    screenScrollable:
+      bodyVertical > SCROLL_EPSILON ||
+      bodyHorizontal > SCROLL_EPSILON ||
+      scrollContainers.length > 0,
+    verticalOverflowPx: roundedMetric(verticalOverflow),
+    horizontalOverflowPx: roundedMetric(horizontalOverflow),
+    availableWidthPx: roundedMetric(bodyEl.clientWidth),
+    availableHeightPx: roundedMetric(bodyEl.clientHeight),
+    contentWidthPx: roundedMetric(bodyEl.scrollWidth),
+    contentHeightPx: roundedMetric(bodyEl.scrollHeight),
+    scrollContainers,
+    elements: hints,
+  };
+}
+
+function collectDeckLayout(rendered) {
+  const slides = rendered.map((slide, index) => collectSlideLayout(slide, index));
+  return {
+    width: OUTPUT_WIDTH,
+    height: OUTPUT_HEIGHT,
+    total: slides.length,
+    issueCount: slides.filter((slide) => slide.pdfClipped).length,
+    slides,
+  };
+}
+
+function updateFixedPreviewWarning() {
+  const warning = document.getElementById("layoutWarning");
+  const button = document.getElementById("navFixedPreview");
+  if (!fixedPreviewMode || !layoutTarget) {
+    document.body.classList.remove("fixed-preview-overflow");
+    if (warning) {
+      warning.hidden = true;
+      warning.textContent = "";
+    }
+    if (button) button.dataset.state = fixedPreviewMode ? "active" : "";
+    return;
+  }
+
+  const diagnostic = collectSlideLayout(layoutTarget, navIndex);
+  document.body.classList.toggle("fixed-preview-overflow", diagnostic.pdfClipped);
+  if (button) button.dataset.state = diagnostic.pdfClipped ? "error" : "active";
+  if (!warning) return;
+  if (!diagnostic.pdfClipped) {
+    warning.hidden = true;
+    warning.textContent = "";
+    return;
+  }
+  const details = [];
+  if (diagnostic.verticalOverflowPx > SCROLL_EPSILON) {
+    details.push(`vertical ${diagnostic.verticalOverflowPx}px`);
+  }
+  if (diagnostic.horizontalOverflowPx > SCROLL_EPSILON) {
+    details.push(`horizontal ${diagnostic.horizontalOverflowPx}px`);
+  }
+  warning.textContent = `PDF layout clips page ${diagnostic.page}: ${details.join(", ")}.`;
+  warning.hidden = false;
+}
+
+function updateFixedPreviewScale() {
+  if (!fixedPreviewMode) return;
+  const availableWidth = Math.max(1, window.innerWidth - 24);
+  const availableHeight = Math.max(1, window.innerHeight - 88);
+  const scale = Math.min(availableWidth / OUTPUT_WIDTH, availableHeight / OUTPUT_HEIGHT, 1);
+  document.body.style.setProperty("--fixed-preview-scale", String(scale));
+}
+
 function refreshLayout() {
   const target = layoutTarget;
   if (!target || !target.deck.isConnected) return;
   if (target.autoSize) applyAutoSize(target.deck, target.bodyEl);
   updateBodyScroll(target.bodyEl);
+  updateFixedPreviewWarning();
 }
 
 // Coalesce the (re)layout into one frame: several triggers — render, resize,
@@ -556,6 +759,7 @@ function renderSlide(markdown) {
   layoutTarget = {
     deck: slide.deck,
     bodyEl: slide.bodyEl,
+    title: slide.title,
     autoSize:
       slide.sizeMode === "auto" &&
       !slide.titleSlide &&
@@ -617,14 +821,14 @@ function waitForImages(root) {
   return Promise.all(pending);
 }
 
-async function reportPrintStatus(token, status, error = "") {
+async function reportOutputStatus(token, status, error = "", layout = null) {
   const response = await fetch(`./export-status?token=${encodeURIComponent(token)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status, error }),
+    body: JSON.stringify({ status, error, ...(layout ? { layout } : {}) }),
     cache: "no-store",
   });
-  if (!response.ok) throw new Error(`Could not report print status (${response.status}).`);
+  if (!response.ok) throw new Error(`Could not report output status (${response.status}).`);
 }
 
 async function renderPrintDeck(
@@ -639,7 +843,7 @@ async function renderPrintDeck(
   customThemeMeta = themeMetadata && typeof themeMetadata === "object" ? themeMetadata : null;
   applyCustomThemeCss(customCss);
   document.documentElement.setAttribute("data-theme", deckTheme);
-  document.body.classList.add("print-mode", "mermaid-loading");
+  document.body.classList.add("print-mode", "fixed-output-mode", "mermaid-loading");
   const rendered = slides.map((markdown) => createSlide(markdown, deckTheme));
   const stage = document.getElementById("stage");
   stage.replaceChildren(...rendered.map((slide) => slide.deck));
@@ -663,9 +867,11 @@ async function renderPrintDeck(
   await waitForImages(stage);
   await afterLayout();
 
+  const layout = collectDeckLayout(rendered);
   document.body.classList.remove("mermaid-loading");
   document.documentElement.setAttribute("data-print-ready", "true");
   window.__presentationPrintReady = true;
+  return layout;
 }
 
 async function initPrint(params) {
@@ -684,20 +890,111 @@ async function initPrint(params) {
     ) {
       throw new Error("PDF export data does not contain a valid deck.");
     }
-    await renderPrintDeck(
+    const layout = await renderPrintDeck(
       data.slides,
       data.theme,
       data.customThemeCss,
       data.customThemeMeta,
       data.themeLocked,
     );
-    await reportPrintStatus(token, "ready");
+    await reportOutputStatus(token, "ready", "", layout);
   } catch (error) {
     const message = error?.message || "Print rendering failed.";
     console.error(message);
     document.body.classList.remove("mermaid-loading");
     document.documentElement.setAttribute("data-print-error", "true");
-    await reportPrintStatus(token, "error", message).catch(() => {});
+    await reportOutputStatus(token, "error", message).catch(() => {});
+  }
+}
+
+async function renderCaptureSlide(
+  markdown,
+  index,
+  total,
+  theme,
+  customCss = "",
+  themeMetadata = null,
+  themeLocked = false,
+) {
+  deckTheme = normalizeTheme(theme);
+  deckThemeLocked = Boolean(themeLocked);
+  customThemeMeta = themeMetadata && typeof themeMetadata === "object" ? themeMetadata : null;
+  applyCustomThemeCss(customCss);
+  document.documentElement.setAttribute("data-theme", deckTheme);
+  document.body.classList.add("capture-mode", "fixed-output-mode", "mermaid-loading");
+
+  const slide = createSlide(markdown, deckTheme);
+  const stage = document.getElementById("stage");
+  stage.replaceChildren(slide.deck);
+  document.title = slide.title;
+  document.documentElement.setAttribute("data-theme", slide.theme);
+
+  if (document.fonts?.ready) await document.fonts.ready;
+  await afterLayout();
+  if (
+    slide.sizeMode === "auto" &&
+    !slide.titleSlide &&
+    !slide.sectionSlide &&
+    !slide.backcoverSlide
+  ) {
+    applyAutoSize(slide.deck, slide.bodyEl);
+  }
+
+  const token = ++renderToken;
+  await runMermaid(slide.bodyEl, slide.theme, token, false);
+  await waitForImages(stage);
+  await afterLayout();
+
+  const diagnostic = collectSlideLayout(slide, index);
+  const layout = {
+    width: OUTPUT_WIDTH,
+    height: OUTPUT_HEIGHT,
+    total,
+    issueCount: diagnostic.pdfClipped ? 1 : 0,
+    slides: [diagnostic],
+  };
+  document.body.classList.remove("mermaid-loading");
+  document.documentElement.setAttribute("data-capture-ready", "true");
+  window.__presentationCaptureReady = true;
+  return layout;
+}
+
+async function initCapture(params) {
+  const token = params.get("token") || "";
+  if (!token) throw new Error("Missing PNG capture token.");
+  try {
+    const response = await fetch(`./export-data?token=${encodeURIComponent(token)}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`Could not load PNG capture data (${response.status}).`);
+    const data = await response.json();
+    if (
+      !Array.isArray(data.slides) ||
+      data.slides.length === 0 ||
+      !data.slides.every((slide) => typeof slide === "string")
+    ) {
+      throw new Error("PNG capture data does not contain a valid deck.");
+    }
+    const index = Number.parseInt(params.get("index") || "", 10);
+    if (!Number.isInteger(index) || index < 0 || index >= data.slides.length) {
+      throw new Error(`PNG capture index is outside the loaded range 0-${data.slides.length - 1}.`);
+    }
+    const layout = await renderCaptureSlide(
+      data.slides[index],
+      index,
+      data.slides.length,
+      data.theme,
+      data.customThemeCss,
+      data.customThemeMeta,
+      data.themeLocked,
+    );
+    await reportOutputStatus(token, "ready", "", layout);
+  } catch (error) {
+    const message = error?.message || "PNG capture rendering failed.";
+    console.error(message);
+    document.body.classList.remove("mermaid-loading");
+    document.documentElement.setAttribute("data-capture-error", "true");
+    await reportOutputStatus(token, "error", message).catch(() => {});
   }
 }
 
@@ -716,6 +1013,13 @@ function reportPrintBootstrapFailure(error) {
   console.error(message);
   document.body.classList.remove("mermaid-loading");
   document.documentElement.setAttribute("data-print-error", "true");
+}
+
+function reportCaptureBootstrapFailure(error) {
+  const message = error?.message || "PNG capture rendering failed.";
+  console.error(message);
+  document.body.classList.remove("mermaid-loading");
+  document.documentElement.setAttribute("data-capture-error", "true");
 }
 
 // --- live update -----------------------------------------------------------
@@ -1170,6 +1474,32 @@ async function exportPdfFromCanvas() {
   }
 }
 
+function setFixedPreviewMode(enabled) {
+  fixedPreviewMode = Boolean(enabled);
+  document.body.classList.toggle("fixed-preview-mode", fixedPreviewMode);
+  document.body.classList.toggle("fixed-output-mode", fixedPreviewMode);
+  const button = document.getElementById("navFixedPreview");
+  if (button) {
+    button.setAttribute("aria-pressed", fixedPreviewMode ? "true" : "false");
+    button.dataset.state = fixedPreviewMode ? "active" : "";
+    button.title = fixedPreviewMode
+      ? "Return to responsive canvas layout"
+      : "Preview PDF layout at 16:9";
+  }
+  if (fixedPreviewMode) {
+    updateFixedPreviewScale();
+  } else {
+    document.body.style.removeProperty("--fixed-preview-scale");
+    document.body.classList.remove("fixed-preview-overflow");
+  }
+  scheduleLayoutRefresh();
+  updateFixedPreviewWarning();
+}
+
+function toggleFixedPreviewMode() {
+  setFixedPreviewMode(!fixedPreviewMode);
+}
+
 function updateNav() {
   const nav = document.getElementById("nav");
   if (!nav) return;
@@ -1544,6 +1874,7 @@ function wireControls() {
   bind("navEdit", toggleArchitectureEditMode);
   bind("navPresent", openPresenterWindow);
   bind("navPresenterView", openPresenterView);
+  bind("navFixedPreview", toggleFixedPreviewMode);
   bind("navExport", exportPdfFromCanvas);
   bind("navImport", toggleImportPicker);
   bind("navSourceMode", toggleSourceMode);
@@ -1648,6 +1979,10 @@ function init() {
   } catch (_) {}
 
   const params = new URLSearchParams(window.location.search);
+  if (params.get("capture") === "1") {
+    initCapture(params).catch(reportCaptureBootstrapFailure);
+    return;
+  }
   if (params.get("print") === "1") {
     // Print mode never reaches editing-mode branches. Removing this return would
     // bake the editing UI into PDFs, so a regression test protects it.
@@ -1683,7 +2018,10 @@ function init() {
     wirePointerNavigation();
     wirePreviewKeyboardNavigation();
   }
-  window.addEventListener("resize", scheduleLayoutRefresh);
+  window.addEventListener("resize", () => {
+    updateFixedPreviewScale();
+    scheduleLayoutRefresh();
+  });
   if (document.fonts?.ready) {
     document.fonts.ready.then(scheduleLayoutRefresh).catch(() => {});
   }
