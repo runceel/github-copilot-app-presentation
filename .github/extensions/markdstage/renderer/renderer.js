@@ -254,15 +254,27 @@ function elementPath(element, root) {
   return parts.join(" > ");
 }
 
-function elementHint(element, root, bounds, kind) {
+// The live 16:9 preview scales #stage with a CSS transform, so getBoundingClientRect()
+// reports scaled pixels while scrollWidth/clientWidth stay in the untransformed 1280x720
+// layout space. Every rect-derived delta is divided by this factor before the two kinds of
+// measurement are combined, keeping the preview, PDF, and PNG diagnostics in one coordinate
+// system.
+function layoutScale(deck) {
+  const width = deck.offsetWidth;
+  if (!width) return 1;
+  const scale = deck.getBoundingClientRect().width / width;
+  return scale > 0 ? scale : 1;
+}
+
+function elementHint(element, root, bounds, kind, scale = 1) {
   const rect = element.getBoundingClientRect();
   const verticalOverflow = Math.max(
-    rect.bottom - bounds.bottom,
+    (rect.bottom - bounds.bottom) / scale,
     element.scrollHeight - element.clientHeight,
     0,
   );
   const horizontalOverflow = Math.max(
-    rect.right - bounds.right,
+    (rect.right - bounds.right) / scale,
     element.scrollWidth - element.clientWidth,
     0,
   );
@@ -280,6 +292,7 @@ function elementHint(element, root, bounds, kind) {
 
 function collectSlideLayout(slide, index) {
   const { deck, bodyEl } = slide;
+  const scale = layoutScale(deck);
   const deckRect = deck.getBoundingClientRect();
   const bodyRect = bodyEl.getBoundingClientRect();
   const bodyVertical = Math.max(bodyEl.scrollHeight - bodyEl.clientHeight, 0);
@@ -289,8 +302,8 @@ function collectSlideLayout(slide, index) {
   let deckHorizontal = 0;
   for (const child of deck.children) {
     const rect = child.getBoundingClientRect();
-    deckVertical = Math.max(deckVertical, rect.bottom - deckRect.bottom);
-    deckHorizontal = Math.max(deckHorizontal, rect.right - deckRect.right);
+    deckVertical = Math.max(deckVertical, (rect.bottom - deckRect.bottom) / scale);
+    deckHorizontal = Math.max(deckHorizontal, (rect.right - deckRect.right) / scale);
   }
 
   const hints = [];
@@ -298,14 +311,14 @@ function collectSlideLayout(slide, index) {
   const addHint = (element, bounds, kind) => {
     if (!element || seen.has(element) || hints.length >= LAYOUT_HINT_LIMIT) return;
     seen.add(element);
-    hints.push(elementHint(element, deck, bounds, kind));
+    hints.push(elementHint(element, deck, bounds, kind, scale));
   };
 
   for (const child of bodyEl.children) {
     const rect = child.getBoundingClientRect();
     if (
-      rect.bottom - bodyRect.bottom > SCROLL_EPSILON ||
-      rect.right - bodyRect.right > SCROLL_EPSILON
+      (rect.bottom - bodyRect.bottom) / scale > SCROLL_EPSILON ||
+      (rect.right - bodyRect.right) / scale > SCROLL_EPSILON
     ) {
       addHint(child, bodyRect, "outside-body");
     }
@@ -314,6 +327,12 @@ function collectSlideLayout(slide, index) {
   const scrollContainers = [];
   for (const element of bodyEl.querySelectorAll("*")) {
     if (element.clientWidth <= 0 || element.clientHeight <= 0) continue;
+    // Diagram internals (Mermaid foreignObject labels, architecture nodes) live in SVG user
+    // space and are clipped by design. Their sub-pixel scroll deltas depend on how the label
+    // text was measured while rendering and therefore differ between the scaled live preview
+    // and the headless output pass. The diagram box itself is still measured through its HTML
+    // container, so genuine clipping is not missed.
+    if (element.closest("svg")) continue;
     const style = getComputedStyle(element);
     const clipsVertical = ["auto", "scroll", "hidden", "clip"].includes(style.overflowY);
     const clipsHorizontal = ["auto", "scroll", "hidden", "clip"].includes(style.overflowX);
@@ -325,7 +344,13 @@ function collectSlideLayout(slide, index) {
     ) {
       continue;
     }
-    const hint = elementHint(element, deck, element.getBoundingClientRect(), "scroll-container");
+    const hint = elementHint(
+      element,
+      deck,
+      element.getBoundingClientRect(),
+      "scroll-container",
+      scale,
+    );
     scrollContainers.push(hint);
     addHint(element, element.getBoundingClientRect(), "scroll-container");
     if (scrollContainers.length >= LAYOUT_HINT_LIMIT) break;
@@ -335,8 +360,8 @@ function collectSlideLayout(slide, index) {
     if (child === bodyEl) continue;
     const rect = child.getBoundingClientRect();
     if (
-      rect.bottom - deckRect.bottom > SCROLL_EPSILON ||
-      rect.right - deckRect.right > SCROLL_EPSILON
+      (rect.bottom - deckRect.bottom) / scale > SCROLL_EPSILON ||
+      (rect.right - deckRect.right) / scale > SCROLL_EPSILON
     ) {
       addHint(child, deckRect, "outside-slide");
     }
