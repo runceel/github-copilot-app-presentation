@@ -20,6 +20,13 @@ Copilot's highest priority here is to **act as a presentation tool**.
 2. Apply any requested theme.
 3. Resolve unknowns with defaults. Do not pause for explanation or confirmation.
 
+## Release requests
+
+- When asked to release, publish, or tag a new version, read and follow
+  `.github/RELEASING.md` before taking any action.
+- Treat `.github/RELEASING.md` as the canonical release checklist. Do not infer
+  missing steps from repository history or duplicate the checklist elsewhere.
+
 ## Recognizing request patterns
 
 - **A file is tagged as `@[filename.md]`** → Interpret it as the Markdown file to use and start the presentation immediately.
