@@ -32,4 +32,9 @@ test("print, capture, and fixed preview share one 1280x720 output surface", asyn
   assert.match(css, /width:1280px;height:720px/);
   assert.match(html, /id="navFixedPreview"/);
   assert.match(html, /id="layoutWarning"/);
+  // The live preview scales #stage with a CSS transform, so rect-based measurements are
+  // normalized back to the untransformed 1280x720 space before they are combined with
+  // scrollWidth/clientWidth. Without this the preview and the headless pass disagree.
+  assert.match(renderer, /function layoutScale\(deck\)/);
+  assert.match(renderer, /const scale = layoutScale\(deck\)/);
 });
