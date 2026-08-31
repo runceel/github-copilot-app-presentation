@@ -11,6 +11,10 @@
 </p>
 
 <p align="center">
+  <a href="./README.ja.md">日本語</a>
+</p>
+
+<p align="center">
   <a href="https://github.com/runceel/markdstage/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/runceel/markdstage/actions/workflows/ci.yml/badge.svg"></a>
   <a href="./LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-FFB547?labelColor=0B1020"></a>
   <img alt="Source format: Markdown" src="https://img.shields.io/badge/source-Markdown-F7F4ED?labelColor=0B1020">
@@ -180,6 +184,9 @@ Existing Markdown syntax, themes, Architecture DSL, and action contracts such as
 
 ## Documentation
 
+- [User guide](./docs/user-guide/README.md)
+- [Create slides with GitHub Copilot](./docs/user-guide/ai-assisted-authoring.md)
+- [GitHub Copilot hands-on](./docs/user-guide/copilot-hands-on.md)
 - [MarkdStage Skill](./.github/skills/markdstage/SKILL.md)
 - [Canvas Extension specification and actions](./.github/extensions/markdstage/README.md)
 - [MarkdStage Desktop](./apps/MarkdStage.Desktop/README.md)
