@@ -92,3 +92,14 @@ Include the following in the release notes:
 - Supported Windows architectures and the WebView2 Runtime prerequisite
 - SHA-256 for each ZIP
 - Updated third-party notices when bundled open-source software changes
+
+## Post-release documentation
+
+After publishing the GitHub Release:
+
+1. Update the root `README.md` so every **current release** link, version-pinned Extension folder
+   URL, and Desktop asset URL uses the new tag.
+2. Do not rewrite historical compatibility or migration references that intentionally name an older
+   version.
+3. Commit the documentation update to `main` and verify that every updated URL resolves to the
+   published release or one of its assets.
