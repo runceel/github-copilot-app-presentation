@@ -2,12 +2,12 @@
 
 > English version: [English](../diagrams-and-media.md)
 
-MarkdStage は Markdown 画像、自動レイアウト用の Mermaid、安定した配置とルーティング用の
-Architecture DSL に対応します。
+MarkdStage では、Markdown の画像、自動でレイアウトされる Mermaid、位置や経路を固定できる
+Architecture DSL を使えます。
 
 ## Mermaid で自動レイアウトする
 
-`mermaid` フェンスを記述します。
+`mermaid` フェンスに図を書きます。
 
 ````markdown
 ```mermaid
@@ -17,15 +17,15 @@ flowchart LR
 ```
 ````
 
-Mermaid は同梱されており、オフラインで動作します。フローチャート、シーケンス図、クラス図、
-円グラフなど、自動配置する図に使用します。
+Mermaid は同梱しているのでオフラインでも動きます。フローチャート、シーケンス図、クラス図、
+円グラフなど、配置を自動で決めてよい図に向いています。
 
-Mermaid 構文が無効な場合は、スライドの他のコンテンツを維持したままエラーを表示します。
+Mermaid の構文に誤りがある場合は、スライドの他の内容はそのままにエラーを表示します。
 
 ## Architecture DSL で配置を固定する
 
-要素の位置、寸法、コンテナー、コネクタールートを安定させる必要がある場合は、
-`architecture` フェンス内に JSON を記述します。
+要素の位置、大きさ、コンテナー、コネクターの経路を思いどおりに固定したいときは、
+`architecture` フェンスに JSON を書きます。
 
 ````markdown
 ```architecture
@@ -65,40 +65,40 @@ Mermaid 構文が無効な場合は、スライドの他のコンテンツを維
 ```
 ````
 
-ノードは長方形、角丸長方形、楕円に対応します。グループは row、column、grid、layered
-レイアウトに対応します。コネクターは straight、orthogonal、polyline ルーティングに対応します。
+ノードには長方形、角丸長方形、楕円を使えます。グループには row、column、grid、layered の
+レイアウトがあり、コネクターは straight、orthogonal、polyline の経路を選べます。
 
 ## Canvas Extension で配置を調整する
 
-**✎** を選択して軽量な配置エディターを開きます。要素を選択し、ドラッグまたは矢印キーで移動します。
+**✎** を選ぶと、手早く使える配置エディターが開きます。要素を選び、ドラッグか矢印キーで動かします。
 エディターには Undo、Redo、レイアウト解除、**Advanced edit** があります。
 
 ![Canvas Extension での Architecture 配置編集](../images/canvas-architecture-edit.png)
 
-**📂** で読み込んだ Markdown では、配置の変更がソースの Architecture ブロックへ保存されます。
-Canvas で直接作成したデッキでは、変更が Canvas の状態に保存されます。
+**📂** で読み込んだ Markdown では、配置の変更が元の Architecture ブロックに保存されます。
+Canvas で直接作ったデッキでは、変更は Canvas 側に保存されます。
 
-プレゼンテーション前に編集モードを終了してください。
+発表を始める前に、編集モードを終了してください。
 
 ## Advanced Architecture Editor を使う
 
-配置編集モードから **Advanced edit** を選択して、専用エディターを開きます。
+配置編集モードから **Advanced edit** を選ぶと、専用エディターが開きます。
 
 ![API ノードを選択した Advanced Architecture Editor](../images/architecture-editor.png)
 
 エディターでは次の操作ができます。
 
-- ノード、グループ、画像、コネクターの追加、複製、順序変更、削除
-- テキスト、形状、アイコン、位置、サイズ、スタイル、ポート、ルーティング、親グループの変更
+- ノード、グループ、画像、コネクターの追加、複製、並べ替え、削除
+- テキスト、形状、アイコン、位置、サイズ、スタイル、ポート、経路、親グループの変更
 - グループレイアウトの適用と解除
-- アセットの選択と読み込み
-- ドラフト変更の Undo と Redo
+- 画像ファイルの選択と読み込み
+- 編集中の内容の Undo と Redo
 
-変更は **Save** を選択するまでドラフトとして保持されます。Markdown が外部で変更された場合、
-エディターは上書きしません。ソースを再読み込みし、必要な変更を適用し直してください。
+変更は **Save** を選ぶまで下書きのままです。Markdown が外部で書き換えられていた場合、
+エディターはそれを上書きしません。元のファイルを読み込み直してから、変更をやり直してください。
 
-Advanced editing には、**📂** で読み込んだソース関連付け済みデッキと、既存の
-`architecture` ブロックが必要です。空のブロックも有効で、エディターから要素を追加できます。
+Advanced editing を使うには、**📂** で読み込んだ元ファイルとひも付くデッキと、
+`architecture` ブロックが必要です。次のように中身が空でも構いません。エディターから要素を足せます。
 
 ````markdown
 ```architecture
@@ -107,7 +107,7 @@ Advanced editing には、**📂** で読み込んだソース関連付け済み
 
 ## 画像を追加する
 
-標準 Markdown 画像では `/assets/...` を使用します。
+通常の Markdown 画像では `/assets/...` と書きます。
 
 ```markdown
 ![Accessible description](/assets/system-overview.png)
@@ -129,7 +129,7 @@ Architecture のアイコンと単独画像では、先頭のスラッシュを�
 }
 ```
 
-Architecture の画像調整には `contain`、`cover`、`stretch` を使用できます。
-ローカルファイルは SVG、PNG、WebP、JPEG、JPG に対応します。
+Architecture の画像の収め方は `contain`、`cover`、`stretch` から選べます。
+ローカルファイルは SVG、PNG、WebP、JPEG、JPG を扱えます。
 
 [次へ: プレゼンテーションとエクスポート →](presenting-and-export.md)

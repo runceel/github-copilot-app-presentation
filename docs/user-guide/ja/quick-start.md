@@ -2,12 +2,12 @@
 
 > English version: [English](../quick-start.md)
 
-この手順では、同梱の [`examples/quick-start.md`](../examples/quick-start.md) デッキを使用します。
-自分のワークスペースへコピーするか、このリポジトリから直接使用してください。
+この手順では、同梱の [`examples/quick-start.md`](../examples/quick-start.md) デッキを使います。
+自分のワークスペースにコピーしても、このリポジトリのまま使っても構いません。
 
 ## 1. Markdown デッキを作成する
 
-最小構成のデッキには、フロントマター、タイトル、`---` のスライド区切りを記述します。
+最小構成のデッキは、フロントマター、タイトル、`---` のスライド区切りだけでできています。
 
 ```markdown
 ---
@@ -32,47 +32,47 @@ Markdown, ready for the stage.
 
 ## 2. Canvas Extension で開く
 
-次のいずれかの方法を使用します。
+どちらの方法でも開けます。
 
 - GitHub Copilot に「`docs/user-guide/examples/quick-start.md` を使ってこのデッキをプレゼンテーションしてください」と依頼します。
-- MarkdStage Canvas を開き、**📂 Load Markdown** を選択してファイルを選びます。
+- MarkdStage Canvas を開き、**📂 Load Markdown** からファイルを選びます。
 
-デッキ全体がすぐに開きます。**◀**、**▶**、矢印キー、または **☰** で移動します。
+デッキ全体がすぐに開きます。**◀**、**▶**、矢印キー、**☰** でスライドを送れます。
 
 ![Markdown デッキとプレゼンテーション操作を表示した Canvas Extension](../images/canvas-main.png)
 
 ## 3. MarkdStage Desktop で開く
 
 1. [MarkdStage の最新リリース](https://github.com/runceel/markdstage/releases/latest)から、
-   対応するポータブル ZIP をダウンロードします。
+   環境に合ったポータブル ZIP をダウンロードします。
 2. ZIP を展開します。
 3. `MarkdStageApp.exe` を実行します。
-4. **Open Markdown** を選択し、同じファイルを開きます。
+4. **Open Markdown** から同じファイルを開きます。
 
-メインウィンドウに現在のスライド、次のスライド、現在のスピーカーノートが表示されます。
+メインウィンドウに、現在のスライド、次のスライド、そのスライドのスピーカーノートが並びます。
 
 ![現在と次のスライドおよびスピーカーノートを表示した MarkdStage Desktop](../images/desktop-main.png)
 
 ## 4. プレゼンテーションを開始する
 
-- **Canvas Extension:** **⛶** で外部オーディエンスウィンドウを開くか、**Presenter view** で
+- **Canvas Extension:** **⛶** で外部の投影用ウィンドウを開くか、**Presenter view** で
   現在のスライド、次のスライド、ノートをまとめて表示します。
-- **Desktop:** **Start presentation** を選択して、同期されたオーディエンスウィンドウを開きます。
-- オーディエンスウィンドウで `F11` を押すと全画面表示になり、`Esc` で解除できます。
+- **Desktop:** **Start presentation** を選ぶと、操作が同期する投影用ウィンドウが開きます。
+- 投影用ウィンドウで `F11` を押すと全画面表示になり、`Esc` で元に戻ります。
 
 ## 5. PDF をエクスポートする
 
-PDF エクスポートは Canvas Extension で使用できます。
+PDF エクスポートは Canvas Extension だけの機能です。
 
-1. **16:9** を選択し、クリッピング警告を修正します。
-2. プリンターアイコンを選択します。
-3. ワークスペースに生成された 16:9 PDF を使用します。
+1. **16:9** を選び、クリッピング警告があれば直します。
+2. プリンターアイコンを選びます。
+3. ワークスペースに出力された 16:9 PDF を確認します。
 
-MarkdStage Desktop は PDF エクスポートに対応していません。
+MarkdStage Desktop に PDF エクスポートはありません。
 
 ## 次のステップ
 
-- [GitHub Copilot ハンズオンを実施する](copilot-hands-on.md)
+- [GitHub Copilot ハンズオンを試す](copilot-hands-on.md)
 - [GitHub Copilot とスライドを作成する](ai-assisted-authoring.md)
 - [Canvas Extension を使う](canvas-extension.md)
 - [MarkdStage Desktop を使う](desktop.md)
