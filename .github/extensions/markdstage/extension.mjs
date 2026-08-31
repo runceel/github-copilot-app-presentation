@@ -8,7 +8,7 @@
 // slide updates.) Each open canvas instance gets its own loopback HTTP server
 // that serves a tiny iframe shell (renderer/) plus the vendored markdown/diagram
 // libraries (vendor/), exposes the current slide at /state, pushes "changed"
-// nudges over SSE (/events), and serves deck-local or repo-root images at
+// nudges over SSE (/events), and serves deck-local or workspace-root images at
 // /assets/*. All slide
 // rendering happens client-side in renderer/renderer.js. On Windows, this file
 // also owns one optional native Surface Pen tail-button listener.
@@ -61,6 +61,7 @@ import { atomicReplaceMarkdown } from "./scripts/atomic-markdown-replace.mjs";
 import { createMarkdownWatcher } from "./scripts/markdown-watcher.mjs";
 import { resolveAssetFile } from "./scripts/asset-paths.mjs";
 import { resolveThemeFile } from "./scripts/theme-paths.mjs";
+import { resolveWorkspaceRoot } from "./scripts/workspace-root.mjs";
 import { buildDeckSlides } from "./markdown-deck.mjs";
 import {
   architectureValidationErrors,
@@ -1544,32 +1545,6 @@ function stopPenListener() {
   }
 }
 
-// Resolve the repository root used as the workspace boundary and the fallback
-// assets location, robust across project / user / gist installs.
-function resolveRepoRoot(workingDirectory) {
-  if (workingDirectory) {
-    try {
-      const root = execFileSync("git", ["rev-parse", "--show-toplevel"], {
-        cwd: workingDirectory,
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      }).trim();
-      if (root) return root;
-    } catch (_) {
-      /* not a git repo / git unavailable — fall through */
-    }
-    let dir = resolve(workingDirectory);
-    for (;;) {
-      if (existsSync(join(dir, ".git"))) return dir;
-      const parent = dirname(dir);
-      if (parent === dir) break;
-      dir = parent;
-    }
-  }
-  // Fallback: this file lives at <root>/.github/extensions/markdstage/.
-  return resolve(EXT_DIR, "..", "..", "..");
-}
-
 // Markdown import safeguards for the canvas 📂 button live in
 // scripts/markdown-files.mjs so the test harness can use the same implementation.
 
@@ -3034,7 +3009,10 @@ async function ensureInstance(ctx) {
   const key = keyOf(ctx);
   let inst = instances.get(key);
   if (!inst) {
-    const repoRoot = resolveRepoRoot(ctx.session?.workingDirectory);
+    const workspaceRoot = resolveWorkspaceRoot(
+      ctx.session?.workingDirectory,
+      resolve(EXT_DIR, "..", "..", ".."),
+    );
     inst = {
       key,
       extensionId: ctx.extensionId,
@@ -3056,7 +3034,7 @@ async function ensureInstance(ctx) {
       sourceWatcher: null,
       sourceWatcherToken: 0,
       clients: new Set(),
-      workspaceRoot: repoRoot,
+      workspaceRoot,
       dataFile: dataFileFor(key),
       theme: DEFAULT_THEME,
       themeLocked: false,
@@ -3214,7 +3192,7 @@ const session = await joinSession({
           themeFile: {
             type: "string",
             description:
-              "Theme file defining only CSS custom properties. Resolve the same relative path first beside the source Markdown, then from the repository root. A theme.json in the same directory is loaded automatically.",
+              "Theme file defining only CSS custom properties. Resolve the same relative path first beside the source Markdown, then from the workspace root. A theme.json in the same directory is loaded automatically.",
           },
           sourceName: {
             type: "string",
@@ -3252,7 +3230,7 @@ const session = await joinSession({
               themeFile: {
                 type: "string",
                 description:
-                  "Theme file defining only CSS custom properties. Resolve the same relative path first beside the source Markdown, then from the repository root. A theme.json in the same directory is loaded automatically.",
+                  "Theme file defining only CSS custom properties. Resolve the same relative path first beside the source Markdown, then from the workspace root. A theme.json in the same directory is loaded automatically.",
               },
               sourceName: {
                 type: "string",

@@ -102,10 +102,10 @@ The themed slide is displayed and updates automatically
   on Windows). Close it with `Alt+F4` or `close_presenter`. Closing the canvas
   also stops it.
 - Local image lookup for `/assets/...` tries `assets/` beside the source
-  Markdown, then repository-root `assets/`. `sourceName` determines the source
-  folder. This lets deck-local images override repository-wide images.
+  Markdown, then workspace-root `assets/`. `sourceName` determines the source
+  folder. This lets deck-local images override workspace-wide images.
 - In other words, lookup checks `assets/` beside the Markdown before
-  `assets/` at the repository root, using `sourceName` as the resolution base.
+  `assets/` at the workspace root, using `sourceName` as the resolution base.
 - Add language names such as `csharp`, `json`, or `diff` to code fences for
   highlight.js syntax highlighting.
 
@@ -115,6 +115,8 @@ Users can load Markdown directly from the canvas without AI. Press 📂 or `I` t
 open a filtered list of workspace `*.md` / `*.markdown` files. Selecting one
 loads it, splits it into slides, and replaces the deck. Import also works from
 the initial waiting view. The control is not shown in presenter or print mode.
+The workspace root is the Git repository root when available, otherwise the
+folder opened for the current session.
 
 Import offers two update modes:
 
@@ -164,7 +166,7 @@ layout: section
 
 The imported filename is retained as `sourceName`, enabling source-based PDF
 naming, adjacent `assets/`, and Markdown-relative `theme-file` lookup with
-repository-root fallback. Files outside the workspace cannot be selected; no
+workspace-root fallback. Files outside the workspace cannot be selected; no
 OS file dialog is used.
 
 ## AI authoring guide
@@ -193,7 +195,7 @@ with front matter delimited by `---`, followed by GFM-compatible content.
 | `layout` | `title` for a cover, `section` for a section divider, `backcover` for the back cover, or `center` to vertically center heading and body together. Standard slides omit it and align heading and body to the top. |
 | `size` | `auto` (default), `normal`, `large`, or `xlarge` |
 | `theme` | Per-slide override; normally use the deck theme |
-| `theme-file` | CSS for `custom`, resolved beside the Markdown before repository root |
+| `theme-file` | CSS for `custom`, resolved beside the Markdown before workspace root |
 | `logo` / `copyright` | Override `backcover` metadata |
 
 Make the first slide a `layout: title` cover. The extension appends a final
@@ -220,9 +222,9 @@ First explain the **prerequisites**.
 
 Write local images as `![Alternative text](/assets/foo.png)` and pass the source
 Markdown's workspace-relative path as `sourceName`. Lookup tries adjacent
-`assets/` before repository-root `assets/`. Architecture `icon` and `image.src`
+`assets/` before workspace-root `assets/`. Architecture `icon` and `image.src`
 use `assets/foo.svg` without a leading slash and follow the same lookup order.
-Specifically, lookup checks `assets/` beside the Markdown before `assets/` at the repository root.
+Specifically, lookup checks `assets/` beside the Markdown before `assets/` at the workspace root.
 
 On a standard slide, the first H1/H2 is fixed in the top title area, so its
 position does not move with body length. Later headings remain in the body.
@@ -263,7 +265,7 @@ layout: section
 Set the deck-wide `theme`; use `dark` when omitted.
 
 For `custom`, resolve `theme-file` first from the same folder as the source Markdown
-and then from the repository root. A shared `themes/brand/theme.css` may therefore be
+and then from the workspace root. A shared `themes/brand/theme.css` may therefore be
 overridden by `<Markdown folder>/themes/brand/theme.css`. AI must pass the
 workspace-relative source path as `sourceName`.
 
@@ -347,7 +349,7 @@ When writing explicit JSON, `elements` is required by the JSON Schema.
 
 - A `node` has a unique `id`, multiline `text`, and shape `rect`,
   `rounded-rect`, or `ellipse`.
-- `icon` is a built-in name or a path under an adjacent or repository-root
+- `icon` is a built-in name or a path under an adjacent or workspace-root
   `assets/` folder. See [Icons](#icons).
 - An `image` places an `assets/` image as an independent element. `fit` is
   `contain` (default), `cover`, or `stretch`; use `ariaLabel` for its accessible
@@ -482,7 +484,7 @@ depend on Chromium launch options.
 ### Icons
 
 `node.icon` accepts a **built-in icon name** or an **image path under
-Markdown-adjacent or repository-root `assets/`**.
+Markdown-adjacent or workspace-root `assets/`**.
 
 #### Built-in icons
 
@@ -514,7 +516,7 @@ Built-ins read no external asset. They use bundled 24×24 SVG primitives.
 
 #### Using an `assets/` icon
 
-Place an image under `assets/` beside the source Markdown or at repository root,
+Place an image under `assets/` beside the source Markdown or at workspace root,
 and use an `assets/`-relative path. Adjacent assets take precedence. The
 extension serves them on same-origin `/assets/...`, so canvas, presenter, and
 PDF resolve them consistently.

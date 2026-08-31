@@ -109,7 +109,7 @@ export async function readGuide(topic = "overview") {
       return [
         section(readme, "## How it works"),
         "",
-        "Users can load workspace Markdown directly with the canvas 📂 button (deterministic splitting without AI; natural-language summarization remains the AI's responsibility).",
+        "Users can load workspace Markdown directly with the canvas 📂 button (deterministic splitting without AI; natural-language summarization remains the AI's responsibility). The workspace root is the Git repository root when available, otherwise the folder opened for the current session.",
         "Use MarkdStage's ✎ control to adjust the placement of an existing Architecture diagram. For comprehensive editing, including adding or deleting elements, open the architecture-editor canvas with sourcePath and blockIndex. Comprehensive edits affect the source Markdown only when explicitly saved.",
         "",
         "For details, request `slide-format`, `themes`, `custom-themes`, `theme-schema`, `architecture-dsl`, or `architecture-schema`.",

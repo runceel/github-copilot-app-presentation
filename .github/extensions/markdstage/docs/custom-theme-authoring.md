@@ -30,9 +30,9 @@ themes/brand/
 `theme-file` resolves the same relative path in this order:
 
 1. The same folder as the source Markdown
-2. The repository root
+2. The workspace root
 
-For example, place `themes/brand/theme.css` at the repository root as a shared
+For example, place `themes/brand/theme.css` at the workspace root as a shared
 theme for every deck. To override only `decks/quarterly/slides.md`, add
 `decks/quarterly/themes/brand/theme.css`. Both Markdown files can specify
 `theme-file: themes/brand/theme.css`; the file beside the Markdown takes
@@ -160,7 +160,7 @@ Values may use CSS units and functions such as `px`, `rem`, and `clamp(...)`.
 - Selectors, `@import`, `url(...)`, `javascript:`, and `expression(...)` are prohibited.
 - Do not put arbitrary CSS rules or JavaScript in a theme file.
 - Keep theme files in the workspace and use relative paths that resolve safely
-  from the Markdown or repository root.
+  from the Markdown or workspace root.
 - The maximum theme file size is 64 KiB.
 - The maximum `theme.json` size is 64 KiB.
 - When a property appears more than once, the final value wins.

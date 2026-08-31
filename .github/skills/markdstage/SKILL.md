@@ -162,9 +162,9 @@ connectors and to edit sizing, parentage, layout, style, ports, and routing.
   execute with Enter/Space, and close with Escape.
 - Add a standalone image from the toolbar or an empty-space/group menu. The
   inspector's **Select image from assets/** uses the same picker for node icons.
-  The picker searches Markdown-adjacent then repository-root `assets/`.
+  The picker searches Markdown-adjacent then workspace-root `assets/`.
   Imported SVG / PNG / WebP / JPG / JPEG files of at most 10 MB are copied to
-  repository-root `assets/`. Name collisions become `name-2.ext`. Removing or
+  workspace-root `assets/`. Name collisions become `name-2.ext`. Removing or
   undoing a diagram image never deletes the shared asset file.
 - External-change conflicts never overwrite the source. To restart from the
   file, call `reload` with `{ discard: true }`.
@@ -191,7 +191,7 @@ Each `slides` element contains optional YAML-like front matter delimited by
 | `layout` | `title` for the cover, `section` for a section divider, `backcover` for the back cover, or `center` to vertically center heading and body together. Omit for top-aligned standard slides. |
 | `size` | `auto` (default), `normal`, `large`, or `xlarge`. `auto` safely enlarges only spacious standard slides. |
 | `theme` | Per-slide override: `dark`, `light`, `microsoft`, or `custom`. An explicit canvas theme has precedence. |
-| `theme-file` | CSS custom-property file for `custom`, resolved first beside the source Markdown and then from the repository root. A sibling `theme.json` loads automatically. |
+| `theme-file` | CSS custom-property file for `custom`, resolved first beside the source Markdown and then from the workspace root. A sibling `theme.json` loads automatically. |
 | `logo` | Back-cover text at top left. Overrides the `theme.json` logo; empty hides it. |
 | `copyright` | Back-cover copyright text at bottom left. Overrides `theme.json`; empty hides it. |
 
@@ -244,7 +244,7 @@ theme-file: themes/brand/theme.css
 `url()` are prohibited. Optional cover/background logos and copyright metadata
 go in a sibling `theme.json`, with assets under that folder's `assets/`.
 
-Theme lookup tries the source Markdown folder before the repository root. Always
+Theme lookup tries the source Markdown folder before the workspace root. Always
 pass `sourceName` to `open` / `load_deck`. Every theme receives one automatic
 `layout: backcover` slide unless the deck already ends with one. Logo and
 copyright are shown only when explicitly provided.
@@ -282,7 +282,7 @@ Connector labels default to `labelLayer: "front"`; use `"behind"` only for
 legacy behind-box placement.
 
 For custom Architecture icons, place SVG / PNG / WebP / JPG / JPEG files in
-Markdown-adjacent or repository-root `assets/` and use
+Markdown-adjacent or workspace-root `assets/` and use
 `icon: "assets/foo.svg"` without a leading slash. External URLs, data URIs,
 `..`, and non-ASCII filenames are rejected. Standalone images use:
 
@@ -305,13 +305,13 @@ layout, z-order, connector endpoints, and orthogonal-routing obstacles.
 
 For standard Markdown images, remote URLs are accepted directly. Local images
 use `![Alternative text](/assets/foo.png)`. Lookup tries an `assets/` folder
-beside the source Markdown before repository-root `assets/`.
+beside the source Markdown before workspace-root `assets/`.
 
 ## Presentation startup procedure
 
 ### 1. Identify the source Markdown
 
-Derive the path from the request. If none is specified, use repository-root
+Derive the path from the request. If none is specified, use workspace-root
 `slides.md`. Ask for a path only when that file does not exist.
 
 ### 2. Parse the Markdown into pages
@@ -471,8 +471,8 @@ total: 8
 - For `no_deck`, register `slides` with `open` input or `load_deck` first.
 - If the extension/action is missing, confirm
   `.github/extensions/markdstage/` exists and reload extensions.
-- If a local image is missing, verify an adjacent or repository-root `assets/`
+- If a local image is missing, verify an adjacent or workspace-root `assets/`
   file, an `/assets/...` URL, and a correct workspace-relative `sourceName`.
 - If a custom theme is missing, verify `theme-file` beside the Markdown or at
-  repository root and verify `sourceName`. The Markdown-adjacent file wins.
+  workspace root and verify `sourceName`. The Markdown-adjacent file wins.
 - Mermaid errors preserve the rest of the slide. Correct the syntax and reload.
