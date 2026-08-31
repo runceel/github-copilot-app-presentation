@@ -126,12 +126,16 @@ workspace-relative path; it anchors adjacent `assets/`, Markdown-relative
 | `get_architecture_errors` | Return Architecture DSL errors for the whole deck or one zero-based `index`. Each error includes `slideIndex`, one-based `page`, `blockIndex`, `architecture`, `code`, and `message`; temporary `show_slide` content is included. |
 | `open_presenter` | Open the current deck in a synchronized, movable, resizable 1280×720 Edge / Chrome / Chromium app-mode window. Use browser or OS controls (`F11` on Windows) for full screen. Surface Pen never launches it. |
 | `close_presenter` | Close the external presenter window. |
+| `inspect_layout` | Check the PDF-equivalent fixed 1280×720 layout before export. It returns only clipped pages by default, with overflow dimensions and bounded element hints. Pass a zero-based `index` for one page or `includeFits: true` when complete measurements are required. Prefer this action over image analysis. |
+| `capture_slides` | Create 1280×720 PNG files only when visual inspection is required. Pass zero-based `indexes`, or omit them to capture only pages found by `inspect_layout`. Optional `outputDirectory` is workspace-relative. The result contains file paths rather than inline image data. |
 | `export_pdf` | Export the current deck as a 16:9 PDF. Optional `outputPath` is a workspace-relative `.pdf` path; default is `markdstage.pdf`. Optional `theme` applies only to PDF. The canvas printer derives a name from `sourceName`. |
 | `edit_architecture` | Toggle the lightweight Architecture placement mode for node dragging, keyboard movement, layout detachment, Undo, and Redo. Each operation is saved immediately under the stable placement contract. |
 | `reset` | Clear slide and deck state and return to the waiting view. |
 
 `load_deck` and `goto_slide` return `{ ok, version, index, total }`;
-`goto_slide` also returns `changed`. `export_pdf` returns
+`goto_slide` also returns `changed`. For non-scrolling/PDF decks, call
+`inspect_layout` after loading or revising slides. Use `capture_slides` only for
+pages whose appearance cannot be judged from the layout diagnostics. `export_pdf` returns
 `{ ok, path, total, theme, bytes }`. Before PDF export, reload the complete deck
 if its source Markdown changed.
 

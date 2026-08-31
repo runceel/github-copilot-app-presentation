@@ -27,7 +27,7 @@ Canvas iframe (renderer/)
   | highlights language-tagged code fences with highlight.js
   | converts ```mermaid blocks with mermaid.run
   | converts validated ```architecture JSON DSL into a safe SVG DOM
-  | provides ◀ ▶, ✎, margin clicks, arrow keys, and the ☰ slide list
+  | provides ◀ ▶, ✎, 16:9 PDF preview, margin clicks, arrow keys, and the ☰ slide list
   | opens a synchronized external window with ⛶
   v
 The themed slide is displayed and updates automatically
@@ -84,6 +84,16 @@ The themed slide is displayed and updates automatically
   AI may call `export_pdf` with another `outputPath`. Hidden print mode renders
   every page, then headless Edge/Chrome produces a 16:9 PDF with backgrounds,
   images, highlighted code, and Mermaid.
+- Use the **16:9 control** to letterbox the current slide inside the canvas with
+  the same fixed 1280×720 typography, spacing, diagram limits, and clipping used
+  by PDF output. This preview is local to the canvas and does not change deck
+  state. A visible and accessible warning identifies content that would be
+  clipped.
+- AI should call **`inspect_layout` before exporting a non-scrolling deck**. It
+  renders the PDF snapshot in headless Chromium and returns compact JSON for
+  clipped pages, including vertical/horizontal overflow and bounded element
+  hints. Call `capture_slides` only when visual inspection is needed; PNGs are
+  fixed 1280×720 files and the action returns paths instead of inline image data.
 - Open the **external presenter** with ⛶ or `open_presenter`. Edge / Chrome /
   Chromium starts in a dedicated temporary profile as a movable, resizable
   1280×720 app-mode window. It shares `/state`, `/navigate`, and SSE with the
@@ -898,6 +908,8 @@ refocusing an existing canvas.
 | `get_architecture_errors` | `{ index?: number }`. Validate the complete deck or one zero-based slide, including temporary content. Returns `{ ok, scope, index?, page?, total, errorCount, errors }`; errors contain `{ slideIndex, page, blockIndex, architecture, code, message }`. No deck and out-of-range indexes are errors. |
 | `open_presenter` | No input. Start one synchronized movable/resizable 1280×720 Chromium app-mode window. Use `F11` on Windows for full screen. Returns `{ ok, started, alreadyRunning, browser?, pid? }`. |
 | `close_presenter` | No input. Stop presenter and remove its temporary profile. Returns `{ ok, stopped }`. |
+| `inspect_layout` | `{ index?: number, includeFits?: boolean }`. Render the current PDF snapshot with the fixed 1280×720 output layout. Omit `index` for the complete deck. By default, return only clipped pages; `includeFits` includes successful pages. Returns dimensions, issue counts, overflow measurements, nested scroll containers, and a bounded list of element hints. Requires Edge, Chrome, or Chromium. |
+| `capture_slides` | `{ indexes?: number[], outputDirectory?: string, theme?: "dark" | "light" | "microsoft" | "custom" }`. Generate PDF-equivalent 1280×720 PNGs for at most 10 zero-based indexes. When `indexes` is omitted, inspect the deck and capture only clipped pages. Paths stay inside the workspace; results contain paths and layout summaries, not image bytes. Requires Edge, Chrome, or Chromium. |
 | `export_pdf` | `{ outputPath?: string, theme?: "dark" | "light" | "microsoft" | "custom" }`. Export one 16:9 page per slide. Relative paths use workspace root; default is `markdstage.pdf`. Theme affects PDF only. Reject paths outside workspace and non-`.pdf` files. Temporary slide replacement and the automatic back cover are included. Returns `{ ok, path, total, theme, bytes }`. Requires Edge, Chrome, or Chromium. |
 | `edit_architecture` | `{ enabled: boolean }`. Toggle placement editing. Imported decks also write to the source fence; direct decks write to canvas state. Presenter/print omit UI. Mode is not persisted and `reset` disables it. Returns `{ ok, enabled, version }`. |
 | `reset` | No input. Clear deck/slide state, disable editing, and return to the waiting view. |
@@ -913,8 +925,8 @@ refocusing an existing canvas.
 | --- | --- |
 | `GET /state` | Return current `markdown`, `index`, `total`, `theme`, `mode`, `architectureEdit`, source/watch state, `version`, and `deckVersion`. |
 | `GET /deck` | Return all `slides` and `deckVersion`; the ☰ list fetches only when the version changes. |
-| `GET /export-data` | Return the token-bound PDF deck snapshot to print mode. |
-| `POST /export-status` | Let print mode report complete rendering or failure to `export_pdf`. |
+| `GET /export-data` | Return the token-bound deck snapshot to print, inspection, or capture mode. |
+| `POST /export-status` | Let print/capture mode report rendering status and fixed-layout diagnostics to PDF export, `inspect_layout`, or `capture_slides`. |
 | `POST /navigate` | Accept absolute `{ index }` or relative `{ delta }`, update position, and notify all clients through SSE. |
 | `POST /present` | Start the presenter from ⛶; accepts same-origin POST only. |
 | `POST /export` | Start source-named PDF export from the printer icon; accepts same-origin POST only. |
