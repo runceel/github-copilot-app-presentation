@@ -37,6 +37,7 @@ the source of truth from the first draft to the stage.
 - **Write, then present immediately**: Open a file in the canvas or Desktop and it becomes a slide deck
 - **Present technical content directly**: Supports code, Mermaid, Architecture DSL, images, tables, and speaker notes
 - **Keep output consistent**: Use the same renderer in the canvas, presentation window, Desktop, and PDF
+- **Validate PDF fit before export**: Preview the fixed 16:9 layout, inspect clipping, and capture only pages that need visual review
 - **Keep controls focused on presenting**: Navigate with buttons, the keyboard, or Surface Pen in supported environments
 
 ## See Markdown on stage
@@ -89,12 +90,12 @@ connectors; changes remain a draft until **Save** writes them back to Markdown.
 ## Use the canvas Extension
 
 When you open this repository as a project, `.github/extensions/markdstage/` loads at project
-scope. To install the current **[v2.0.1 release](https://github.com/runceel/markdstage/releases/tag/v2.0.1)**
+scope. To install the current **[v2.1.0 release](https://github.com/runceel/markdstage/releases/tag/v2.1.0)**
 at user scope in another repository, ask GitHub Copilot:
 
 > Install MarkdStage at user scope from the following GitHub repository folder.
 >
-> `https://github.com/runceel/markdstage/tree/v2.0.1/.github/extensions/markdstage`
+> `https://github.com/runceel/markdstage/tree/v2.1.0/.github/extensions/markdstage`
 
 The Extension runs local code in the user's environment. Review its contents before installation,
 and use a trusted release tag or commit SHA for a reproducible install. The `main` branch tracks
@@ -105,6 +106,7 @@ the latest development version.
 1. Edit `slides.md` and separate slides with `---` after a blank line.
 2. Ask Copilot, "Present this deck using `slides.md`."
 3. Navigate with **◀ ▶**, the **arrow keys**, or the **☰ slide list** in the MarkdStage canvas.
+4. Use **16:9** before PDF export. Copilot can run `inspect_layout` first and generate selected PNG previews only when needed.
 
 You can also open Markdown directly from the workspace with the canvas **📂** button or the `I`
 key, without using AI. When calling `open_canvas` directly, use canvas ID **`MarkdStage`**.
@@ -119,11 +121,11 @@ canvasId: MarkdStage
 from a file picker. It displays the current and next slides with the current slide's speaker notes,
 and launches a synchronized native presentation window.
 
-The current **[v2.0.1 release](https://github.com/runceel/markdstage/releases/tag/v2.0.1)**
+The current **[v2.1.0 release](https://github.com/runceel/markdstage/releases/tag/v2.1.0)**
 includes portable builds and SHA-256 checksum files for Windows x64 and ARM64:
 
-- [MarkdStage-win-x64.zip](https://github.com/runceel/markdstage/releases/download/v2.0.1/MarkdStage-win-x64.zip)
-- [MarkdStage-win-arm64.zip](https://github.com/runceel/markdstage/releases/download/v2.0.1/MarkdStage-win-arm64.zip)
+- [MarkdStage-win-x64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.0/MarkdStage-win-x64.zip)
+- [MarkdStage-win-arm64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.0/MarkdStage-win-arm64.zip)
 
 ## Markdown format
 
