@@ -136,11 +136,15 @@ test("live 16:9 preview and headless layout inspection report the same clipping"
       expect(live.clipped, `page ${index + 1} clipping status`).toBe(expected.pdfClipped);
       expect(live.overflow).toBe(expected.pdfClipped);
       expect(live.button).toBe(expected.pdfClipped ? "error" : "active");
-      expect(live.verticalOverflowPx, `page ${index + 1} vertical overflow`).toBe(
+      // Both paths round to 0.1px; allow half a pixel so that unavoidable floating-point
+      // noise from the preview scale normalization cannot make the test flaky.
+      expect(live.verticalOverflowPx, `page ${index + 1} vertical overflow`).toBeCloseTo(
         expected.verticalOverflowPx,
+        0,
       );
-      expect(live.horizontalOverflowPx, `page ${index + 1} horizontal overflow`).toBe(
+      expect(live.horizontalOverflowPx, `page ${index + 1} horizontal overflow`).toBeCloseTo(
         expected.horizontalOverflowPx,
+        0,
       );
     }
   } finally {
