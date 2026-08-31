@@ -44,6 +44,10 @@ test.describe("Markdown import", () => {
         hasText: "import-source.md",
       });
       await expect(item).toHaveCount(1);
+      await expect(item.locator(".import-filename")).toHaveText("import-source.md");
+      await expect(item.locator(".import-parent")).toHaveCount(0);
+      await expect(item).toHaveAttribute("title", "import-source.md");
+      await expect(item).toHaveAccessibleName("import-source.md");
       await item.click();
 
       await expect(page.locator("#importPicker")).toBeHidden();
@@ -82,9 +86,16 @@ test.describe("Markdown import", () => {
     const harness = await openCanvas(page);
     try {
       await page.locator("#navImport").click();
-      await page
-        .locator("#importList .overview-link", { hasText: "asset-scope/deck.md" })
-        .click();
+      const item = page
+        .locator("#importList")
+        .getByRole("button", { name: "asset-scope/deck.md", exact: true });
+      await expect(item.locator(".import-filename")).toHaveText("deck.md");
+      await expect(item.locator(".import-parent")).toHaveText("asset-scope");
+      await expect(item).toHaveAttribute("title", "asset-scope/deck.md");
+      await expect(item).toHaveAccessibleName("asset-scope/deck.md");
+      await expect(item).toHaveCSS("flex-direction", "column");
+      await expect(item.locator(".import-parent")).toHaveCSS("text-overflow", "ellipsis");
+      await item.click();
       await expect.poll(() => harness.sourceName).toBe("asset-scope/deck.md");
 
       const local = await page.request.get(`${harness.url}/assets/sample.svg`);
