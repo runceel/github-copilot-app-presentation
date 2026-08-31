@@ -9,6 +9,7 @@ import {
   extractSpeakerNotes,
   stripSpeakerNotes,
 } from "./speaker-notes.mjs";
+import { splitImportPath } from "./import-path.mjs";
 
 // Client-side slide renderer for the MarkdStage canvas.
 //
@@ -1667,11 +1668,20 @@ function renderImportList() {
     li.className = "overview-item";
     const btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "overview-link";
-    const label = document.createElement("span");
-    label.className = "import-path";
-    label.textContent = path;
-    btn.appendChild(label);
+    btn.className = "overview-link import-file";
+    btn.title = path;
+    btn.setAttribute("aria-label", path);
+    const { filename, parentPath } = splitImportPath(path);
+    const filenameLabel = document.createElement("span");
+    filenameLabel.className = "import-filename";
+    filenameLabel.textContent = filename;
+    btn.appendChild(filenameLabel);
+    if (parentPath) {
+      const parentLabel = document.createElement("span");
+      parentLabel.className = "import-parent";
+      parentLabel.textContent = parentPath;
+      btn.appendChild(parentLabel);
+    }
     btn.addEventListener("click", () => importMarkdown(path));
     li.appendChild(btn);
     list.appendChild(li);

@@ -530,7 +530,10 @@ body.presenter-view-mode .layout-warning{display:none;}
 .import-message{flex:0 0 auto;margin:.6em 1em 0;font-size:.86em;color:var(--muted);}
 .import-message:empty{display:none;}
 .import-message[data-state="error"]{color:#d13438;}
-.import-path{flex:1 1 auto;font-size:.94em;line-height:1.35;
+.import-file{align-items:stretch;flex-direction:column;gap:.12em;}
+.import-filename{min-width:0;font-size:.94em;font-weight:600;line-height:1.35;
+     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.import-parent{min-width:0;font-size:.78em;line-height:1.3;color:var(--muted);
      overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 
 /* ===== Fixed 16:9 output surface ===== */
