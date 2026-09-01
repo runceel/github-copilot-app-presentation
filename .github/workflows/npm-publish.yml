@@ -70,7 +70,17 @@ jobs:
       - name: Verify published version
         shell: bash
         run: |
+          set -euo pipefail
           version=$(node -p "require('./packages/markdstage-cli/package.json').version")
-          published=$(npm view "@markdstage/markdstage@${version}" version \
-            --registry=https://registry.npmjs.org/)
-          test "$published" = "$version"
+          for attempt in {1..12}; do
+            if published=$(npm view "@markdstage/markdstage@${version}" version \
+              --registry=https://registry.npmjs.org/ 2>/dev/null) &&
+              [ "$published" = "$version" ]; then
+              echo "Verified @markdstage/markdstage@$version."
+              exit 0
+            fi
+            echo "Waiting for npm registry propagation ($attempt/12)..."
+            sleep 5
+          done
+          echo "Published version $version was not visible after 60 seconds."
+          exit 1
