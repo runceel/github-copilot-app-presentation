@@ -93,6 +93,7 @@ MarkdStage Canvas は、表示中のデッキと Architecture DSL を GitHub Cop
 | --- | --- |
 | **MarkdStage Canvas** | GitHub Copilot に Markdown の要約やスライド化を任せるか、Canvas の 📂 ボタンから直接読み込みます |
 | **MarkdStage Desktop** | GitHub Copilot を開かずに、Markdown、次のスライド、スピーカーノートを手元で見ながら Windows で発表します |
+| **MarkStageForMac** | コミュニティ製の macOS ネイティブアプリで発表します |
 
 <a id="canvas-extension"></a>
 

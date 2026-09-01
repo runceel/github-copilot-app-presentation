@@ -91,6 +91,7 @@ connectors; changes remain a draft until **Save** writes them back to Markdown.
 | --- | --- |
 | **MarkdStage canvas** | Ask GitHub Copilot to summarize and format Markdown, or load it directly with the canvas 📂 button |
 | **MarkdStage Desktop** | Present on Windows while viewing the Markdown, next slide, and speaker notes without opening GitHub Copilot |
+| **MarkStageForMac** | Present on macOS with the community-built native app |
 
 ## Use the canvas Extension
 
