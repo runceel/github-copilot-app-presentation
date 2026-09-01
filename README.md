@@ -91,6 +91,7 @@ connectors; changes remain a draft until **Save** writes them back to Markdown.
 | --- | --- |
 | **MarkdStage canvas** | Ask GitHub Copilot to summarize and format Markdown, or load it directly with the canvas 📂 button |
 | **MarkdStage Desktop** | Present on Windows while viewing the Markdown, next slide, and speaker notes without opening GitHub Copilot |
+| **MarkdStage CLI** | Present, validate, capture, and export from a terminal, CI, Codex, or Claude Code without the canvas |
 | **MarkStageForMac** | Present on macOS with the community-built native app |
 
 ## Use the canvas Extension
@@ -135,6 +136,22 @@ includes portable builds and SHA-256 checksum files for Windows x64 and ARM64:
 - [MarkdStage-win-x64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.3/MarkdStage-win-x64.zip)
 - [MarkdStage-win-arm64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.3/MarkdStage-win-arm64.zip)
 
+## Use the CLI
+
+The [MarkdStage CLI](./docs/user-guide/cli.md) runs the same renderer without the canvas, so
+Markdown decks also work in terminals, CI jobs, Codex, and Claude Code. It needs Node.js 20.11 or
+later and an installed Microsoft Edge, Google Chrome, or Chromium.
+
+```console
+npx @runceel/markdstage present slides.md --watch
+npx @runceel/markdstage validate slides.md --json
+npx @runceel/markdstage inspect slides.md
+npx @runceel/markdstage export slides.md --output slides.pdf
+```
+
+`markdstage skill install --target codex` and `--target claude` write portable Agent Skills that
+are generated from the same guide topics as the canvas `markdstage_guide` tool.
+
 <a id="community-macos-app"></a>
 
 ## Community macOS app
@@ -171,6 +188,7 @@ they appear only in presenter view.
 | --- | --- |
 | `.github/extensions/markdstage/` | Canvas Extension, renderer, bundled open-source software, and schemas |
 | `.github/skills/markdstage/SKILL.md` | Skill that formats Markdown into slide fragments and opens MarkdStage |
+| `packages/markdstage-cli/` | `@runceel/markdstage` CLI package and portable Agent Skill generation |
 | `apps/MarkdStage.Desktop/` | WinUI 3 desktop app |
 | `assets/brand/` | MarkdStage logo, lockup, and README banner |
 | `assets/readme/` | Rendered slide and Architecture Editor images used in this README |
@@ -199,6 +217,7 @@ Existing Markdown syntax, themes, Architecture DSL, and action contracts such as
 - [MarkdStage Skill](./.github/skills/markdstage/SKILL.md)
 - [Canvas Extension specification and actions](./.github/extensions/markdstage/README.md)
 - [MarkdStage Desktop](./apps/MarkdStage.Desktop/README.md)
+- [MarkdStage CLI](./docs/user-guide/cli.md)
 - [Custom theme authoring](./.github/extensions/markdstage/docs/custom-theme-authoring.md)
 - [Product principles](./PRODUCT.md)
 - [Brand and design system](./DESIGN.md)
