@@ -82,6 +82,47 @@ Then reload the Extension and verify that `MarkdStage` appears in the canvas lis
 `markdstage_guide` is available, and Markdown import, navigation, presenter, and PDF export all work
 with the new canvas ID.
 
+## MarkdStage CLI on npm
+
+The standalone CLI uses its own semantic version in
+`packages/markdstage-cli/package.json`. Publish it with a matching
+`cli-vMAJOR.MINOR.PATCH` tag; do not reuse the product release tag unless both version numbers
+intentionally match.
+
+Before tagging:
+
+```powershell
+npm run test:cli
+npm run skills:check
+cd packages\markdstage-cli
+npm pack --dry-run
+```
+
+Commit the package version and generated Skill updates to `main`, then create and push the matching
+tag:
+
+```powershell
+git tag cli-v0.1.0
+git push origin cli-v0.1.0
+```
+
+`.github/workflows/npm-publish.yml` verifies that the tag matches the package version and that the
+tagged commit is reachable from `main`, then publishes the public scoped package with provenance.
+Never move a published CLI tag or reuse a package version.
+
+The first publish requires an npm granular access token with permission to create and publish
+`@runceel/markdstage`, stored temporarily as the `NPM_TOKEN` GitHub Actions secret. After the first
+publish:
+
+1. Configure the package's npm Trusted Publisher for repository `runceel/markdstage` and workflow
+   `npm-publish.yml`.
+2. Verify one OIDC-authenticated publish, then revoke the bootstrap token on npm.
+3. Delete the `NPM_TOKEN` repository secret.
+4. Set npm publishing access to require two-factor authentication and disallow traditional tokens.
+
+Subsequent publishes authenticate through GitHub Actions OIDC and generate provenance without a
+long-lived npm token.
+
 ## GitHub Release
 
 Include the following in the release notes:

@@ -16,6 +16,10 @@
     "url": "git+https://github.com/runceel/markdstage.git",
     "directory": "packages/markdstage-cli"
   },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "keywords": [
     "markdown",
     "slides",
