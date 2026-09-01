@@ -10,10 +10,10 @@ import {
   buildPresenterBrowserArgs,
   findChromiumBrowser,
   isProcessRunning,
+  sharedPath,
   terminateProcessTree,
 } from "../runtime.mjs";
 import { withDeckServer } from "../deck.mjs";
-import { sharedPath } from "../runtime.mjs";
 
 async function createWatcher(session, server, { onStatus }) {
   const { createMarkdownWatcher } = await import(
