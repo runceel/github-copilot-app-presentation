@@ -64,6 +64,13 @@ import { resolveThemeFile } from "./scripts/theme-paths.mjs";
 import { resolveWorkspaceRoot } from "./scripts/workspace-root.mjs";
 import { buildDeckSlides } from "./markdown-deck.mjs";
 import {
+  classifyOpenInput,
+  ensureBackCover,
+  getExportSlides,
+  getOutputSnapshotSlides,
+  planDeckOpen,
+} from "./deck-state.mjs";
+import {
   architectureValidationErrors,
   createMarkdStageHooks,
   deckValidationFeedback,
@@ -163,39 +170,6 @@ function clampIndex(value, total) {
   if (i < 0) return 0;
   if (i >= total) return total - 1;
   return i;
-}
-
-// End every deck with a back cover (Closing logo slide), regardless of theme.
-// Add it during deck registration so a missing AI-generated slide cannot break the deck.
-const DEFAULT_BACKCOVER = ["---", "layout: backcover", "---", ""].join("\n");
-
-// Lightweight parser for front-matter `layout:`. It recognizes only the same
-// leading `---` through `---` form as the renderer's splitFrontMatter.
-function readLayout(markdown) {
-  if (typeof markdown !== "string") return "";
-  const text = markdown.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/^[\n \t\uFEFF]+/, "");
-  if (!text.startsWith("---\n")) return "";
-  const lines = text.split("\n");
-  for (let i = 1; i < lines.length; i++) {
-    if (lines[i].trim() === "---") break;
-    const idx = lines[i].indexOf(":");
-    if (idx <= 0) continue;
-    if (lines[i].slice(0, idx).trim().toLowerCase() !== "layout") continue;
-    return lines[i]
-      .slice(idx + 1)
-      .trim()
-      .replace(/^["']+|["']+$/g, "")
-      .toLowerCase();
-  }
-  return "";
-}
-
-// Append the back cover unless the deck already ends with one, so re-running
-// load_deck (e.g. to switch themes) never stacks up duplicates.
-function ensureBackCover(slides) {
-  if (!slides.length) return slides;
-  if (readLayout(slides[slides.length - 1]) === "backcover") return slides;
-  return [...slides, DEFAULT_BACKCOVER];
 }
 
 function findExecutableOnPath(names) {
@@ -346,20 +320,6 @@ function resolveCaptureOutputDirectory(inst, requestedPath) {
     );
   }
   return outputDirectory;
-}
-
-function getExportSlides(inst) {
-  if (inst.slides.length) {
-    const slides = [...inst.slides];
-    if (inst.mode === "adhoc" && typeof inst.markdown === "string") {
-      slides[clampIndex(inst.index, slides.length)] = inst.markdown;
-    }
-    return slides;
-  }
-  if (inst.mode === "adhoc" && typeof inst.markdown === "string") {
-    return [inst.markdown];
-  }
-  return [];
 }
 
 function isPathInside(root, candidate) {
@@ -1050,7 +1010,7 @@ async function verifyPng(outputPath) {
 function createOutputSnapshot(inst, requestedTheme) {
   const theme = requestedTheme === undefined ? inst.theme : normalizeTheme(requestedTheme);
   return {
-    slides: ensureBackCover(getExportSlides(inst)),
+    slides: getOutputSnapshotSlides(inst),
     theme,
     themeLocked: inst.themeLocked,
     customThemeCss: inst.customThemeCss,
@@ -3167,9 +3127,11 @@ const session = await joinSession({
       id: "MarkdStage",
       displayName: "MarkdStage",
       description:
-        "Markdown, ready for the stage. A MarkdStage canvas that displays themed Markdown slides. Pass slides/index/theme to open the deck immediately. Use the 16:9 control for PDF-equivalent preview, inspect_layout for compact clipping diagnostics, capture_slides for selected 1280x720 PNGs, open_presenter for an external presentation window, and export_pdf for final PDF output. Navigate within the canvas with ◀ ▶, arrow keys, the slide list, or a Surface Pen on supported Windows systems.",
+        "Markdown, ready for the stage. A MarkdStage canvas that displays themed Markdown slides. Pass slides/index/theme to open the deck immediately; omit input only to refocus an existing instance. Any non-empty open input must include slides. sourceName is metadata and never reads or watches Markdown. Use the 16:9 control for PDF-equivalent preview, inspect_layout for compact clipping diagnostics, capture_slides for selected 1280x720 PNGs, open_presenter for an external presentation window, and export_pdf for final PDF output. Navigate within the canvas with ◀ ▶, arrow keys, the slide list, or a Surface Pen on supported Windows systems.",
       inputSchema: {
         type: "object",
+        description:
+          "Omit input or pass an empty object only to refocus the current instance. Every non-empty input must include slides to register or replace the in-memory deck snapshot.",
         properties: {
           slides: {
             type: "array",
@@ -3197,7 +3159,7 @@ const session = await joinSession({
           sourceName: {
             type: "string",
             description:
-              "Workspace-relative path of the source Markdown. Used as the base for adjacent assets/ and Markdown-relative theme-file resolution. The canvas PDF button saves using this file name with a .pdf extension.",
+              "Workspace-relative source path used only as metadata for adjacent assets/, Markdown-relative theme-file resolution, PDF naming, and capture directories. It never reads or watches the named Markdown file; pass slides or call load_deck to replace the registered snapshot.",
           },
         },
         additionalProperties: false,
@@ -3206,7 +3168,7 @@ const session = await joinSession({
         {
           name: "load_deck",
           description:
-            "Register a complete presentation at once. Pass one Markdown fragment per slide in slides to retain and display the deck. Resolve theme/themeFile in the order explicit value > front matter > dark. A custom theme also loads an optional theme.json beside its CSS file.",
+            "Register or replace the complete in-memory presentation snapshot. Pass one Markdown fragment per slide in slides to retain and display the deck. Resolve theme/themeFile in the order explicit value > front matter > dark. A custom theme also loads an optional theme.json beside its CSS file. sourceName is metadata and never loads or watches Markdown.",
           inputSchema: {
             type: "object",
             properties: {
@@ -3235,7 +3197,7 @@ const session = await joinSession({
               sourceName: {
                 type: "string",
                 description:
-                  "Workspace-relative path of the source Markdown. Used as the base for adjacent assets/ and Markdown-relative theme-file resolution. The canvas PDF button saves using this file name with a .pdf extension.",
+                  "Workspace-relative source path used only as metadata for adjacent assets/, Markdown-relative theme-file resolution, PDF naming, and capture directories. It never reads or watches the named Markdown file.",
               },
             },
             required: ["slides"],
@@ -3325,7 +3287,7 @@ const session = await joinSession({
         {
           name: "show_slide",
           description:
-            "Update only the current slide. Pass a small one-slide Markdown fragment (optional front matter plus body) to update the canvas immediately. Use for a one-off display without a registered deck or a temporary replacement.",
+            "Update only the current slide. Pass a small one-slide Markdown fragment (optional front matter plus body) to update the canvas immediately. Use for a one-off display without a registered deck or a temporary replacement. The temporary replacement is included in layout inspection, PNG capture, architecture validation, presenter, and PDF output until deck navigation or replacement resumes the registered deck.",
           inputSchema: {
             type: "object",
             properties: {
@@ -3464,7 +3426,7 @@ const session = await joinSession({
         {
           name: "inspect_layout",
           description:
-            "Inspect the displayed deck with the same fixed 1280x720 layout used for PDF output. Prefer this lightweight JSON diagnostic before requesting PNGs. By default, inspect the complete deck and return only pages that would be clipped; pass index for one zero-based page or includeFits=true to include pages that fit.",
+            "Inspect the registered in-memory output snapshot with the same fixed 1280x720 layout used for PDF output, including any temporary show_slide replacement. This never reads or validates the source file named by sourceName. Prefer one whole-deck inspection; targeted inspections must be serialized because PDF, layout, and PNG jobs are exclusive. By default, return only pages that would be clipped; pass index for one zero-based page or includeFits=true to include pages that fit.",
           inputSchema: {
             type: "object",
             properties: {
@@ -3472,7 +3434,7 @@ const session = await joinSession({
                 type: "integer",
                 minimum: 0,
                 description:
-                  "Zero-based slide index to inspect. Omit to inspect the complete PDF deck, including the automatic back cover.",
+                  "Zero-based registered snapshot index to inspect. Omit to inspect the complete in-memory PDF snapshot, including the automatic back cover.",
               },
               includeFits: {
                 type: "boolean",
@@ -3682,41 +3644,37 @@ const session = await joinSession({
         },
       ],
       open: async (ctx) => {
+        const input = ctx.input;
+        const openInput = classifyOpenInput(input);
+        if (openInput.kind === "invalid") {
+          throw new CanvasError("invalid_input", openInput.message);
+        }
         const inst = await ensureInstance(ctx);
         // Apply any deck passed to open *before* returning the url. The renderer
         // only starts after open resolves, so its first /state fetch already
         // sees the first slide and the "waiting" placeholder never flashes.
-        const input = ctx.input;
-        if (input && typeof input === "object" && "slides" in input) {
-          const slides = input.slides;
-          if (
-            !Array.isArray(slides) ||
-            slides.length === 0 ||
-            !slides.every((s) => typeof s === "string")
-          ) {
-            throw new CanvasError(
-              "invalid_input",
-              "slides must be a non-empty array of strings when provided to open",
-            );
-          }
+        if (openInput.kind === "deck") {
+          const slides = openInput.slides;
           // Idempotency guard: re-opening (focusing) a canvas that already holds
-          // the same deck must not reset the user's current slide back to 0.
-          // Only (re)load when there is no deck yet or the deck actually changed.
-          const sameDeck =
-            inst.slides.length === slides.length &&
-            inst.slides.every((s, i) => s === slides[i]);
+          // the same normalized deck must not reset the user's current slide.
+          // Explicit theme/source metadata is reapplied while preserving position.
           const hasThemeInput =
             Object.prototype.hasOwnProperty.call(input, "theme") ||
             Object.prototype.hasOwnProperty.call(input, "themeFile");
           const hasSourceInput =
             typeof input.sourceName === "string" && input.sourceName.trim().length > 0;
-          if (inst.slides.length === 0 || !sameDeck || hasThemeInput || hasSourceInput) {
+          const update = planDeckOpen(inst.slides, slides, {
+            hasThemeInput,
+            hasSourceInput,
+          });
+          if (update.shouldApply) {
             await applyDeck(inst, {
               slides,
               index: input.index,
               theme: input.theme,
               themeFile: input.themeFile,
               sourceName: input.sourceName,
+              preserveCurrentIndex: update.preserveCurrentIndex,
             });
           }
         }

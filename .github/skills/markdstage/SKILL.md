@@ -11,7 +11,9 @@ therefore visible immediately, without a "deck not loaded" placeholder.
 After registration, navigation is handled entirely by the canvas controls,
 keyboard, and Surface Pen on supported systems. Do not run an `ask_user`
 navigation loop. Call `load_deck` only when content or theme changes during a
-presentation.
+presentation. Omit open input only to refocus an existing instance. Every
+non-empty open input must contain `slides`; `sourceName` is metadata and never
+reads or watches the named Markdown file.
 
 ## Distribution and installation
 
@@ -116,17 +118,19 @@ Start by opening the complete deck through `open_canvas` with
 `canvasId: "MarkdStage"`. Pass `slides` and optional `index`, `theme`, and
 `sourceName` in `input`. `sourceName` must be the source Markdown's
 workspace-relative path; it anchors adjacent `assets/`, Markdown-relative
-`theme-file` lookup, and the canvas printer's `<source-name>.pdf` output.
+`theme-file` lookup, and the canvas printer's `<source-name>.pdf` output. It
+does not read or watch that file. To refresh after editing Markdown, regenerate
+and pass the complete `slides` array or call `load_deck`.
 
 | Action | Purpose |
 | --- | --- |
-| `load_deck` | Replace or reload the registered deck. Pass `slides`, optional zero-based `index` (default `0`), and optional deck theme (`dark`, `light`, `microsoft`, or `custom`; default `dark`). Use only for content or theme changes after startup. |
+| `load_deck` | Replace or reload the registered deck. Pass `slides`, optional zero-based `index` (default `0`), optional deck theme (`dark`, `light`, `microsoft`, or `custom`; default `dark`), and optional metadata-only `sourceName`. Use only for content or theme changes after startup; `sourceName` never reads or watches Markdown. |
 | `goto_slide` | Select a zero-based `index` in the registered deck. Out-of-range values are clamped. Normal navigation does not need this action; use it only for explicit chat requests such as "go to page 3." |
-| `show_slide` | Temporarily replace one slide. Use for a one-off display or when no deck is registered, not for normal presentations. |
+| `show_slide` | Temporarily replace one slide. Use for a one-off display or when no deck is registered, not for normal presentations. The override is included in output snapshots until navigation or deck replacement resumes the registered deck. |
 | `get_architecture_errors` | Return Architecture DSL errors for the whole deck or one zero-based `index`. Each error includes `slideIndex`, one-based `page`, `blockIndex`, `architecture`, `code`, and `message`; temporary `show_slide` content is included. |
 | `open_presenter` | Open the current deck in a synchronized, movable, resizable 1280×720 Edge / Chrome / Chromium app-mode window. Use browser or OS controls (`F11` on Windows) for full screen. Surface Pen never launches it. |
 | `close_presenter` | Close the external presenter window. |
-| `inspect_layout` | Check the PDF-equivalent fixed 1280×720 layout before export. It returns only clipped pages by default, with overflow dimensions and bounded element hints. Pass a zero-based `index` for one page or `includeFits: true` when complete measurements are required. Prefer this action over image analysis. |
+| `inspect_layout` | Check the registered in-memory PDF-equivalent fixed 1280×720 output snapshot before export, including any `show_slide` override. It never reads the source file on disk. It returns only clipped pages by default, with overflow dimensions and bounded element hints. Prefer one whole-deck call; serialize targeted calls because output jobs are exclusive. Prefer this action over image analysis. |
 | `capture_slides` | Create 1280×720 PNG files only when visual inspection is required. Pass zero-based `indexes`, or omit them to capture only pages found by `inspect_layout`. Optional `outputDirectory` is workspace-relative. The result contains file paths rather than inline image data. |
 | `export_pdf` | Export the current deck as a 16:9 PDF. Optional `outputPath` is a workspace-relative `.pdf` path; default is `markdstage.pdf`. Optional `theme` applies only to PDF. The canvas printer derives a name from `sourceName`. |
 | `edit_architecture` | Toggle the lightweight Architecture placement mode for node dragging, keyboard movement, layout detachment, Undo, and Redo. Each operation is saved immediately under the stable placement contract. |
@@ -134,10 +138,11 @@ workspace-relative path; it anchors adjacent `assets/`, Markdown-relative
 
 `load_deck` and `goto_slide` return `{ ok, version, index, total }`;
 `goto_slide` also returns `changed`. For non-scrolling/PDF decks, call
-`inspect_layout` after loading or revising slides. Use `capture_slides` only for
-pages whose appearance cannot be judged from the layout diagnostics. `export_pdf` returns
-`{ ok, path, total, theme, bytes }`. Before PDF export, reload the complete deck
-if its source Markdown changed.
+one whole-deck `inspect_layout` after loading or revising slides. If targeted
+inspections are necessary, run them serially. Use `capture_slides` only for
+pages whose appearance cannot be judged from the layout diagnostics.
+`export_pdf` returns `{ ok, path, total, theme, bytes }`. Before PDF export,
+reload the complete deck if its source Markdown changed.
 
 ### Full Architecture editing
 
@@ -345,11 +350,12 @@ Call `open_canvas` once:
 
 `index` and `theme` are optional with defaults `0` and `dark`. `sourceName` is
 the workspace-relative source path and is required for adjacent assets,
-relative theme lookup, and source-based PDF naming. No URL, external server, or
-health check is needed.
+relative theme lookup, and source-based PDF naming. It is metadata only and does
+not read or watch the file. No URL, external server, or health check is needed.
 
 To bring an existing canvas to the front without changing it, call
-`open_canvas` without `input`.
+`open_canvas` without `input`. Any non-empty input must contain `slides`; use
+`load_deck` instead when replacing the registered snapshot after startup.
 
 ### JSON input safety
 
@@ -465,7 +471,8 @@ total: 8
   escapes. Test a minimal one-slide deck before resending the full deck.
 - If the canvas does not update, confirm the action returned success. Navigate
   away and back to force redraw, then reopen canvas ID `"MarkdStage"` with
-  instance ID `"markdstage"` if necessary.
+  instance ID `"markdstage"` and no input if necessary. Reopening with only
+  `sourceName` or `theme` is invalid and never reloads Markdown.
 - If buttons or keys do not work, click the canvas to focus the iframe. Controls
   are intentionally disabled at deck boundaries.
 - For `no_deck`, register `slides` with `open` input or `load_deck` first.

@@ -50,10 +50,13 @@ test("readGuide returns every document-backed topic", async () => {
   assert.match(await readGuide("overview"), /architecture-editor/);
   assert.match(await readGuide("overview"), /`assets\/` beside the Markdown/);
   assert.match(await readGuide("overview"), /`sourceName`/);
+  assert.match(await readGuide("overview"), /never reads or watches/);
+  assert.match(await readGuide("overview"), /whole-deck inspection/);
   assert.match(await readGuide("overview"), /folder opened for the current session/);
   assert.match(await readGuide("themes"), /same folder as the source Markdown/);
   assert.match(await readGuide("themes"), /workspace root/);
   assert.match(await readGuide("themes"), /`sourceName`/);
+  assert.match(await readGuide("slide-format"), /does not read or watch/);
   assert.match(await readGuide("architecture-dsl"), /dedicated Architecture Editor/);
   assert.match(await readGuide("architecture-dsl"), /explicitly saved/);
   assert.match(await readGuide("architecture-dsl"), /`labelLayer`/);
