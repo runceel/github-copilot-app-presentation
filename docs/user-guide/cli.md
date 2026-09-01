@@ -42,9 +42,16 @@ markdstage skill install --target codex
 | `export` | Produces the same 16:9 PDF as the Canvas Extension. |
 | `guide` | Prints the canonical MarkdStage authoring guide: `overview`, `slide-format`, `themes`, `custom-themes`, `theme-schema`, `architecture-dsl`, and `architecture-schema`. |
 | `skill` | Installs or checks the portable Agent Skills. |
+| `help` | Shows the overview, or the help for one command. `markdstage help <command>` prints the same text as `markdstage <command> --help`. |
 
 Global options: `--workspace <dir>`, `--theme <name>`, `--theme-file <path>`, `--json`, `--help`,
 and `--version`.
+
+```console
+markdstage help
+markdstage help capture
+markdstage capture --help
+```
 
 ## Typical workflow
 

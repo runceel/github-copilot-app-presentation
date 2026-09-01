@@ -43,9 +43,16 @@ markdstage skill install --target claude
 | `export` | Produces the same 16:9 PDF as the canvas Extension. |
 | `guide` | Prints the canonical `markdstage_guide` topics. |
 | `skill` | Installs or checks the portable Agent Skills for Codex (`.agents/skills/markdstage/`), Claude Code (`.claude/skills/markdstage/`), and GitHub Copilot (`.github/skills/markdstage/`). Locally modified files are never overwritten without `--force`. |
+| `help` | Shows the overview, or the help for one command. `markdstage help <command>` prints the same text as `markdstage <command> --help`. |
 
 Global options: `--workspace <dir>`, `--theme <name>`, `--theme-file <path>`,
 `--json`, `--help`, `--version`.
+
+```console
+markdstage help
+markdstage help capture
+markdstage capture --help
+```
 
 ## Exit codes
 

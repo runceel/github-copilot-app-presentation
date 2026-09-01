@@ -43,9 +43,16 @@ markdstage skill install --target codex
 | `export` | Canvas Extension と同じ 16:9 の PDF を生成します。 |
 | `guide` | MarkdStage の公式ガイド（`overview`、`slide-format`、`themes`、`custom-themes`、`theme-schema`、`architecture-dsl`、`architecture-schema`）を表示します。 |
 | `skill` | 持ち運べる Agent Skills を導入・確認します。 |
+| `help` | 全体の使い方、または 1 つのコマンドのヘルプを表示します。`markdstage help <command>` は `markdstage <command> --help` と同じ内容です。 |
 
 共通オプションは `--workspace <dir>`、`--theme <name>`、`--theme-file <path>`、`--json`、
 `--help`、`--version` です。
+
+```console
+markdstage help
+markdstage help capture
+markdstage capture --help
+```
 
 ## 基本の流れ
 

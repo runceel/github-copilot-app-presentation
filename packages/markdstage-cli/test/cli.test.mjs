@@ -79,11 +79,41 @@ test("every command documents itself", async () => {
     "export",
     "guide",
     "skill",
+    "help",
   ]) {
     const io = capture();
     assert.equal(await run([command, "--help"], io), EXIT_OK);
     assert.match(io.stdout(), new RegExp(`Usage: markdstage ${command}`));
   }
+});
+
+test("the help command prints global and per-command help", async () => {
+  const io = capture();
+  assert.equal(await run(["help"], io), EXIT_OK);
+  assert.match(io.stdout(), /Usage: markdstage <command>/);
+  assert.match(io.stdout(), /Exit codes:/);
+
+  const io2 = capture();
+  assert.equal(await run(["help", "capture"], io2), EXIT_OK);
+  assert.match(io2.stdout(), /Usage: markdstage capture/);
+
+  // `help <command>` and `<command> --help` print the same text.
+  const io3 = capture();
+  await run(["capture", "--help"], io3);
+  assert.equal(io2.stdout(), io3.stdout());
+});
+
+test("help is listed as a command", async () => {
+  const io = capture();
+  await run(["help"], io);
+  assert.match(io.stdout(), /^ {2}help {6}Show help/m);
+  assert.match(io.stdout(), /markdstage help <command>/);
+});
+
+test("help rejects an unknown topic", async () => {
+  const io = capture();
+  assert.equal(await run(["help", "bogus"], io), EXIT_USAGE);
+  assert.match(io.stderr(), /Unknown command: bogus/);
 });
 
 test("validate reports a valid deck", async () => {

@@ -43,6 +43,7 @@ const COMMANDS = [
   ["export", "Export the deck as a 16:9 PDF."],
   ["guide", "Print the canonical MarkdStage authoring guide."],
   ["skill", "Install or check the portable MarkdStage Agent Skills."],
+  ["help", "Show help for MarkdStage or for one command."],
 ];
 
 const GLOBAL_OPTIONS = {
@@ -90,7 +91,7 @@ function usage(command) {
       "  -h, --help          Show help for a command.",
       "  -v, --version       Print the CLI version.",
       "",
-      "Run `markdstage <command> --help` for command details.",
+      "Run `markdstage help <command>` or `markdstage <command> --help` for command details.",
       "",
       "Exit codes:",
       ...Object.entries(EXIT_CODES).map(([code, meaning]) => `  ${code}  ${meaning}`),
@@ -145,6 +146,12 @@ function usage(command) {
       "",
       "Skill contents are generated from the canonical MarkdStage guide topics.",
     ],
+    help: [
+      "Usage: markdstage help [command]",
+      "",
+      "Without a command, prints the MarkdStage overview, the global options, and the",
+      "exit codes. With a command, prints the same help as `markdstage <command> --help`.",
+    ],
   }[command];
   if (!help) throw new UsageError(`Unknown command: ${command}`);
   return help.join("\n");
@@ -183,6 +190,19 @@ export async function run(argv, io = {}) {
   const rest = argv.slice(1);
   if (command === "--help" || command === "-h" || command === undefined) {
     out(usage());
+    return EXIT_OK;
+  }
+  if (command === "help") {
+    const requested = rest.find((argument) => !argument.startsWith("-"));
+    // `markdstage help --help` documents the help command itself, like every
+    // other `markdstage <command> --help`.
+    const topic =
+      requested ?? (rest.includes("--help") || rest.includes("-h") ? "help" : undefined);
+    if (topic !== undefined && !COMMAND_OPTIONS[topic] && topic !== "help") {
+      err(`Unknown command: ${topic}\n\n${usage()}`);
+      return EXIT_USAGE;
+    }
+    out(usage(topic));
     return EXIT_OK;
   }
   if (command === "--version" || command === "-v") {
