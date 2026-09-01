@@ -101,12 +101,12 @@ MarkdStage Canvas は、表示中のデッキと Architecture DSL を GitHub Cop
 
 このリポジトリをプロジェクトとして開くと、`.github/extensions/markdstage/` がプロジェクトスコープで
 読み込まれます。別のリポジトリへユーザースコープでインストールする場合は、現在の
-**[v2.1.2 リリース](https://github.com/runceel/markdstage/releases/tag/v2.1.2)** を指定して
+**[v2.1.3 リリース](https://github.com/runceel/markdstage/releases/tag/v2.1.3)** を指定して
 GitHub Copilot に依頼します。
 
 > 次の GitHub リポジトリフォルダーから MarkdStage をユーザースコープへインストールしてください。
 >
-> `https://github.com/runceel/markdstage/tree/v2.1.2/.github/extensions/markdstage`
+> `https://github.com/runceel/markdstage/tree/v2.1.3/.github/extensions/markdstage`
 
 Extension は利用者の環境でローカルのコードを実行します。インストールする前に中身を確認し、
 同じ状態を再現できるよう、信頼できるリリースタグかコミット SHA を指定してください。
@@ -136,11 +136,11 @@ canvasId: MarkdStage
 WinUI 3 アプリです。現在のスライドと次のスライド、そのスライドのスピーカーノートを並べて表示し、
 操作が同期するネイティブの投影用ウィンドウを開けます。
 
-現在の **[v2.1.2 リリース](https://github.com/runceel/markdstage/releases/tag/v2.1.2)** には、
+現在の **[v2.1.3 リリース](https://github.com/runceel/markdstage/releases/tag/v2.1.3)** には、
 Windows x64 / ARM64 向けのポータブルビルドと SHA-256 チェックサムファイルが含まれます。
 
-- [MarkdStage-win-x64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.2/MarkdStage-win-x64.zip)
-- [MarkdStage-win-arm64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.2/MarkdStage-win-arm64.zip)
+- [MarkdStage-win-x64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.3/MarkdStage-win-x64.zip)
+- [MarkdStage-win-arm64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.3/MarkdStage-win-arm64.zip)
 
 <a id="community-macos-app"></a>
 
