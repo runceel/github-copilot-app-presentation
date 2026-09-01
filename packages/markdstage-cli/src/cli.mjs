@@ -46,6 +46,8 @@ const COMMANDS = [
   ["help", "Show help for MarkdStage or for one command."],
 ];
 
+const COMMAND_NAMES = new Set(COMMANDS.map(([name]) => name));
+
 const GLOBAL_OPTIONS = {
   help: { type: "boolean", short: "h" },
   version: { type: "boolean", short: "v" },
@@ -198,7 +200,7 @@ export async function run(argv, io = {}) {
     // other `markdstage <command> --help`.
     const topic =
       requested ?? (rest.includes("--help") || rest.includes("-h") ? "help" : undefined);
-    if (topic !== undefined && !COMMAND_OPTIONS[topic] && topic !== "help") {
+    if (topic !== undefined && !COMMAND_NAMES.has(topic)) {
       err(`Unknown command: ${topic}\n\n${usage()}`);
       return EXIT_USAGE;
     }
