@@ -6,7 +6,7 @@
   "author": "runceel",
   "type": "module",
   "engines": {
-    "node": ">=20.11.0"
+    "node": ">=24.0.0"
   },
   "bin": {
     "markdstage": "bin/markdstage.mjs"

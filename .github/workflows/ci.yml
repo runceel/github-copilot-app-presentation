@@ -100,7 +100,7 @@ jobs:
       - name: Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 20.11.x
+          node-version: 24.x
 
       - name: CLI unit tests
         # The CLI has no runtime npm dependencies, so no install step is needed.

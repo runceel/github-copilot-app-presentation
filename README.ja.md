@@ -146,7 +146,7 @@ Windows x64 / ARM64 向けのポータブルビルドと SHA-256 チェックサ
 ## CLI を使う
 
 [MarkdStage CLI](./docs/user-guide/ja/cli.md) は Canvas なしで同じレンダラーを実行します。
-ターミナル、CI、Codex、Claude Code でも Markdown デッキをそのまま扱えます。Node.js 20.11 以降と、
+ターミナル、CI、Codex、Claude Code でも Markdown デッキをそのまま扱えます。Node.js 24 以降と、
 インストール済みの Microsoft Edge、Google Chrome、または Chromium が必要です。
 
 ```console

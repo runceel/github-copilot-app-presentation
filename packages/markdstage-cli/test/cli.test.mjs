@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { run } from "../src/cli.mjs";
+import { inspectCommand } from "../src/commands/inspect.mjs";
 import { EXIT_DECK, EXIT_ISSUES, EXIT_OK, EXIT_USAGE } from "../src/exit.mjs";
 
 function capture() {
@@ -161,6 +162,31 @@ test("validate requires a file argument", async () => {
   const io = capture();
   assert.equal(await run(["validate"], io), EXIT_USAGE);
   assert.match(io.stderr(), /requires a Markdown file/);
+});
+
+test("inspect forwards the requested zero-based slide index", async () => {
+  await withDeck(VALID_DECK, async ({ file }) => {
+    let received;
+    await inspectCommand(
+      { file, index: 1, includeFits: true },
+      async (_session, index, includeFits) => {
+        received = { index, includeFits };
+        return { ok: true };
+      },
+    );
+    assert.deepEqual(received, { index: 1, includeFits: true });
+  });
+});
+
+test("present --json writes only one machine-readable document", async () => {
+  await withDeck(VALID_DECK, async ({ file }) => {
+    const io = capture();
+    io.until = Promise.resolve();
+    assert.equal(await run(["present", file, "--no-open", "--json"], io), EXIT_OK);
+    const report = JSON.parse(io.stdout());
+    assert.equal(report.ok, true);
+    assert.equal(report.total, 3);
+  });
 });
 
 test("guide prints canonical topics and rejects unknown ones", async () => {

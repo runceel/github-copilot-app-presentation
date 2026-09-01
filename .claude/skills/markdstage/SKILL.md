@@ -12,7 +12,7 @@ what the MarkdStage canvas and MarkdStage Desktop render.
 
 ## Requirements
 
-- Node.js 20.11 or later.
+- Node.js 24 or later.
 - An installed Microsoft Edge, Google Chrome, or Chromium (never downloaded automatically).
 - The CLI: `npx @runceel/markdstage <command>` or `npm install --global @runceel/markdstage`.
 

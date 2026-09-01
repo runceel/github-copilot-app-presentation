@@ -139,7 +139,7 @@ includes portable builds and SHA-256 checksum files for Windows x64 and ARM64:
 ## Use the CLI
 
 The [MarkdStage CLI](./docs/user-guide/cli.md) runs the same renderer without the canvas, so
-Markdown decks also work in terminals, CI jobs, Codex, and Claude Code. It needs Node.js 20.11 or
+Markdown decks also work in terminals, CI jobs, Codex, and Claude Code. It needs Node.js 24 or
 later and an installed Microsoft Edge, Google Chrome, or Chromium.
 
 ```console

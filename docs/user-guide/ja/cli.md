@@ -11,7 +11,7 @@ CLI は Canvas Extension と同じ Markdown パーサー、レンダラー、テ
 
 ## 必要なもの
 
-- Node.js 20.11 以降
+- Node.js 24 以降
 - インストール済みの Microsoft Edge、Google Chrome、または Chromium。MarkdStage がブラウザーを
   ダウンロードすることはありません。
 

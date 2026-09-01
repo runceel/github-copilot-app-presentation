@@ -53,7 +53,7 @@ speaker notes, and the built-in dark, light, and Microsoft themes.
   project or user.
 - **Desktop:** Windows, Microsoft Edge WebView2 Runtime, and the MarkdStage Desktop portable
   package for your processor architecture.
-- **CLI:** Node.js 20.11 or later and an installed Microsoft Edge, Google Chrome, or Chromium.
+- **CLI:** Node.js 24 or later and an installed Microsoft Edge, Google Chrome, or Chromium.
 - **Deck source:** A `.md` or `.markdown` file inside the current workspace.
 
 [Open the quick start →](quick-start.md)

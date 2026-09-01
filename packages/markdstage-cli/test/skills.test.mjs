@@ -6,6 +6,7 @@ import test from "node:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 
 import { buildSkillFiles, SKILL_TARGETS } from "../src/skills.mjs";
 import { skillCommand } from "../src/commands/skill.mjs";
@@ -98,7 +99,7 @@ test("unknown targets and actions are rejected", async () => {
 });
 
 test("the repository skills are in sync with the guide", async () => {
-  const repoRoot = new URL("../../../", import.meta.url).pathname;
+  const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
   const report = await skillCommand({
     action: "check",
     target: "codex,claude",

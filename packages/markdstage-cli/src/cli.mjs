@@ -249,8 +249,11 @@ export async function run(argv, io = {}) {
         const report = await presentCommand(
           { ...deckOptions(file, values), watch: values.watch, open: !values["no-open"], until: io.until },
           {
-            print: (message) => out(message),
-            status: (message, isError) => (isError ? err(message) : out(message)),
+            print: values.json ? () => {} : (message) => out(message),
+            status: (message, isError) => {
+              if (isError) err(message);
+              else if (!values.json) out(message);
+            },
           },
         );
         if (values.json) json(report);

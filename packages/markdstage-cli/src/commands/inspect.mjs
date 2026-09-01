@@ -4,9 +4,9 @@
 import { inspectLayout } from "../runtime.mjs";
 import { withDeckServer } from "../deck.mjs";
 
-export async function inspectCommand(options) {
+export async function inspectCommand(options, inspect = inspectLayout) {
   return withDeckServer(options, async (session) =>
-    inspectLayout(session, options.slide, options.includeFits),
+    inspect(session, options.index, options.includeFits),
   );
 }
 
