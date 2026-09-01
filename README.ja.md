@@ -93,6 +93,7 @@ MarkdStage Canvas は、表示中のデッキと Architecture DSL を GitHub Cop
 | --- | --- |
 | **MarkdStage Canvas** | GitHub Copilot に Markdown の要約やスライド化を任せるか、Canvas の 📂 ボタンから直接読み込みます |
 | **MarkdStage Desktop** | GitHub Copilot を開かずに、Markdown、次のスライド、スピーカーノートを手元で見ながら Windows で発表します |
+| **MarkdStage CLI** | Canvas を使わずに、ターミナル、CI、Codex、Claude Code から発表・検証・取得・エクスポートします |
 | **MarkStageForMac** | コミュニティ製の macOS ネイティブアプリで発表します |
 
 <a id="canvas-extension"></a>
@@ -142,6 +143,22 @@ Windows x64 / ARM64 向けのポータブルビルドと SHA-256 チェックサ
 - [MarkdStage-win-x64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.3/MarkdStage-win-x64.zip)
 - [MarkdStage-win-arm64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.3/MarkdStage-win-arm64.zip)
 
+## CLI を使う
+
+[MarkdStage CLI](./docs/user-guide/ja/cli.md) は Canvas なしで同じレンダラーを実行します。
+ターミナル、CI、Codex、Claude Code でも Markdown デッキをそのまま扱えます。Node.js 24 以降と、
+インストール済みの Microsoft Edge、Google Chrome、または Chromium が必要です。
+
+```console
+npx @runceel/markdstage present slides.md --watch
+npx @runceel/markdstage validate slides.md --json
+npx @runceel/markdstage inspect slides.md
+npx @runceel/markdstage export slides.md --output slides.pdf
+```
+
+`markdstage skill install --target codex` と `--target claude` は、Canvas の `markdstage_guide`
+ツールと同じガイドから生成した Agent Skills を書き出します。
+
 <a id="community-macos-app"></a>
 
 ## コミュニティ製 macOS アプリ
@@ -180,6 +197,7 @@ layout: title
 | --- | --- |
 | `.github/extensions/markdstage/` | Canvas Extension、レンダラー、同梱オープンソースソフトウェア、スキーマ |
 | `.github/skills/markdstage/SKILL.md` | Markdown をスライド断片へ整形して MarkdStage を開く Skill |
+| `packages/markdstage-cli/` | `@runceel/markdstage` CLI パッケージと Agent Skills の生成 |
 | `apps/MarkdStage.Desktop/` | WinUI 3 Desktop アプリ |
 | `assets/brand/` | MarkdStage のロゴ、ロックアップ、README バナー |
 | `assets/readme/` | この README に掲載しているスライドと Architecture Editor の画像 |
@@ -210,6 +228,7 @@ MarkdStage への移行にあたり、旧ブランド名の互換エイリアス
 - [MarkdStage Skill](./.github/skills/markdstage/SKILL.md)
 - [Canvas Extension の仕様とアクション](./.github/extensions/markdstage/README.md)
 - [MarkdStage Desktop](./apps/MarkdStage.Desktop/README.md)
+- [MarkdStage CLI](./docs/user-guide/ja/cli.md)
 - [カスタムテーマ作成](./.github/extensions/markdstage/docs/custom-theme-authoring.md)
 - [プロダクト原則](./PRODUCT.md)
 - [ブランドとデザインシステム](./DESIGN.md)

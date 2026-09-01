@@ -1,0 +1,41 @@
+{
+  "name": "@runceel/markdstage",
+  "version": "0.1.0",
+  "description": "Present, validate, inspect, capture, and export MarkdStage Markdown decks from the command line — no Copilot canvas required.",
+  "license": "MIT",
+  "author": "runceel",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "bin": {
+    "markdstage": "bin/markdstage.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/runceel/markdstage.git",
+    "directory": "packages/markdstage-cli"
+  },
+  "keywords": [
+    "markdown",
+    "slides",
+    "presentation",
+    "pdf",
+    "cli",
+    "agent-skills"
+  ],
+  "files": [
+    "bin",
+    "src",
+    "shared",
+    "README.md"
+  ],
+  "scripts": {
+    "sync": "node scripts/sync-shared.mjs",
+    "pretest": "node scripts/sync-shared.mjs",
+    "test": "node --test \"test/*.test.mjs\"",
+    "skills": "node scripts/generate-skills.mjs",
+    "skills:check": "node scripts/generate-skills.mjs --check",
+    "prepack": "node scripts/sync-shared.mjs"
+  }
+}

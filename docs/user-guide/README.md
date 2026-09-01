@@ -17,6 +17,7 @@ the GitHub Copilot Canvas Extension or the standalone Windows Desktop app.
 | --- | --- | --- |
 | [**Canvas Extension**](canvas-extension.md) | Creating and revising a deck with GitHub Copilot | Markdown import, live refresh, presenter view, Architecture editing, 16:9 validation, and PDF export |
 | [**MarkdStage Desktop**](desktop.md) | Presenting on Windows without opening GitHub Copilot | Current/next slide previews, speaker notes, live refresh, slide overview, and a synchronized audience window |
+| [**MarkdStage CLI**](cli.md) | Working in a terminal, CI, Codex, or Claude Code | Presenting with live reload, deck validation, 16:9 clipping diagnostics, PNG capture, PDF export, and portable Agent Skills |
 
 Both surfaces support Markdown, syntax-highlighted code, Mermaid, Architecture DSL, local images,
 speaker notes, and the built-in dark, light, and Microsoft themes.
@@ -43,6 +44,7 @@ speaker notes, and the built-in dark, light, and Microsoft themes.
 | Dark, light, Microsoft, custom themes, and slide layouts | [Themes and layouts](themes-and-layouts.md) |
 | Mermaid, Architecture DSL, images, and visual Architecture editing | [Diagrams and media](diagrams-and-media.md) |
 | Audience windows, synchronized navigation, clipping checks, and PDF export | [Presenting and export](presenting-and-export.md) |
+| Terminal commands, exit codes, JSON output, and Agent Skills | [MarkdStage CLI](cli.md) |
 | Common setup, loading, rendering, and editing problems | [Troubleshooting](troubleshooting.md) |
 
 ## Requirements
@@ -51,6 +53,7 @@ speaker notes, and the built-in dark, light, and Microsoft themes.
   project or user.
 - **Desktop:** Windows, Microsoft Edge WebView2 Runtime, and the MarkdStage Desktop portable
   package for your processor architecture.
+- **CLI:** Node.js 24 or later and an installed Microsoft Edge, Google Chrome, or Chromium.
 - **Deck source:** A `.md` or `.markdown` file inside the current workspace.
 
 [Open the quick start →](quick-start.md)

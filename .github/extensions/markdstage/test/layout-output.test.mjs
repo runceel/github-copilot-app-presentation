@@ -8,15 +8,17 @@ const extensionRoot = fileURLToPath(new URL("..", import.meta.url));
 
 test("canvas exposes lightweight layout inspection and bounded PNG capture", async () => {
   const source = await readFile(join(extensionRoot, "extension.mjs"), "utf8");
+  // The headless browser flags live in the runtime shared with the CLI.
+  const browser = await readFile(join(extensionRoot, "runtime", "browser.mjs"), "utf8");
 
   assert.match(source, /name: "inspect_layout"/);
   assert.match(source, /name: "capture_slides"/);
   assert.match(source, /maxItems: MAX_CAPTURE_SLIDES/);
   assert.match(source, /never inline image bytes/);
-  assert.match(source, /--window-size=1280,720/);
-  assert.match(source, /--force-device-scale-factor=1/);
-  assert.match(source, /--remote-debugging-port=0/);
-  assert.match(source, /Page\.captureScreenshot/);
+  assert.match(browser, /--window-size=1280,720/);
+  assert.match(browser, /--force-device-scale-factor=1/);
+  assert.match(browser, /--remote-debugging-port=0/);
+  assert.match(browser, /Page\.captureScreenshot/);
   assert.match(source, /Every non-empty input must include slides/);
   assert.match(source, /sourceName is metadata and never reads or watches Markdown/);
   assert.match(source, /registered in-memory output snapshot/);
