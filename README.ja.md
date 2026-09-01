@@ -24,6 +24,7 @@
 <p align="center">
   <a href="#canvas-extension">Canvas Extension</a> |
   <a href="#desktop">Desktop</a> |
+  <a href="#community-macos-app">macOS アプリ</a> |
   <a href="#examples">表示例</a> |
   <a href="#markdown-format">Markdown 形式</a> |
   <a href="#documentation">ドキュメント</a> |
@@ -86,7 +87,7 @@ MarkdStage Canvas は、表示中のデッキと Architecture DSL を GitHub Cop
   <img src="./assets/readme/architecture-editor.png" alt="API ノードを選択した MarkdStage Architecture Editor" width="100%">
 </p>
 
-## MarkdStage の2つの使い方
+## MarkdStage の使い方
 
 | 利用環境 | 用途 |
 | --- | --- |
@@ -139,6 +140,13 @@ Windows x64 / ARM64 向けのポータブルビルドと SHA-256 チェックサ
 
 - [MarkdStage-win-x64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.2/MarkdStage-win-x64.zip)
 - [MarkdStage-win-arm64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.2/MarkdStage-win-arm64.zip)
+
+<a id="community-macos-app"></a>
+
+## コミュニティ製 macOS アプリ
+
+[MarkStageForMac](https://github.com/07JP27/MarkStageForMac) は、MarkdStage コミュニティが
+開発した macOS ネイティブアプリです。
 
 <a id="markdown-format"></a>
 

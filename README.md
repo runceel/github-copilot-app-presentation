@@ -24,6 +24,7 @@
 <p align="center">
   <a href="#use-the-canvas-extension">Canvas Extension</a> |
   <a href="#use-markdstage-desktop">Desktop</a> |
+  <a href="#community-macos-app">macOS app</a> |
   <a href="#see-markdown-on-stage">Examples</a> |
   <a href="#markdown-format">Markdown format</a> |
   <a href="#documentation">Documentation</a> |
@@ -84,7 +85,7 @@ connectors; changes remain a draft until **Save** writes them back to Markdown.
   <img src="./assets/readme/architecture-editor.png" alt="The MarkdStage Architecture Editor with an API node selected" width="100%">
 </p>
 
-## Two ways to use MarkdStage
+## Ways to use MarkdStage
 
 | Surface | Purpose |
 | --- | --- |
@@ -132,6 +133,13 @@ includes portable builds and SHA-256 checksum files for Windows x64 and ARM64:
 
 - [MarkdStage-win-x64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.2/MarkdStage-win-x64.zip)
 - [MarkdStage-win-arm64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.2/MarkdStage-win-arm64.zip)
+
+<a id="community-macos-app"></a>
+
+## Community macOS app
+
+[MarkStageForMac](https://github.com/07JP27/MarkStageForMac) is a native macOS app built by the
+MarkdStage community.
 
 ## Markdown format
 
