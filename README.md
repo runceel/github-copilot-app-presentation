@@ -143,10 +143,10 @@ Markdown decks also work in terminals, CI jobs, Codex, and Claude Code. It needs
 later and an installed Microsoft Edge, Google Chrome, or Chromium.
 
 ```console
-npx @runceel/markdstage present slides.md --watch
-npx @runceel/markdstage validate slides.md --json
-npx @runceel/markdstage inspect slides.md
-npx @runceel/markdstage export slides.md --output slides.pdf
+npx @markdstage/markdstage present slides.md --watch
+npx @markdstage/markdstage validate slides.md --json
+npx @markdstage/markdstage inspect slides.md
+npx @markdstage/markdstage export slides.md --output slides.pdf
 ```
 
 `markdstage skill install --target codex` and `--target claude` write portable Agent Skills that
@@ -188,7 +188,7 @@ they appear only in presenter view.
 | --- | --- |
 | `.github/extensions/markdstage/` | Canvas Extension, renderer, bundled open-source software, and schemas |
 | `.github/skills/markdstage/SKILL.md` | Skill that formats Markdown into slide fragments and opens MarkdStage |
-| `packages/markdstage-cli/` | `@runceel/markdstage` CLI package and portable Agent Skill generation |
+| `packages/markdstage-cli/` | `@markdstage/markdstage` CLI package and portable Agent Skill generation |
 | `apps/MarkdStage.Desktop/` | WinUI 3 desktop app |
 | `assets/brand/` | MarkdStage logo, lockup, and README banner |
 | `assets/readme/` | Rendered slide and Architecture Editor images used in this README |

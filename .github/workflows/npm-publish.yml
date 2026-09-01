@@ -71,6 +71,6 @@ jobs:
         shell: bash
         run: |
           version=$(node -p "require('./packages/markdstage-cli/package.json').version")
-          published=$(npm view "@runceel/markdstage@${version}" version \
+          published=$(npm view "@markdstage/markdstage@${version}" version \
             --registry=https://registry.npmjs.org/)
           test "$published" = "$version"

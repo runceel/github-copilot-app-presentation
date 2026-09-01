@@ -17,8 +17,8 @@ the exported PDF.
 ## Install
 
 ```console
-npx @runceel/markdstage present slides.md
-npm install --global @runceel/markdstage
+npx @markdstage/markdstage present slides.md
+npm install --global @markdstage/markdstage
 ```
 
 ## Commands
