@@ -107,7 +107,7 @@ GitHub Copilot に依頼します。
 
 > 次の GitHub リポジトリフォルダーから MarkdStage をユーザースコープへインストールしてください。
 >
-> `https://github.com/runceel/markdstage/tree/v2.1.3/.github/extensions/markdstage`
+> `https://github.com/runceel/markdstage/tree/v2.2.0/.github/extensions/markdstage`
 
 Extension は利用者の環境でローカルのコードを実行します。インストールする前に中身を確認し、
 同じ状態を再現できるよう、信頼できるリリースタグかコミット SHA を指定してください。
@@ -140,8 +140,8 @@ WinUI 3 アプリです。現在のスライドと次のスライド、そのス
 現在の **[v2.1.3 リリース](https://github.com/runceel/markdstage/releases/tag/v2.1.3)** には、
 Windows x64 / ARM64 向けのポータブルビルドと SHA-256 チェックサムファイルが含まれます。
 
-- [MarkdStage-win-x64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.3/MarkdStage-win-x64.zip)
-- [MarkdStage-win-arm64.zip](https://github.com/runceel/markdstage/releases/download/v2.1.3/MarkdStage-win-arm64.zip)
+- [MarkdStage-win-x64.zip](https://github.com/runceel/markdstage/releases/download/v2.2.0/MarkdStage-win-x64.zip)
+- [MarkdStage-win-arm64.zip](https://github.com/runceel/markdstage/releases/download/v2.2.0/MarkdStage-win-arm64.zip)
 
 ## CLI を使う
 
