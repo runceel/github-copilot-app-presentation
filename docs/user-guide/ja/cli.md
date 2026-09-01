@@ -18,8 +18,8 @@ CLI は Canvas Extension と同じ Markdown パーサー、レンダラー、テ
 ## インストール
 
 ```console
-npx @runceel/markdstage present slides.md
-npm install --global @runceel/markdstage
+npx @markdstage/markdstage present slides.md
+npm install --global @markdstage/markdstage
 ```
 
 ## コマンド

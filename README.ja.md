@@ -150,10 +150,10 @@ Windows x64 / ARM64 向けのポータブルビルドと SHA-256 チェックサ
 インストール済みの Microsoft Edge、Google Chrome、または Chromium が必要です。
 
 ```console
-npx @runceel/markdstage present slides.md --watch
-npx @runceel/markdstage validate slides.md --json
-npx @runceel/markdstage inspect slides.md
-npx @runceel/markdstage export slides.md --output slides.pdf
+npx @markdstage/markdstage present slides.md --watch
+npx @markdstage/markdstage validate slides.md --json
+npx @markdstage/markdstage inspect slides.md
+npx @markdstage/markdstage export slides.md --output slides.pdf
 ```
 
 `markdstage skill install --target codex` と `--target claude` は、Canvas の `markdstage_guide`
@@ -197,7 +197,7 @@ layout: title
 | --- | --- |
 | `.github/extensions/markdstage/` | Canvas Extension、レンダラー、同梱オープンソースソフトウェア、スキーマ |
 | `.github/skills/markdstage/SKILL.md` | Markdown をスライド断片へ整形して MarkdStage を開く Skill |
-| `packages/markdstage-cli/` | `@runceel/markdstage` CLI パッケージと Agent Skills の生成 |
+| `packages/markdstage-cli/` | `@markdstage/markdstage` CLI パッケージと Agent Skills の生成 |
 | `apps/MarkdStage.Desktop/` | WinUI 3 Desktop アプリ |
 | `assets/brand/` | MarkdStage のロゴ、ロックアップ、README バナー |
 | `assets/readme/` | この README に掲載しているスライドと Architecture Editor の画像 |

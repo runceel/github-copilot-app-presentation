@@ -115,7 +115,7 @@ jobs:
         run: |
           set -e
           npm pack --pack-destination "$RUNNER_TEMP"
-          tarball=$(ls "$RUNNER_TEMP"/runceel-markdstage-*.tgz)
+          tarball=$(ls "$RUNNER_TEMP"/markdstage-markdstage-*.tgz)
           echo "tarball=$tarball" >> "$GITHUB_ENV"
           tar -tzf "$tarball" > "$RUNNER_TEMP/contents.txt"
           for required in \

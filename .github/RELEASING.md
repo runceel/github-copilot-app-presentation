@@ -111,7 +111,7 @@ tagged commit is reachable from `main`, then publishes the public scoped package
 Never move a published CLI tag or reuse a package version.
 
 The first publish requires an npm granular access token with permission to create and publish
-`@runceel/markdstage`, stored temporarily as the `NPM_TOKEN` GitHub Actions secret. After the first
+`@markdstage/markdstage`, stored temporarily as the `NPM_TOKEN` GitHub Actions secret. After the first
 publish:
 
 1. Configure the package's npm Trusted Publisher for repository `runceel/markdstage` and workflow

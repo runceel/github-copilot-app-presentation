@@ -17,8 +17,8 @@ PDF/PNG pipeline as the Canvas Extension, so a deck looks identical on every sur
 ## Install
 
 ```console
-npx @runceel/markdstage present slides.md
-npm install --global @runceel/markdstage
+npx @markdstage/markdstage present slides.md
+npm install --global @markdstage/markdstage
 ```
 
 ## Commands
