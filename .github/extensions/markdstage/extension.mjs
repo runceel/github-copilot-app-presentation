@@ -16,32 +16,18 @@
 import { createServer } from "node:http";
 import {
   readFile,
-  readdir,
   writeFile,
   mkdir,
   mkdtemp,
-  open,
   realpath,
-  rename,
   rm,
   stat,
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import {
-  basename,
-  join,
-  normalize,
-  sep,
-  dirname,
-  resolve,
-  extname,
-  relative,
-  isAbsolute,
-} from "node:path";
+import { basename, join, sep, dirname, resolve, relative, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
-import { execFileSync, spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
 import { joinSession, createCanvas, CanvasError } from "@github/copilot-sdk/extension";
 import { createArchitectureEditorManager } from "./architecture-canvas.mjs";
@@ -88,6 +74,26 @@ import {
   THEME_ASSET_MAX_BYTES,
   themeMetadataAssetPaths,
 } from "./renderer/theme.mjs";
+import { MarkdStageError } from "./runtime/errors.mjs";
+import {
+  findChromiumBrowser,
+  isProcessRunning,
+  terminateProcessTree,
+} from "./runtime/browser.mjs";
+import { isPathInside, pdfNameForSource } from "./runtime/output-paths.mjs";
+import {
+  MAX_CAPTURE_SLIDES,
+  captureSlides as runtimeCaptureSlides,
+  exportPdf as runtimeExportPdf,
+  inspectLayout as runtimeInspectLayout,
+} from "./runtime/output.mjs";
+import { loadCustomTheme as runtimeLoadCustomTheme } from "./runtime/custom-theme.mjs";
+import { clampIndex, resolveDeckTheme } from "./runtime/deck-session.mjs";
+import {
+  safeJoin,
+  sendChunkedVendorAsset as sendRuntimeChunkedVendorAsset,
+  sendFile,
+} from "./runtime/static-files.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const PEN_LISTENER_SCRIPT = join(EXT_DIR, "windows", "pen-button-listener.ps1");
@@ -95,47 +101,12 @@ const PEN_LISTENER_SCRIPT = join(EXT_DIR, "windows", "pen-button-listener.ps1");
 // restore the last slide without polluting (or depending on writability of)
 // the extension folder.
 const DATA_DIR = join(tmpdir(), "markdstage-canvas");
-const DEFAULT_PDF_NAME = "markdstage.pdf";
-const DEFAULT_CAPTURE_DIR = "markdstage-previews";
-const MAX_CAPTURE_SLIDES = 10;
-const PDF_RENDER_TIMEOUT_MS = 60_000;
 const VENDOR_DIR = join(EXT_DIR, "vendor");
 const VENDOR_MANIFEST = join(VENDOR_DIR, "vendor-assets.lock.json");
-const THEME_METADATA_NAME = "theme.json";
-const THEME_METADATA_MAX_BYTES = 64 * 1024;
 const SOURCE_MODE_SNAPSHOT = "snapshot";
 const SOURCE_MODE_LIVE = "live";
 
-const MIME = {
-  ".html": "text/html; charset=utf-8",
-  ".css": "text/css; charset=utf-8",
-  ".js": "text/javascript; charset=utf-8",
-  ".mjs": "text/javascript; charset=utf-8",
-  ".json": "application/json; charset=utf-8",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".jpg": "image/jpeg",
-  ".jpeg": "image/jpeg",
-  ".gif": "image/gif",
-  ".webp": "image/webp",
-  ".avif": "image/avif",
-  ".ico": "image/x-icon",
-  ".bmp": "image/bmp",
-};
 
-function mimeFor(path) {
-  return MIME[extname(path).toLowerCase()] || "application/octet-stream";
-}
-
-function pdfNameForSource(sourceName) {
-  const sourceBase = basename(typeof sourceName === "string" ? sourceName.trim() : "");
-  const withoutExtension = sourceBase.replace(/\.(?:md|markdown)$/i, "");
-  const safeBase = withoutExtension
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
-    .trim()
-    .replace(/[. ]+$/, "");
-  return `${safeBase || basename(DEFAULT_PDF_NAME, ".pdf")}.pdf`;
-}
 
 function normalizeSourceMode(value) {
   return value === SOURCE_MODE_LIVE ? SOURCE_MODE_LIVE : SOURCE_MODE_SNAPSHOT;
@@ -160,304 +131,9 @@ let penListenerStopping = false;
 // Serializes Surface Pen navigation so a burst of presses is applied in order.
 let penActionQueue = Promise.resolve();
 
-// Clamp an arbitrary index into [0, total-1] (or 0 when the deck is empty), so
-// "next past the end" / "prev before the start" simply stay on the edge slide.
-function clampIndex(value, total) {
-  let i = Number(value);
-  if (!Number.isFinite(i)) return 0;
-  i = Math.trunc(i);
-  if (total <= 0) return 0;
-  if (i < 0) return 0;
-  if (i >= total) return total - 1;
-  return i;
-}
 
-function findExecutableOnPath(names) {
-  const locator = process.platform === "win32" ? "where.exe" : "which";
-  for (const name of names) {
-    try {
-      const output = execFileSync(locator, [name], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-        windowsHide: true,
-      });
-      const candidate = output
-        .split(/\r?\n/)
-        .map((line) => line.trim())
-        .find((line) => line && existsSync(line));
-      if (candidate) return candidate;
-    } catch (_) {
-      // Try the next browser name.
-    }
-  }
-  return null;
-}
 
-function findChromiumBrowser() {
-  const candidates = [];
-  if (process.platform === "win32") {
-    for (const base of [
-      process.env.ProgramFiles,
-      process.env["ProgramFiles(x86)"],
-      process.env.LOCALAPPDATA,
-    ]) {
-      if (!base) continue;
-      candidates.push(
-        join(base, "Microsoft", "Edge", "Application", "msedge.exe"),
-        join(base, "Google", "Chrome", "Application", "chrome.exe"),
-      );
-    }
-  } else if (process.platform === "darwin") {
-    candidates.push(
-      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-      "/Applications/Chromium.app/Contents/MacOS/Chromium",
-    );
-  } else {
-    candidates.push(
-      "/usr/bin/microsoft-edge",
-      "/usr/bin/microsoft-edge-stable",
-      "/usr/bin/google-chrome",
-      "/usr/bin/google-chrome-stable",
-      "/usr/bin/chromium",
-      "/usr/bin/chromium-browser",
-    );
-  }
 
-  const direct = candidates.find((candidate) => existsSync(candidate));
-  if (direct) return direct;
-  return findExecutableOnPath([
-    "msedge",
-    "microsoft-edge",
-    "microsoft-edge-stable",
-    "google-chrome",
-    "google-chrome-stable",
-    "chrome",
-    "chromium",
-    "chromium-browser",
-  ]);
-}
-
-function resolveWorkspaceOutputPath(
-  inst,
-  requestedPath,
-  { defaultName, extension, label },
-) {
-  const workspaceRoot = resolve(inst.workspaceRoot);
-  const requested =
-    typeof requestedPath === "string" && requestedPath.trim()
-      ? requestedPath.trim()
-      : defaultName;
-  if (requested.includes("\0")) {
-    throw new CanvasError(
-      "invalid_output_path",
-      `${label} output path contains an invalid character.`,
-    );
-  }
-
-  const outputPath = resolve(workspaceRoot, requested);
-  const workspaceRelative = relative(workspaceRoot, outputPath);
-  if (
-    workspaceRelative === "" ||
-    workspaceRelative === ".." ||
-    workspaceRelative.startsWith(`..${sep}`) ||
-    isAbsolute(workspaceRelative)
-  ) {
-    throw new CanvasError(
-      "invalid_output_path",
-      `${label} output path must be a file inside the current workspace.`,
-    );
-  }
-  if (extname(outputPath).toLowerCase() !== extension) {
-    throw new CanvasError(
-      "invalid_output_path",
-      `${label} output path must end with ${extension}.`,
-    );
-  }
-  return outputPath;
-}
-
-function resolvePdfOutputPath(inst, requestedPath) {
-  return resolveWorkspaceOutputPath(inst, requestedPath, {
-    defaultName: DEFAULT_PDF_NAME,
-    extension: ".pdf",
-    label: "PDF",
-  });
-}
-
-function captureDirectoryName(sourceName) {
-  const sourceBase = basename(typeof sourceName === "string" ? sourceName.trim() : "");
-  const withoutExtension = sourceBase.replace(/\.(?:md|markdown)$/i, "");
-  const safeBase = withoutExtension
-    .replace(/[<>:"/\\|?*\u0000-\u001f]/g, "_")
-    .trim()
-    .replace(/[. ]+$/, "");
-  return safeBase ? `${safeBase}-previews` : DEFAULT_CAPTURE_DIR;
-}
-
-function resolveCaptureOutputDirectory(inst, requestedPath) {
-  const workspaceRoot = resolve(inst.workspaceRoot);
-  const requested =
-    typeof requestedPath === "string" && requestedPath.trim()
-      ? requestedPath.trim()
-      : captureDirectoryName(inst.sourceName);
-  if (requested.includes("\0")) {
-    throw new CanvasError(
-      "invalid_output_path",
-      "PNG output directory contains an invalid character.",
-    );
-  }
-  const outputDirectory = resolve(workspaceRoot, requested);
-  const workspaceRelative = relative(workspaceRoot, outputDirectory);
-  if (
-    workspaceRelative === ".." ||
-    workspaceRelative.startsWith(`..${sep}`) ||
-    isAbsolute(workspaceRelative)
-  ) {
-    throw new CanvasError(
-      "invalid_output_path",
-      "PNG output directory must be inside the current workspace.",
-    );
-  }
-  return outputDirectory;
-}
-
-function isPathInside(root, candidate) {
-  const rootRelative = relative(root, candidate);
-  return (
-    rootRelative === "" ||
-    (!rootRelative.startsWith(`..${sep}`) &&
-      rootRelative !== ".." &&
-      !isAbsolute(rootRelative))
-  );
-}
-
-async function prepareWorkspaceDirectory(inst, outputParent, label) {
-  const workspaceRoot = resolve(inst.workspaceRoot);
-  const canonicalWorkspaceRoot = await realpath(workspaceRoot);
-  const relativeParent = relative(workspaceRoot, outputParent);
-  let current = workspaceRoot;
-
-  for (const segment of relativeParent.split(sep).filter(Boolean)) {
-    current = join(current, segment);
-    try {
-      await mkdir(current);
-    } catch (error) {
-      if (error?.code !== "EEXIST") throw error;
-    }
-    const canonicalCurrent = await realpath(current);
-    if (!isPathInside(canonicalWorkspaceRoot, canonicalCurrent)) {
-      throw new CanvasError(
-        "invalid_output_path",
-        `${label} output path must not traverse a link outside the current workspace.`,
-      );
-    }
-    const info = await stat(current);
-    if (!info.isDirectory()) {
-      throw new CanvasError(
-        "invalid_output_path",
-        `${label} output parent must be a directory inside the current workspace.`,
-      );
-    }
-  }
-
-  return outputParent;
-}
-
-async function preparePdfOutputDirectory(inst, outputPath) {
-  return prepareWorkspaceDirectory(inst, dirname(outputPath), "PDF");
-}
-
-function waitForChildExit(child, timeoutMs) {
-  if (child.exitCode !== null || child.signalCode !== null) {
-    return Promise.resolve(true);
-  }
-  return new Promise((resolvePromise) => {
-    let settled = false;
-    const finish = (exited) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      child.off("exit", onExit);
-      resolvePromise(exited);
-    };
-    const onExit = () => finish(true);
-    const timer = setTimeout(() => finish(false), timeoutMs);
-    child.once("exit", onExit);
-  });
-}
-
-function runTerminationCommand(executable, args, timeoutMs) {
-  return new Promise((resolvePromise) => {
-    const killer = spawn(executable, args, {
-      windowsHide: true,
-      stdio: "ignore",
-    });
-    let settled = false;
-    const finish = () => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      resolvePromise();
-    };
-    const timer = setTimeout(() => {
-      try {
-        killer.kill();
-      } catch (_) {
-        // The termination helper may already have exited.
-      }
-      finish();
-    }, timeoutMs);
-    killer.once("error", finish);
-    killer.once("exit", finish);
-  });
-}
-
-async function terminateProcessTree(child) {
-  if (!child.pid || child.exitCode !== null || child.signalCode !== null) return;
-
-  if (process.platform === "win32") {
-    const systemRoot = process.env.SystemRoot || process.env.WINDIR || "C:\\Windows";
-    const taskkill = join(systemRoot, "System32", "taskkill.exe");
-    if (existsSync(taskkill)) {
-      await runTerminationCommand(taskkill, ["/PID", String(child.pid), "/T", "/F"], 5_000);
-    } else {
-      try {
-        child.kill();
-      } catch (_) {
-        // Fall through to the bounded exit wait.
-      }
-    }
-    await waitForChildExit(child, 5_000);
-    return;
-  }
-
-  try {
-    process.kill(-child.pid, "SIGTERM");
-  } catch (_) {
-    try {
-      child.kill("SIGTERM");
-    } catch (_) {
-      // Fall through to the bounded exit wait.
-    }
-  }
-  if (await waitForChildExit(child, 3_000)) return;
-
-  try {
-    process.kill(-child.pid, "SIGKILL");
-  } catch (_) {
-    try {
-      child.kill("SIGKILL");
-    } catch (_) {
-      // The process may already have exited.
-    }
-  }
-  await waitForChildExit(child, 2_000);
-}
-
-function isProcessRunning(child) {
-  return !!child && child.exitCode === null && child.signalCode === null && !child.killed;
-}
 
 function isPresenterProfilePath(profileDir) {
   if (typeof profileDir !== "string" || !profileDir) return false;
@@ -643,696 +319,36 @@ async function launchPresenter(inst) {
   }
 }
 
-/**
- * Run a headless browser once with `--print-to-pdf`.
- *
- * ⚠️ **`pageUrl` must include `?print=1&token=...` (#12).**
- *
- * `--print-to-pdf` completes only when the page becomes idle. In renderer `init()`,
- * only print mode returns early. Normal and presenter views keep an unclosed SSE
- * (`new EventSource("./events")`) and a two-second `setInterval` running.
- * Passing a URL without `?print=1` therefore means **the browser never exits**.
- *
- * Observed results, using Chrome arguments byte-for-byte identical to this function:
- *
- * | URL                        | Result                                  |
- * | -------------------------- | --------------------------------------- |
- * | `/?print=1&token=<valid>`  | exit 0 @ 2.4s (valid PDF)               |
- * | `/?print=1&token=` (empty) | exit 0 @ 1.9s (blank; renderer reports failure) |
- * | `/` (normal view)          | **HANG** (still running after 120 seconds) |
- * | `/?present=1`              | **HANG**                                |
- * | `/nope-404` (no renderer)  | exit 0 @ 3.0s                           |
- *
- * ⚠️ **`--virtual-time-budget` is effectively ignored by `--headless=new`.**
- * The `--virtual-time-budget=12000` argument below does not stop this hang.
- * Adding `--timeout=8000` is also ineffective, as verified empirically.
- * The argument is harmless and remains in place, but **do not treat it as a
- * wall-clock timeout**. Only Node's `PDF_RENDER_TIMEOUT_MS` and
- * `terminateProcessTree` enforce a limit, and failure may take up to 60 seconds.
- */
-async function runHeadlessBrowser(browser, args, failureLabel) {
-  await new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(browser, args, {
-      detached: process.platform !== "win32",
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let diagnostics = "";
-    let settled = false;
-    let timedOut = false;
-    const appendDiagnostics = (chunk) => {
-      diagnostics = `${diagnostics}${chunk.toString()}`.slice(-12_000);
-    };
-    child.stdout.on("data", appendDiagnostics);
-    child.stderr.on("data", appendDiagnostics);
 
-    const settle = (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (error) rejectPromise(error);
-      else resolvePromise();
-    };
-    const timer = setTimeout(async () => {
-      if (settled) return;
-      timedOut = true;
-      await terminateProcessTree(child);
-      settle(new Error(`${failureLabel} timed out after ${PDF_RENDER_TIMEOUT_MS / 1000}s.`));
-    }, PDF_RENDER_TIMEOUT_MS);
 
-    child.once("error", (error) => {
-      if (!timedOut) settle(error);
-    });
-    child.once("exit", (code, signal) => {
-      if (timedOut) return;
-      if (code === 0) {
-        settle();
-        return;
-      }
-      const detail = diagnostics.trim();
-      settle(
-        new Error(
-          `${failureLabel} failed (${signal ? `signal ${signal}` : `exit ${code}`})${
-            detail ? `: ${detail}` : "."
-          }`,
-        ),
-      );
-    });
-  });
+// Canvas wrappers around the shared output runtime. The runtime throws
+// MarkdStageError; canvas actions must surface CanvasError instead.
+function toCanvasError(error) {
+  return error instanceof MarkdStageError
+    ? new CanvasError(error.code, error.message)
+    : error;
 }
 
-async function runPdfBrowser(browser, pageUrl, outputPath, profileDir) {
-  // Enforce the contract at runtime. Otherwise it silently waits 60 seconds
-  // before timing out, obscuring the cause; fail immediately with an explanation.
-  if (new URL(pageUrl).searchParams.get("print") !== "1") {
-    throw new Error(
-      `Refusing to run --print-to-pdf against a non-print URL (${pageUrl}): only ?print=1 stops the renderer's SSE and polling loops, so any other page hangs the browser forever.`,
-    );
-  }
-  const args = [
-    "--headless=new",
-    "--disable-gpu",
-    "--disable-background-networking",
-    "--disable-component-update",
-    "--disable-default-apps",
-    "--disable-extensions",
-    "--force-color-profile=srgb",
-    "--hide-scrollbars",
-    "--no-first-run",
-    "--no-pdf-header-footer",
-    "--print-to-pdf-no-header",
-    "--run-all-compositor-stages-before-draw",
-    // Ineffective (#12): --headless=new ignores it. See the JSDoc above.
-    // The actual safeguards are PDF_RENDER_TIMEOUT_MS + terminateProcessTree.
-    "--virtual-time-budget=12000",
-    `--user-data-dir=${profileDir}`,
-    `--print-to-pdf=${outputPath}`,
-    pageUrl,
-  ];
-  if (process.platform !== "win32" && typeof process.getuid === "function" && process.getuid() === 0) {
-    args.unshift("--no-sandbox");
-  }
-  await runHeadlessBrowser(browser, args, "Browser PDF rendering");
-}
-
-function delay(milliseconds) {
-  return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
-}
-
-async function waitForDevToolsPort(profileDir, child, diagnostics) {
-  const portFile = join(profileDir, "DevToolsActivePort");
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline) {
-    try {
-      const [portLine] = (await readFile(portFile, "utf8")).split(/\r?\n/);
-      const port = Number.parseInt(portLine, 10);
-      if (Number.isInteger(port) && port > 0) return port;
-    } catch (_) {
-      // Chromium creates the file after its remote debugging endpoint is ready.
-    }
-    if (!isProcessRunning(child)) {
-      throw new Error(
-        `Headless browser exited before DevTools became ready${
-          diagnostics.value.trim() ? `: ${diagnostics.value.trim()}` : "."
-        }`,
-      );
-    }
-    await delay(25);
-  }
-  throw new Error("Headless browser DevTools endpoint did not become ready within 10 seconds.");
-}
-
-async function findPageTarget(port) {
-  const deadline = Date.now() + 10_000;
-  while (Date.now() < deadline) {
-    try {
-      const response = await fetch(`http://127.0.0.1:${port}/json/list`, {
-        cache: "no-store",
-      });
-      if (response.ok) {
-        const targets = await response.json();
-        const page = Array.isArray(targets)
-          ? targets.find(
-              (target) =>
-                target?.type === "page" && typeof target.webSocketDebuggerUrl === "string",
-            )
-          : null;
-        if (page) return page;
-      }
-    } catch (_) {
-      // Retry while Chromium publishes its first page target.
-    }
-    await delay(25);
-  }
-  throw new Error("Headless browser did not expose a page target within 10 seconds.");
-}
-
-async function connectCdp(webSocketUrl) {
-  if (typeof WebSocket !== "function") {
-    throw new Error("This runtime does not provide WebSocket support required for PNG capture.");
-  }
-  const socket = new WebSocket(webSocketUrl);
-  const pending = new Map();
-  let nextId = 1;
-
-  const opened = new Promise((resolvePromise, rejectPromise) => {
-    socket.addEventListener("open", resolvePromise, { once: true });
-    socket.addEventListener(
-      "error",
-      () => rejectPromise(new Error("Could not connect to the Chromium DevTools endpoint.")),
-      { once: true },
-    );
-  });
-  socket.addEventListener("message", (event) => {
-    let text;
-    if (typeof event.data === "string") text = event.data;
-    else if (event.data instanceof ArrayBuffer) text = Buffer.from(event.data).toString("utf8");
-    else text = String(event.data);
-    let message;
-    try {
-      message = JSON.parse(text);
-    } catch (_) {
-      return;
-    }
-    if (!message.id || !pending.has(message.id)) return;
-    const request = pending.get(message.id);
-    pending.delete(message.id);
-    if (message.error) {
-      request.reject(new Error(message.error.message || "Chromium DevTools command failed."));
-    } else {
-      request.resolve(message.result || {});
-    }
-  });
-  socket.addEventListener("close", () => {
-    for (const request of pending.values()) {
-      request.reject(new Error("Chromium DevTools connection closed unexpectedly."));
-    }
-    pending.clear();
-  });
-  await opened;
-
-  return {
-    send(method, params = {}) {
-      const id = nextId++;
-      return new Promise((resolvePromise, rejectPromise) => {
-        pending.set(id, { resolve: resolvePromise, reject: rejectPromise });
-        socket.send(JSON.stringify({ id, method, params }));
-      });
-    },
-    close() {
-      try {
-        socket.close();
-      } catch (_) {
-        // Process cleanup below is authoritative.
-      }
-    },
-  };
-}
-
-async function waitForOutputJob(job, child, diagnostics) {
-  const deadline = Date.now() + PDF_RENDER_TIMEOUT_MS;
-  while (job.status === "pending" && Date.now() < deadline) {
-    if (!isProcessRunning(child)) {
-      throw new Error(
-        `Headless browser exited before rendering completed${
-          diagnostics.value.trim() ? `: ${diagnostics.value.trim()}` : "."
-        }`,
-      );
-    }
-    await delay(25);
-  }
-  if (job.status === "pending") {
-    throw new Error(
-      `Browser rendering timed out after ${PDF_RENDER_TIMEOUT_MS / 1000}s${
-        diagnostics.value.trim() ? `: ${diagnostics.value.trim()}` : "."
-      }`,
-    );
-  }
-  if (job.status !== "ready") {
-    throw new Error(job.error || "The renderer reported a failure.");
-  }
-}
-
-async function runCdpOutputBrowser(browser, pageUrl, profileDir, job, capturePng) {
-  const diagnostics = { value: "" };
-  await rm(join(profileDir, "DevToolsActivePort"), { force: true }).catch(() => {});
-  const args = [
-    "--headless=new",
-    "--disable-gpu",
-    "--disable-background-networking",
-    "--disable-component-update",
-    "--disable-default-apps",
-    "--disable-extensions",
-    "--force-color-profile=srgb",
-    "--force-device-scale-factor=1",
-    "--hide-scrollbars",
-    "--no-first-run",
-    "--run-all-compositor-stages-before-draw",
-    "--remote-debugging-port=0",
-    "--window-size=1280,720",
-    `--user-data-dir=${profileDir}`,
-    "about:blank",
-  ];
-  if (process.platform !== "win32" && typeof process.getuid === "function" && process.getuid() === 0) {
-    args.unshift("--no-sandbox");
-  }
-  const child = spawn(browser, args, {
-    detached: process.platform !== "win32",
-    windowsHide: true,
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  const appendDiagnostics = (chunk) => {
-    diagnostics.value = `${diagnostics.value}${chunk.toString()}`.slice(-12_000);
-  };
-  child.stdout.on("data", appendDiagnostics);
-  child.stderr.on("data", appendDiagnostics);
-
-  let cdp = null;
+async function runOutputAction(operation) {
   try {
-    const port = await waitForDevToolsPort(profileDir, child, diagnostics);
-    const target = await findPageTarget(port);
-    cdp = await connectCdp(target.webSocketDebuggerUrl);
-    await cdp.send("Page.enable");
-    await cdp.send("Emulation.setDeviceMetricsOverride", {
-      width: 1280,
-      height: 720,
-      deviceScaleFactor: 1,
-      mobile: false,
-    });
-    const navigation = await cdp.send("Page.navigate", { url: pageUrl });
-    if (navigation.errorText) {
-      throw new Error(`Chromium could not open the renderer: ${navigation.errorText}`);
-    }
-    await waitForOutputJob(job, child, diagnostics);
-    if (!capturePng) return null;
-    await cdp.send("Runtime.evaluate", {
-      expression:
-        "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
-      awaitPromise: true,
-    });
-    const screenshot = await cdp.send("Page.captureScreenshot", {
-      format: "png",
-      fromSurface: true,
-      captureBeyondViewport: false,
-    });
-    if (typeof screenshot.data !== "string" || screenshot.data.length === 0) {
-      throw new Error("Chromium DevTools did not return PNG data.");
-    }
-    return Buffer.from(screenshot.data, "base64");
-  } finally {
-    cdp?.close();
-    if (isProcessRunning(child)) await terminateProcessTree(child);
-  }
-}
-
-async function verifyPdf(outputPath) {
-  const info = await stat(outputPath);
-  if (!info.isFile() || info.size < 5) {
-    throw new Error("The browser did not create a valid PDF file.");
-  }
-  const handle = await open(outputPath, "r");
-  try {
-    const header = Buffer.alloc(5);
-    const { bytesRead } = await handle.read(header, 0, header.length, 0);
-    if (bytesRead !== header.length || header.toString("ascii") !== "%PDF-") {
-      throw new Error("The generated file does not have a PDF header.");
-    }
-  } finally {
-    await handle.close();
-  }
-  return info.size;
-}
-
-async function verifyPng(outputPath) {
-  const info = await stat(outputPath);
-  if (!info.isFile() || info.size < 24) {
-    throw new Error("The browser did not create a valid PNG file.");
-  }
-  const handle = await open(outputPath, "r");
-  try {
-    const header = Buffer.alloc(24);
-    const { bytesRead } = await handle.read(header, 0, header.length, 0);
-    const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-    if (bytesRead !== header.length || !header.subarray(0, 8).equals(signature)) {
-      throw new Error("The generated file does not have a PNG header.");
-    }
-    const width = header.readUInt32BE(16);
-    const height = header.readUInt32BE(20);
-    if (width !== 1280 || height !== 720) {
-      throw new Error(`The generated PNG is ${width}x${height}; expected 1280x720.`);
-    }
-    return { bytes: info.size, width, height };
-  } finally {
-    await handle.close();
-  }
-}
-
-function createOutputSnapshot(inst, requestedTheme) {
-  const theme = requestedTheme === undefined ? inst.theme : normalizeTheme(requestedTheme);
-  return {
-    slides: getOutputSnapshotSlides(inst),
-    theme,
-    themeLocked: inst.themeLocked,
-    customThemeCss: inst.customThemeCss,
-    customThemeMeta: inst.customThemeMeta,
-  };
-}
-
-function createOutputJob(snapshot, kind) {
-  return {
-    slides: snapshot.slides,
-    theme: snapshot.theme,
-    themeLocked: snapshot.themeLocked,
-    customThemeCss: snapshot.customThemeCss,
-    customThemeMeta: snapshot.customThemeMeta,
-    kind,
-    status: "pending",
-    error: "",
-    layout: null,
-  };
-}
-
-async function runLayoutInspectionJob(inst, snapshot, browser) {
-  const token = randomUUID();
-  const profileDir = await mkdtemp(join(tmpdir(), "markdstage-inspect-"));
-  const job = createOutputJob(snapshot, "inspect");
-  inst.exportJobs.set(token, job);
-  try {
-    const pageUrl = `${inst.url}?print=1&token=${encodeURIComponent(token)}`;
-    await runCdpOutputBrowser(browser, pageUrl, profileDir, job, false);
-    if (!job.layout || !Array.isArray(job.layout.slides)) {
-      throw new Error("The layout renderer did not return diagnostics.");
-    }
-    return job.layout;
-  } finally {
-    inst.exportJobs.delete(token);
-    await rm(profileDir, { recursive: true, force: true }).catch(() => {});
-  }
-}
-
-function selectLayoutResults(layout, requestedIndex, includeFits) {
-  const selected =
-    requestedIndex === undefined
-      ? layout.slides
-      : layout.slides.filter((slide) => slide.index === requestedIndex);
-  const issueCount = selected.filter((slide) => slide.pdfClipped).length;
-  return {
-    ok: true,
-    scope: requestedIndex === undefined ? "deck" : "slide",
-    ...(requestedIndex === undefined
-      ? {}
-      : { index: requestedIndex, page: requestedIndex + 1 }),
-    width: layout.width,
-    height: layout.height,
-    total: layout.total,
-    inspected: selected.length,
-    issueCount,
-    hasIssues: issueCount > 0,
-    slides: includeFits ? selected : selected.filter((slide) => slide.pdfClipped),
-  };
-}
-
-async function inspectLayout(inst, requestedIndex, includeFits = false) {
-  if (inst.exporting) {
-    throw new CanvasError(
-      "output_in_progress",
-      "Another PDF, layout inspection, or PNG output job is already running for this canvas.",
-    );
-  }
-  const snapshot = createOutputSnapshot(inst);
-  if (!snapshot.slides.length) {
-    throw new CanvasError("no_deck", "No slides are loaded. Load a deck before inspecting layout.");
-  }
-  if (
-    requestedIndex !== undefined &&
-    (!Number.isInteger(requestedIndex) ||
-      requestedIndex < 0 ||
-      requestedIndex >= snapshot.slides.length)
-  ) {
-    throw new CanvasError(
-      "slide_out_of_range",
-      `Slide index must be between 0 and ${snapshot.slides.length - 1}.`,
-    );
-  }
-  const browser = findChromiumBrowser();
-  if (!browser) {
-    throw new CanvasError(
-      "layout_browser_not_found",
-      "Layout inspection requires Microsoft Edge, Google Chrome, or Chromium.",
-    );
-  }
-
-  inst.exporting = true;
-  try {
-    const layout = await runLayoutInspectionJob(inst, snapshot, browser);
-    return selectLayoutResults(layout, requestedIndex, Boolean(includeFits));
+    return await operation();
   } catch (error) {
-    if (error instanceof CanvasError) throw error;
-    throw new CanvasError(
-      "layout_inspection_failed",
-      error?.message || "Layout inspection failed.",
-    );
-  } finally {
-    inst.exporting = false;
+    throw toCanvasError(error);
   }
 }
 
-function normalizeCaptureIndexes(requestedIndexes, total) {
-  if (!Array.isArray(requestedIndexes) || requestedIndexes.length === 0) {
-    throw new CanvasError(
-      "invalid_input",
-      "indexes must be a non-empty array when provided.",
-    );
-  }
-  const indexes = [...new Set(requestedIndexes)];
-  if (
-    indexes.some(
-      (index) => !Number.isInteger(index) || index < 0 || index >= total,
-    )
-  ) {
-    throw new CanvasError(
-      "slide_out_of_range",
-      `Every slide index must be an integer between 0 and ${total - 1}.`,
-    );
-  }
-  if (indexes.length > MAX_CAPTURE_SLIDES) {
-    throw new CanvasError(
-      "too_many_slides",
-      `At most ${MAX_CAPTURE_SLIDES} slides can be captured at once.`,
-    );
-  }
-  return indexes.sort((a, b) => a - b);
+function inspectLayout(inst, requestedIndex, includeFits = false) {
+  return runOutputAction(() => runtimeInspectLayout(inst, requestedIndex, includeFits));
 }
 
-async function captureSlides(
-  inst,
-  requestedIndexes,
-  requestedDirectory,
-  requestedTheme,
-) {
-  if (inst.exporting) {
-    throw new CanvasError(
-      "output_in_progress",
-      "Another PDF, layout inspection, or PNG output job is already running for this canvas.",
-    );
-  }
-  const snapshot = createOutputSnapshot(inst, requestedTheme);
-  if (!snapshot.slides.length) {
-    throw new CanvasError("no_deck", "No slides are loaded. Load a deck before capturing PNGs.");
-  }
-  const browser = findChromiumBrowser();
-  if (!browser) {
-    throw new CanvasError(
-      "png_browser_not_found",
-      "PNG capture requires Microsoft Edge, Google Chrome, or Chromium.",
-    );
-  }
-  inst.exporting = true;
-  const pendingFiles = [];
-  try {
-    let inspection = null;
-    let indexes;
-    if (requestedIndexes === undefined) {
-      const layout = await runLayoutInspectionJob(inst, snapshot, browser);
-      inspection = selectLayoutResults(layout, undefined, false);
-      indexes = layout.slides
-        .filter((slide) => slide.pdfClipped)
-        .map((slide) => slide.index)
-        .slice(0, MAX_CAPTURE_SLIDES);
-      if (indexes.length === 0) {
-        return {
-          ok: true,
-          total: snapshot.slides.length,
-          captured: 0,
-          issueCount: 0,
-          message: "The PDF layout fits; no PNG capture is needed.",
-          files: [],
-        };
-      }
-    } else {
-      indexes = normalizeCaptureIndexes(requestedIndexes, snapshot.slides.length);
-    }
-
-    const outputDirectory = resolveCaptureOutputDirectory(inst, requestedDirectory);
-    await prepareWorkspaceDirectory(inst, outputDirectory, "PNG");
-    const pageDigits = Math.max(3, String(snapshot.slides.length).length);
-    const files = [];
-
-    for (const index of indexes) {
-      const token = randomUUID();
-      const pageNumber = String(index + 1).padStart(pageDigits, "0");
-      const outputPath = join(outputDirectory, `slide-${pageNumber}.png`);
-      const temporaryPath = join(outputDirectory, `.slide-${pageNumber}.${token}.tmp.png`);
-      const job = createOutputJob(snapshot, "capture");
-      const pageProfileDir = await mkdtemp(join(tmpdir(), "markdstage-capture-"));
-      inst.exportJobs.set(token, job);
-      let staged = false;
-      try {
-        const pageUrl = `${inst.url}?capture=1&token=${encodeURIComponent(
-          token,
-        )}&index=${index}`;
-        const png = await runCdpOutputBrowser(browser, pageUrl, pageProfileDir, job, true);
-        if (!job.layout || !Array.isArray(job.layout.slides)) {
-          throw new Error("The PNG renderer did not return layout diagnostics.");
-        }
-        await writeFile(temporaryPath, png);
-        const image = await verifyPng(temporaryPath);
-        const diagnostic = job.layout.slides[0];
-        pendingFiles.push({ temporaryPath, outputPath });
-        staged = true;
-        files.push({
-          index,
-          page: index + 1,
-          path: outputPath,
-          ...image,
-          layout: diagnostic,
-        });
-      } finally {
-        inst.exportJobs.delete(token);
-        if (!staged) await rm(temporaryPath, { force: true }).catch(() => {});
-        await rm(pageProfileDir, { recursive: true, force: true }).catch(() => {});
-      }
-    }
-
-    for (const file of pendingFiles) {
-      await rm(file.outputPath, { force: true }).catch((error) => {
-        if (error?.code !== "ENOENT") throw error;
-      });
-      await rename(file.temporaryPath, file.outputPath);
-      file.temporaryPath = "";
-    }
-
-    return {
-      ok: true,
-      directory: outputDirectory,
-      total: snapshot.slides.length,
-      captured: files.length,
-      issueCount:
-        inspection?.issueCount ?? files.filter((file) => file.layout?.pdfClipped).length,
-      theme: snapshot.theme,
-      files,
-    };
-  } catch (error) {
-    if (error instanceof CanvasError) throw error;
-    throw new CanvasError("png_capture_failed", error?.message || "PNG capture failed.");
-  } finally {
-    inst.exporting = false;
-    for (const file of pendingFiles) {
-      if (file.temporaryPath) {
-        await rm(file.temporaryPath, { force: true }).catch(() => {});
-      }
-    }
-  }
+function captureSlides(inst, requestedIndexes, requestedDirectory, requestedTheme) {
+  return runOutputAction(() =>
+    runtimeCaptureSlides(inst, requestedIndexes, requestedDirectory, requestedTheme),
+  );
 }
 
-async function exportPdf(inst, requestedPath, requestedTheme) {
-  if (inst.exporting) {
-    throw new CanvasError(
-      "export_in_progress",
-      "Another PDF, layout inspection, or PNG output job is already running for this canvas.",
-    );
-  }
-  inst.exporting = true;
-  let token = "";
-  let profileDir = "";
-  let temporaryOutputPath = "";
-
-  try {
-    const snapshot = createOutputSnapshot(inst, requestedTheme);
-    if (!snapshot.slides.length) {
-      throw new CanvasError("no_deck", "No slides are loaded. Load a deck before exporting PDF.");
-    }
-
-    const browser = findChromiumBrowser();
-    if (!browser) {
-      throw new CanvasError(
-        "pdf_browser_not_found",
-        "PDF export requires Microsoft Edge, Google Chrome, or Chromium.",
-      );
-    }
-
-    const outputPath = resolvePdfOutputPath(inst, requestedPath);
-    const outputParent = await preparePdfOutputDirectory(inst, outputPath);
-    token = randomUUID();
-    profileDir = await mkdtemp(join(tmpdir(), "markdstage-pdf-"));
-    const outputBase = basename(outputPath, extname(outputPath)) || "markdstage";
-    temporaryOutputPath = join(outputParent, `.${outputBase}.${token}.tmp.pdf`);
-    inst.exportJobs.set(token, createOutputJob(snapshot, "pdf"));
-
-    const pageUrl = `${inst.url}?print=1&token=${encodeURIComponent(token)}`;
-    await runPdfBrowser(browser, pageUrl, temporaryOutputPath, profileDir);
-    const exportJob = inst.exportJobs.get(token);
-    if (exportJob?.status !== "ready") {
-      throw new Error(
-        exportJob?.error || "The print renderer did not finish before the browser exited.",
-      );
-    }
-    const bytes = await verifyPdf(temporaryOutputPath);
-    await rename(temporaryOutputPath, outputPath);
-    temporaryOutputPath = "";
-    log(`MarkdStage: exported ${snapshot.slides.length} slides to ${outputPath}`);
-    return {
-      ok: true,
-      path: outputPath,
-      total: snapshot.slides.length,
-      theme: snapshot.theme,
-      bytes,
-    };
-  } catch (error) {
-    if (error instanceof CanvasError) throw error;
-    throw new CanvasError("pdf_export_failed", error?.message || "PDF export failed.");
-  } finally {
-    if (token) {
-      inst.exportJobs.delete(token);
-    }
-    if (temporaryOutputPath) {
-      await rm(temporaryOutputPath, { force: true }).catch(() => {});
-    }
-    inst.exporting = false;
-    if (profileDir) {
-      await rm(profileDir, { recursive: true, force: true }).catch(() => {});
-    }
-  }
+function exportPdf(inst, requestedPath, requestedTheme) {
+  return runOutputAction(() => runtimeExportPdf(inst, requestedPath, requestedTheme));
 }
 
 let logger = null;
@@ -1508,46 +524,10 @@ function stopPenListener() {
 // Markdown import safeguards for the canvas 📂 button live in
 // scripts/markdown-files.mjs so the test harness can use the same implementation.
 
-// Join `rel` onto `rootDir` and guarantee the result stays under rootDir
-// (defends /assets and static routes against path traversal).
-function safeJoin(rootDir, rel) {
-  const cleaned = rel.replace(/^[/\\]+/, "");
-  const abs = normalize(join(rootDir, cleaned));
-  const root = resolve(rootDir);
-  if (abs !== root && !abs.startsWith(root + sep)) return null;
-  return abs;
-}
-
-async function sendFile(res, absPath, { cache } = {}) {
-  try {
-    const buf = await readFile(absPath);
-    res.statusCode = 200;
-    res.setHeader("Content-Type", mimeFor(absPath));
-    res.setHeader(
-      "Cache-Control",
-      cache ? "public, max-age=31536000, immutable" : "no-store",
-    );
-    res.end(buf);
-  } catch (_) {
-    res.statusCode = 404;
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.end("Not found");
-  }
-}
-
 async function sendChunkedVendorAsset(res, assetName) {
-  try {
-    const buffer = await reconstructAsset(VENDOR_DIR, assetName, VENDOR_MANIFEST);
-    res.statusCode = 200;
-    res.setHeader("Content-Type", mimeFor(assetName));
-    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-    res.end(buffer);
-  } catch (error) {
-    log(`MarkdStage: vendor asset integrity failure for ${assetName}: ${error.message}`, "error");
-    res.statusCode = 500;
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.end("Vendor asset integrity failure");
-  }
+  await sendRuntimeChunkedVendorAsset(res, VENDOR_DIR, VENDOR_MANIFEST, assetName, (message) =>
+    log(message, "error"),
+  );
 }
 
 function handleSse(req, res, inst) {
@@ -1655,103 +635,13 @@ async function applyDeckSlide(inst) {
 // populate instance state identically. Callers must validate `slides` (a
 // non-empty array of strings) before calling.
 async function loadCustomTheme(inst, sourceName, themeFile) {
-  if (!themeFile) {
-    throw new CanvasError("invalid_theme_file", "custom theme requires themeFile or front matter theme-file.");
-  }
-  let path;
   try {
-    path = await resolveThemeFile(inst.workspaceRoot, sourceName, themeFile);
+    return await runtimeLoadCustomTheme(inst.workspaceRoot, sourceName, themeFile);
   } catch (error) {
-    throw new CanvasError("invalid_theme_file", error.message);
-  }
-  if (!path) {
-    throw new CanvasError("theme_file_not_found", `Could not read custom theme file: ${themeFile}`);
-  }
-  let realThemeFile;
-  let realWorkspaceRoot;
-  try {
-    [realThemeFile, realWorkspaceRoot] = await Promise.all([
-      realpath(path),
-      realpath(inst.workspaceRoot),
-    ]);
-  } catch (_) {
-    throw new CanvasError("theme_file_not_found", `Could not read custom theme file: ${themeFile}`);
-  }
-  if (!isPathInside(realWorkspaceRoot, realThemeFile)) {
-    throw new CanvasError("invalid_theme_file", "Custom theme files must stay inside the workspace.");
-  }
-  let css;
-  try {
-    css = await readFile(realThemeFile, "utf8");
-  } catch (error) {
-    throw new CanvasError("theme_file_not_found", `Could not read custom theme file: ${themeFile}`);
-  }
-  if (Buffer.byteLength(css, "utf8") > 64 * 1024) {
-    throw new CanvasError("invalid_theme_file", "Custom theme CSS must be 64 KiB or smaller.");
-  }
-  try {
-    const themeDir = dirname(path);
-    const realThemeDir = await realpath(themeDir);
-    if (!isPathInside(realWorkspaceRoot, realThemeDir)) {
-      throw new Error("Custom theme metadata must stay inside the workspace.");
-    }
-    const metadataPath = join(themeDir, THEME_METADATA_NAME);
-    let metadata = null;
-    if (existsSync(metadataPath)) {
-      const realMetadataPath = await realpath(metadataPath);
-      if (!isPathInside(realThemeDir, realMetadataPath)) {
-        throw new Error("Custom theme metadata must stay inside the theme folder.");
-      }
-      const metadataText = await readFile(realMetadataPath, "utf8");
-      if (Buffer.byteLength(metadataText, "utf8") > THEME_METADATA_MAX_BYTES) {
-        throw new Error("Custom theme metadata must be 64 KiB or smaller.");
-      }
-      metadata = parseThemeMetadata(metadataText);
-      for (const assetPath of themeMetadataAssetPaths(metadata)) {
-        const candidate = safeJoin(themeDir, assetPath);
-        if (!candidate) throw new Error(`Invalid custom theme asset path: ${assetPath}`);
-        let realAsset;
-        try {
-          realAsset = await realpath(candidate);
-        } catch (_) {
-          throw new Error(`Custom theme asset was not found: ${assetPath}`);
-        }
-        if (!isPathInside(realThemeDir, realAsset)) {
-          throw new Error(`Custom theme asset must stay inside the theme folder: ${assetPath}`);
-        }
-        const info = await stat(realAsset);
-        if (!info.isFile()) throw new Error(`Custom theme asset is not a file: ${assetPath}`);
-        if (info.size > THEME_ASSET_MAX_BYTES) {
-          throw new Error(`Custom theme asset must be 2 MiB or smaller: ${assetPath}`);
-        }
-      }
-    }
-    const assets = metadata ? themeMetadataAssetPaths(metadata) : [];
-    return {
-      file: relative(inst.workspaceRoot, path),
-      css: serializeThemeVariables(parseThemeVariables(css)),
-      dir: relative(inst.workspaceRoot, themeDir),
-      metadata: metadata
-        ? mapThemeMetadataAssets(metadata, (assetPath) => `/theme-assets/${assetPath}`)
-        : null,
-      assets,
-    };
-  } catch (error) {
-    throw new CanvasError("invalid_theme_file", error.message);
+    throw toCanvasError(error);
   }
 }
 
-function resolveDeckTheme({ slides, explicitTheme, explicitThemeFile }) {
-  const frontMatter = resolveFrontMatterTheme(slides);
-  const hasExplicitTheme = typeof explicitTheme === "string" && explicitTheme.trim().length > 0;
-  const theme = hasExplicitTheme ? normalizeTheme(explicitTheme) : frontMatter.theme;
-  const themeFile = explicitThemeFile?.trim() || frontMatter.themeFile;
-  return {
-    theme: themeFile && (!hasExplicitTheme || theme === "custom") ? "custom" : theme,
-    themeFile,
-    themeLocked: hasExplicitTheme,
-  };
-}
 
 async function applyDeckNow(
   inst,
@@ -2976,6 +1866,9 @@ async function ensureInstance(ctx) {
     inst = {
       key,
       extensionId: ctx.extensionId,
+      // The shared output runtime logs through the session instead of importing
+      // the canvas logger.
+      log: (message, level) => log(message, level),
       server: null,
       url: null,
       version: 0,
