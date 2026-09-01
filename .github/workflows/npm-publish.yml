@@ -1,0 +1,76 @@
+name: Publish MarkdStage CLI
+
+on:
+  push:
+    tags:
+      - "cli-v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish to npm
+    if: github.repository == 'runceel/markdstage'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org/
+
+      - name: Verify release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./packages/markdstage-cli/package.json').version")
+          expected="cli-v${version}"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $version."
+            echo "Expected tag: $expected"
+            exit 1
+          fi
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "The tagged commit must be reachable from origin/main."
+            exit 1
+          }
+
+      - name: CLI tests
+        run: npm run test:cli
+
+      - name: Generated Agent Skills are up to date
+        run: npm run skills:check
+
+      - name: Review package contents
+        working-directory: packages/markdstage-cli
+        run: npm pack --dry-run
+
+      - name: Publish package
+        working-directory: packages/markdstage-cli
+        run: npm publish --access public --provenance
+        env:
+          # Required only for the first publish. After configuring npm Trusted
+          # Publishing, revoke the token and delete this secret; npm will then
+          # use GitHub OIDC.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify published version
+        shell: bash
+        run: |
+          version=$(node -p "require('./packages/markdstage-cli/package.json').version")
+          published=$(npm view "@runceel/markdstage@${version}" version \
+            --registry=https://registry.npmjs.org/)
+          test "$published" = "$version"
