@@ -36,7 +36,10 @@ The themed slide is displayed and updates automatically
 - **Register every slide at startup** in the `slides` field of `open_canvas`
   `input`. The open handler applies the deck before returning the URL, so the
   first slide appears immediately without a "deck not loaded" placeholder.
-  Use `load_deck` only to replace content or theme during the presentation.
+  Use `load_deck` only to replace content or theme during the presentation. Omit
+  open input when only refocusing an existing instance; every non-empty open
+  input must include `slides`. `sourceName` is resolution/output metadata only:
+  it never reads or watches the named Markdown file.
   Users navigate through ◀ ▶, left-click/right-click on empty slide margins,
   arrow keys, or ☰. The canvas posts navigation to `POST /navigate`, and every
   client stays synchronized. Left-click advances; right-click goes back.
@@ -81,19 +84,24 @@ The themed slide is displayed and updates automatically
   for an explicit page request from chat.
 - **PDF Export is available from the printer icon.** When `sourceName` is passed
   to open / `load_deck`, the printer saves `<source-name>.pdf` in the workspace.
-  AI may call `export_pdf` with another `outputPath`. Hidden print mode renders
-  every page, then headless Edge/Chrome produces a 16:9 PDF with backgrounds,
-  images, highlighted code, and Mermaid.
+  It does not load or watch that file. AI may call `export_pdf` with another
+  `outputPath`. Hidden print mode renders every page, then headless Edge/Chrome
+  produces a 16:9 PDF with backgrounds, images, highlighted code, and Mermaid.
 - Use the **16:9 control** to letterbox the current slide inside the canvas with
   the same fixed 1280×720 typography, spacing, diagram limits, and clipping used
   by PDF output. This preview is local to the canvas and does not change deck
   state. A visible and accessible warning identifies content that would be
   clipped.
 - AI should call **`inspect_layout` before exporting a non-scrolling deck**. It
-  renders the PDF snapshot in headless Chromium and returns compact JSON for
-  clipped pages, including vertical/horizontal overflow and bounded element
-  hints. Call `capture_slides` only when visual inspection is needed; PNGs are
-  fixed 1280×720 files and the action returns paths instead of inline image data.
+  renders the currently registered in-memory output snapshot in headless
+  Chromium; it does not read or validate the source file named by `sourceName`.
+  The snapshot includes a temporary `show_slide` replacement. Prefer one
+  whole-deck inspection, or serialize targeted inspections because PDF, layout,
+  and PNG output jobs are intentionally exclusive. The result contains compact
+  JSON for clipped pages, including vertical/horizontal overflow and bounded
+  element hints. Call `capture_slides` only when visual inspection is needed;
+  PNGs are fixed 1280×720 files and the action returns paths instead of inline
+  image data.
 - Open the **external presenter** with ⛶ or `open_presenter`. Edge / Chrome /
   Chromium starts in a dedicated temporary profile as a movable, resizable
   1280×720 app-mode window. It shares `/state`, `/navigate`, and SSE with the
@@ -224,6 +232,8 @@ Write local images as `![Alternative text](/assets/foo.png)` and pass the source
 Markdown's workspace-relative path as `sourceName`. Lookup tries adjacent
 `assets/` before workspace-root `assets/`. Architecture `icon` and `image.src`
 use `assets/foo.svg` without a leading slash and follow the same lookup order.
+`sourceName` supplies this resolution base only; it does not read or watch the
+Markdown file.
 Specifically, lookup checks `assets/` beside the Markdown before `assets/` at the workspace root.
 
 On a standard slide, the first H1/H2 is fixed in the top title area, so its
@@ -898,19 +908,22 @@ Canvas buttons and keyboard continue to work when pen input is unavailable.
 Start with `open_canvas` (`canvasId: "MarkdStage"`) and complete-deck input:
 `{ slides: string[], index?: number, theme?: "dark" | "light" | "microsoft" |
 "custom", sourceName?: string }`. Pass the source Markdown filename in
-`sourceName`; the printer saves `<source-name-without-extension>.pdf`. The open
-handler applies the deck before returning its URL. Omit input when only
-refocusing an existing canvas.
+`sourceName`; the printer saves `<source-name-without-extension>.pdf`. This is
+metadata for resolution and output naming only and never reads or watches the
+file. The open handler applies the deck before returning its URL. Omit input
+when only refocusing an existing canvas. Any non-empty input without `slides`
+fails with `invalid_input`; pass the complete `slides` array or call
+`load_deck` to replace the registered snapshot.
 
 | Action | Input and behavior |
 | --- | --- |
-| `load_deck` | `{ slides: string[], index?: number, theme?: "dark" | "light" | "microsoft" | "custom" }`. Replace/reload the deck for mid-presentation content or theme changes. `index` defaults to `0`; theme defaults to `dark`. Appends one back cover without duplication. Returns `{ ok, version, index, total, theme, validationFeedback? }`. Missing front matter or Architecture errors do not prevent display; remediation is returned in `validationFeedback` and logged for open. |
+| `load_deck` | `{ slides: string[], index?: number, theme?: "dark" | "light" | "microsoft" | "custom", sourceName?: string }`. Replace/reload the deck for mid-presentation content or theme changes. `index` defaults to `0`; theme defaults to `dark`. `sourceName` is metadata only and never reads or watches Markdown. Appends one back cover without duplication. Returns `{ ok, version, index, total, theme, validationFeedback? }`. Missing front matter or Architecture errors do not prevent display; remediation is returned in `validationFeedback` and logged for open. |
 | `goto_slide` | `{ index: number }`. Select a clamped zero-based index. Intended for explicit chat requests, not normal navigation. Returns `{ ok, changed, version, index, total }`. |
-| `show_slide` | `{ markdown: string }`. Temporarily replace the current slide. Supports front matter keys `deck`, `kicker`, `page`, `total`, `title`, `layout`, `size`, and `theme`. Omitted theme inherits the deck theme. |
+| `show_slide` | `{ markdown: string }`. Temporarily replace the current slide. Supports front matter keys `deck`, `kicker`, `page`, `total`, `title`, `layout`, `size`, and `theme`. Omitted theme inherits the deck theme. The override is included in output snapshots until navigation or deck replacement resumes the registered deck. |
 | `get_architecture_errors` | `{ index?: number }`. Validate the complete deck or one zero-based slide, including temporary content. Returns `{ ok, scope, index?, page?, total, errorCount, errors }`; errors contain `{ slideIndex, page, blockIndex, architecture, code, message }`. No deck and out-of-range indexes are errors. |
 | `open_presenter` | No input. Start one synchronized movable/resizable 1280×720 Chromium app-mode window. Use `F11` on Windows for full screen. Returns `{ ok, started, alreadyRunning, browser?, pid? }`. |
 | `close_presenter` | No input. Stop presenter and remove its temporary profile. Returns `{ ok, stopped }`. |
-| `inspect_layout` | `{ index?: number, includeFits?: boolean }`. Render the current PDF snapshot with the fixed 1280×720 output layout. Omit `index` for the complete deck. By default, return only clipped pages; `includeFits` includes successful pages. Returns dimensions, issue counts, overflow measurements, nested scroll containers, and a bounded list of element hints. Requires Edge, Chrome, or Chromium. |
+| `inspect_layout` | `{ index?: number, includeFits?: boolean }`. Render the registered in-memory PDF snapshot with the fixed 1280×720 output layout; this does not inspect the source file on disk. Omit `index` for one preferred whole-deck inspection. Serialize targeted calls because PDF, layout, and PNG jobs are exclusive. By default, return only clipped pages; `includeFits` includes successful pages. Returns dimensions, issue counts, overflow measurements, nested scroll containers, and a bounded list of element hints. Requires Edge, Chrome, or Chromium. |
 | `capture_slides` | `{ indexes?: number[], outputDirectory?: string, theme?: "dark" | "light" | "microsoft" | "custom" }`. Generate PDF-equivalent 1280×720 PNGs for at most 10 zero-based indexes. When `indexes` is omitted, inspect the deck and capture only clipped pages. Paths stay inside the workspace; results contain paths and layout summaries, not image bytes. Requires Edge, Chrome, or Chromium. |
 | `export_pdf` | `{ outputPath?: string, theme?: "dark" | "light" | "microsoft" | "custom" }`. Export one 16:9 page per slide. Relative paths use workspace root; default is `markdstage.pdf`. Theme affects PDF only. Reject paths outside workspace and non-`.pdf` files. Temporary slide replacement and the automatic back cover are included. Returns `{ ok, path, total, theme, bytes }`. Requires Edge, Chrome, or Chromium. |
 | `edit_architecture` | `{ enabled: boolean }`. Toggle placement editing. Imported decks also write to the source fence; direct decks write to canvas state. Presenter/print omit UI. Mode is not persisted and `reset` disables it. Returns `{ ok, enabled, version }`. |

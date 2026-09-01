@@ -17,6 +17,10 @@ test("canvas exposes lightweight layout inspection and bounded PNG capture", asy
   assert.match(source, /--force-device-scale-factor=1/);
   assert.match(source, /--remote-debugging-port=0/);
   assert.match(source, /Page\.captureScreenshot/);
+  assert.match(source, /Every non-empty input must include slides/);
+  assert.match(source, /sourceName is metadata and never reads or watches Markdown/);
+  assert.match(source, /registered in-memory output snapshot/);
+  assert.match(source, /targeted inspections must be serialized/);
 });
 
 test("print, capture, and fixed preview share one 1280x720 output surface", async () => {
