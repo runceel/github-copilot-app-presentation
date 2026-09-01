@@ -89,6 +89,62 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  cli:
+    name: MarkdStage CLI
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 20.11.x
+
+      - name: CLI unit tests
+        # The CLI has no runtime npm dependencies, so no install step is needed.
+        run: npm run test:cli
+
+      - name: Generated Agent Skills are up to date
+        # Skill references are generated from the canonical markdstage_guide topics.
+        run: npm run skills:check
+
+      - name: Pack the npm package
+        working-directory: packages/markdstage-cli
+        run: |
+          set -e
+          npm pack --pack-destination "$RUNNER_TEMP"
+          tarball=$(ls "$RUNNER_TEMP"/runceel-markdstage-*.tgz)
+          echo "tarball=$tarball" >> "$GITHUB_ENV"
+          tar -tzf "$tarball" > "$RUNNER_TEMP/contents.txt"
+          for required in \
+            package/bin/markdstage.mjs \
+            package/src/cli.mjs \
+            package/shared/markdown-deck.mjs \
+            package/shared/runtime/presentation-server.mjs \
+            package/shared/renderer/index.html \
+            package/shared/schema/architecture-v1.schema.json \
+            package/shared/vendor/marked.min.js; do
+            grep -qx "$required" "$RUNNER_TEMP/contents.txt" || {
+              echo "Missing from the npm package: $required"
+              exit 1
+            }
+          done
+          echo "OK: the npm package contains the shared runtime."
+
+      - name: Clean install smoke test
+        run: |
+          set -e
+          install_dir="$RUNNER_TEMP/markdstage-install"
+          mkdir -p "$install_dir"
+          cd "$install_dir"
+          npm install --no-save "$tarball"
+          ./node_modules/.bin/markdstage --version
+          ./node_modules/.bin/markdstage guide slide-format > /dev/null
+          ./node_modules/.bin/markdstage validate "$GITHUB_WORKSPACE/slides.md" --json > /dev/null
+          echo "OK: the packed CLI runs from a clean install."
+
   desktop:
     name: MarkdStage Desktop
     runs-on: windows-latest

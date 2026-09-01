@@ -156,7 +156,7 @@ export function createMarkdStageHooks() {
   };
 }
 
-function hasFrontMatter(markdown) {
+export function hasFrontMatter(markdown) {
   const normalized = markdown.replace(/\r\n?/g, "\n").replace(/^[\n \t\uFEFF]+/, "");
   if (!normalized.startsWith("---\n")) return false;
   return normalized.split("\n").slice(1).some((line) => line.trim() === "---");

@@ -87,8 +87,7 @@ function broadcast(session) {
  * Returns `{ url, token, port, close, broadcast }`. `session.url` is set to the
  * token-scoped base URL so the shared output runtime can render from it.
  */
-export async function startPresentationServer(session, { onLog } = {}) {
-  const token = createUrlToken();
+export async function startPresentationServer(session, { onLog, token = createUrlToken() } = {}) {
   const base = `/${token}`;
   let port = 0;
 
