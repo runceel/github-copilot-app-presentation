@@ -919,6 +919,20 @@ function relativeBounds(element, deck) {
   };
 }
 
+function textContentBounds(element, deck) {
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  const rect = range.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) return relativeBounds(element, deck);
+  const slide = deck.getBoundingClientRect();
+  return {
+    x: roundedMetric(rect.left - slide.left),
+    y: roundedMetric(rect.top - slide.top),
+    width: roundedMetric(rect.width),
+    height: roundedMetric(rect.height),
+  };
+}
+
 function rasterImageSupported(image) {
   const source = image.currentSrc || image.getAttribute("src") || "";
   if (["cover", "none"].includes(getComputedStyle(image).objectFit)) return false;
@@ -1002,6 +1016,17 @@ function paragraphFor(element, options = {}) {
     ...(options.level !== undefined ? { level: options.level } : {}),
     ...(options.bullet ? { bullet: options.bullet } : {}),
   };
+}
+
+function renderedTextLineCount(element) {
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  const tops = [];
+  for (const rect of range.getClientRects()) {
+    if (rect.width <= 0 || rect.height <= 0) continue;
+    if (!tops.some((top) => Math.abs(top - rect.top) < 1)) tops.push(rect.top);
+  }
+  return Math.max(1, tops.length);
 }
 
 function unsupportedEffects(element) {
@@ -1558,9 +1583,14 @@ async function collectPptxSlide(slide, index) {
     elements.push({
       type: "text",
       path: elementPath(element, deck),
-      ...relativeBounds(element, deck),
+      ...(element.classList.contains("kicker")
+        ? textContentBounds(element, deck)
+        : relativeBounds(element, deck)),
       paragraphs: [paragraph],
       opacity: Number(getComputedStyle(element).opacity) || 1,
+      ...(element.matches("h1, h2, .slide-title") && renderedTextLineCount(element) === 1
+        ? { textWrap: "none" }
+        : {}),
     });
     element.setAttribute("data-pptx-native", "text");
   }

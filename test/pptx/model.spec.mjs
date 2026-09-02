@@ -148,6 +148,28 @@ test("collects a serializable hybrid model for every layout and theme", async ({
       "Section",
       "Finish",
     ]);
+    const kicker = model.slides[0].elements.find(
+      (element) =>
+        element.type === "text" &&
+        element.paragraphs.some((paragraph) =>
+          paragraph.runs.some((run) => run.text.includes("MarkdStage")),
+        ),
+    );
+    const kickerBounds = await page.evaluate(() => {
+      const deck = document.querySelector("#stage > .deck");
+      const element = deck.querySelector(".kicker");
+      const deckRect = deck.getBoundingClientRect();
+      const elementRect = element.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const textRect = range.getBoundingClientRect();
+      return {
+        elementX: elementRect.left - deckRect.left,
+        textX: textRect.left - deckRect.left,
+      };
+    });
+    expect(kicker.x).toBeCloseTo(kickerBounds.textX, 1);
+    expect(kicker.x).toBeGreaterThan(kickerBounds.elementX);
     for (const slide of model.slides) {
       expect(slide.width).toBe(1280);
       expect(slide.height).toBe(720);
@@ -196,9 +218,17 @@ Branded export`,
       .filter((element) => element.type === "text")
       .flatMap((element) => element.paragraphs.flatMap((paragraph) => paragraph.runs));
     const logo = slide.elements.find((element) => element.type === "image");
+    const title = slide.elements.find(
+      (element) =>
+        element.type === "text" &&
+        element.paragraphs.some((paragraph) =>
+          paragraph.runs.some((run) => run.text.includes("Custom theme")),
+        ),
+    );
 
     expect(slide.theme).toBe("custom");
     expect(runs.some((run) => run.color === "#FEFEFE")).toBe(true);
+    expect(title.textWrap).toBe("none");
     expect(logo.src).toMatch(/simple-slide\.png$/);
     expect(logo.alt).toBe("Custom logo");
   } finally {
