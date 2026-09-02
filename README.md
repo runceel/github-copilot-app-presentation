@@ -97,7 +97,7 @@ connectors; changes remain a draft until **Save** writes them back to Markdown.
 ## Use the canvas Extension
 
 When you open this repository as a project, `.github/extensions/markdstage/` loads at project
-scope. To install the current **[v2.1.3 release](https://github.com/runceel/markdstage/releases/tag/v2.1.3)**
+scope. To install the current **[v2.2.0 release](https://github.com/runceel/markdstage/releases/tag/v2.2.0)**
 at user scope in another repository, ask GitHub Copilot:
 
 > Install MarkdStage at user scope from the following GitHub repository folder.
@@ -130,7 +130,7 @@ canvasId: MarkdStage
 from a file picker. It displays the current and next slides with the current slide's speaker notes,
 and launches a synchronized native presentation window.
 
-The current **[v2.1.3 release](https://github.com/runceel/markdstage/releases/tag/v2.1.3)**
+The current **[v2.2.0 release](https://github.com/runceel/markdstage/releases/tag/v2.2.0)**
 includes portable builds and SHA-256 checksum files for Windows x64 and ARM64:
 
 - [MarkdStage-win-x64.zip](https://github.com/runceel/markdstage/releases/download/v2.2.0/MarkdStage-win-x64.zip)

@@ -1,23 +1,25 @@
-name: Publish MarkdStage CLI
+name: Release MarkdStage
 
 on:
   push:
     tags:
       - "v*"
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
 
 concurrency:
-  group: npm-publish-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  publish:
-    name: Publish to npm
-    if: github.repository == 'runceel/markdstage'
+  validate:
+    name: Validate release
     runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble
+      options: --init --ipc=host
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -29,12 +31,8 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 24.x
-          registry-url: https://registry.npmjs.org/
 
-      - name: npm with Trusted Publishing support
-        run: npm install --global npm@11.6.3
-
-      - name: Verify release tag
+      - name: Verify version, tag, and release links
         shell: bash
         run: |
           set -euo pipefail
@@ -46,7 +44,7 @@ jobs:
           fi
           expected="v${version}"
           if [ "$GITHUB_REF_NAME" != "$expected" ]; then
-            echo "Tag $GITHUB_REF_NAME does not match package version $version."
+            echo "Tag $GITHUB_REF_NAME does not match the unified product version $version."
             echo "Expected tag: $expected"
             exit 1
           fi
@@ -55,20 +53,186 @@ jobs:
             echo "The tagged commit must be reachable from origin/main."
             exit 1
           }
+          for readme in README.md README.ja.md; do
+            release_link_count=$(grep -Fc "releases/tag/${GITHUB_REF_NAME}" "$readme")
+            test "$release_link_count" -eq 2 || {
+              echo "$readme must contain exactly two current-release links for $GITHUB_REF_NAME."
+              exit 1
+            }
+            grep -F "tree/${GITHUB_REF_NAME}/.github/extensions/markdstage" "$readme"
+            grep -F "releases/download/${GITHUB_REF_NAME}/MarkdStage-win-x64.zip" "$readme"
+            grep -F "releases/download/${GITHUB_REF_NAME}/MarkdStage-win-arm64.zip" "$readme"
+          done
+          notes=".github/release-notes/${GITHUB_REF_NAME}.md"
+          test -f "$notes" || {
+            echo "Missing release notes: $notes"
+            exit 1
+          }
+          grep -qx '## Overview' "$notes"
+          grep -qx '## Compatibility and migration' "$notes"
 
-      - name: CLI tests
-        run: npm run test:cli
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify the Extension has no runtime npm dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          found=$(find .github/extensions/markdstage \
+            \( -name package.json -o -name package-lock.json -o -name node_modules \) -print)
+          if [ -n "$found" ]; then
+            echo "The Extension directory contains npm dependencies:"
+            echo "$found"
+            exit 1
+          fi
+
+      - name: Complete test suite
+        run: npm test
 
       - name: Generated Agent Skills are up to date
         run: npm run skills:check
+
+  extension:
+    name: Package Extension
+    needs: validate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Create Extension ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets extension-stage
+          cp -a .github/extensions/markdstage extension-stage/markdstage
+          rm -rf \
+            extension-stage/markdstage/test \
+            extension-stage/markdstage/test-results \
+            extension-stage/markdstage/playwright-report \
+            extension-stage/markdstage/node_modules
+          rm -f \
+            extension-stage/markdstage/package.json \
+            extension-stage/markdstage/package-lock.json
+          (
+            cd extension-stage
+            zip -q -r "../release-assets/markdstage-${GITHUB_REF_NAME}.zip" markdstage
+          )
+          (
+            cd release-assets
+            sha256sum "markdstage-${GITHUB_REF_NAME}.zip" \
+              > "markdstage-${GITHUB_REF_NAME}.zip.sha256"
+          )
+          unzip -Z1 "release-assets/markdstage-${GITHUB_REF_NAME}.zip" \
+            > release-assets/extension-contents.txt
+          for required in \
+            markdstage/copilot-extension.json \
+            markdstage/extension.mjs \
+            markdstage/scripts/vendor-assets.mjs \
+            markdstage/schema/architecture-v1.schema.json \
+            markdstage/vendor/mermaid.min.js.part-0001; do
+            grep -qx "$required" release-assets/extension-contents.txt || {
+              echo "Missing from Extension ZIP: $required"
+              exit 1
+            }
+          done
+          if grep -Eq '^markdstage/(test/|node_modules/|package(-lock)?\.json$)' \
+            release-assets/extension-contents.txt; then
+            echo "The Extension ZIP contains development-only files."
+            exit 1
+          fi
+          rm release-assets/extension-contents.txt
+
+      - name: Upload Extension artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: markdstage-extension-release
+          path: release-assets/*
+          retention-days: 7
+          if-no-files-found: error
+
+  desktop:
+    name: Package Desktop
+    needs: validate
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: .NET SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Core tests
+        run: dotnet test apps\MarkdStage.Desktop\tests\MarkdStage.Core.Tests\MarkdStage.Core.Tests.csproj -c Release
+
+      - name: WinUI build
+        run: dotnet build apps\MarkdStage.Desktop\src\MarkdStage.App\MarkdStage.App.csproj -c Release -r win-x64 -p:Platform=x64
+
+      - name: x64 portable publish
+        shell: pwsh
+        run: apps\MarkdStage.Desktop\scripts\Publish.ps1 -Architecture x64
+
+      - name: ARM64 portable publish
+        shell: pwsh
+        run: apps\MarkdStage.Desktop\scripts\Publish.ps1 -Architecture arm64
+
+      - name: Upload Desktop artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: markdstage-desktop-release
+          path: |
+            apps/MarkdStage.Desktop/artifacts/MarkdStage-win-x64.zip
+            apps/MarkdStage.Desktop/artifacts/MarkdStage-win-x64.zip.sha256
+            apps/MarkdStage.Desktop/artifacts/MarkdStage-win-arm64.zip
+            apps/MarkdStage.Desktop/artifacts/MarkdStage-win-arm64.zip.sha256
+          retention-days: 7
+          if-no-files-found: error
+
+  npm:
+    name: Publish npm package
+    needs: validate
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+          registry-url: https://registry.npmjs.org/
+
+      - name: npm with Trusted Publishing support
+        run: npm install --global npm@11.6.3
 
       - name: Review package contents
         working-directory: packages/markdstage-cli
         run: npm pack --dry-run
 
       - name: Publish package
+        shell: bash
         working-directory: packages/markdstage-cli
-        run: npm publish --access public --provenance
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          if npm view "@markdstage/markdstage@${version}" version \
+            --registry=https://registry.npmjs.org/ >/dev/null 2>&1; then
+            echo "@markdstage/markdstage@$version is already published."
+          else
+            npm publish --access public --provenance
+          fi
 
       - name: Verify published version
         shell: bash
@@ -87,3 +251,145 @@ jobs:
           done
           echo "Published version $version was not visible after 60 seconds."
           exit 1
+
+  release:
+    name: Publish GitHub Release
+    needs:
+      - validate
+      - extension
+      - desktop
+      - npm
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify artifact checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sed -i 's/\r$//' MarkdStage-win-x64.zip.sha256 MarkdStage-win-arm64.zip.sha256
+          sha256sum -c "markdstage-${GITHUB_REF_NAME}.zip.sha256"
+          sha256sum -c MarkdStage-win-x64.zip.sha256
+          sha256sum -c MarkdStage-win-arm64.zip.sha256
+
+      - name: Generate release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          extension_sha=$(awk '{print $1}' "release-assets/markdstage-${GITHUB_REF_NAME}.zip.sha256")
+          x64_sha=$(awk '{print $1}' release-assets/MarkdStage-win-x64.zip.sha256)
+          arm64_sha=$(awk '{print $1}' release-assets/MarkdStage-win-arm64.zip.sha256)
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
+            -f tag_name="$GITHUB_REF_NAME" --jq .body > generated-notes.md
+          cp ".github/release-notes/${GITHUB_REF_NAME}.md" release-notes.md
+          printf '\n' >> release-notes.md
+          cat >> release-notes.md <<EOF
+
+          ## Version targets
+
+          - MarkdStage Canvas Extension: ${GITHUB_REF_NAME}
+          - MarkdStage Skill: ${GITHUB_REF_NAME}
+          - MarkdStage Desktop: ${GITHUB_REF_NAME}
+          - npm CLI: \`@markdstage/markdstage@${version}\`
+
+          ## Requirements
+
+          - CLI: Node.js 24 or later and Microsoft Edge, Google Chrome, or Chromium
+          - Desktop: Windows 10 or Windows 11, x64 or ARM64, and Microsoft Edge WebView2 Runtime
+
+          Desktop ZIP files are self-contained and include Windows App SDK and the .NET runtime.
+          Third-party license information is included in each distribution.
+
+          Install the version-pinned Extension from:
+
+          \`https://github.com/${GITHUB_REPOSITORY}/tree/${GITHUB_REF_NAME}/.github/extensions/markdstage\`
+
+          ## Assets and SHA-256
+
+          | File | SHA-256 |
+          | --- | --- |
+          | \`markdstage-${GITHUB_REF_NAME}.zip\` | \`${extension_sha}\` |
+          | \`MarkdStage-win-x64.zip\` | \`${x64_sha}\` |
+          | \`MarkdStage-win-arm64.zip\` | \`${arm64_sha}\` |
+
+          Verified commit: \`${GITHUB_SHA}\`
+
+          ## Changes
+
+          EOF
+          cat generated-notes.md >> release-notes.md
+
+      - name: Create or update GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          assets=(
+            "release-assets/markdstage-${GITHUB_REF_NAME}.zip"
+            "release-assets/markdstage-${GITHUB_REF_NAME}.zip.sha256"
+            "release-assets/MarkdStage-win-x64.zip"
+            "release-assets/MarkdStage-win-x64.zip.sha256"
+            "release-assets/MarkdStage-win-arm64.zip"
+            "release-assets/MarkdStage-win-arm64.zip.sha256"
+          )
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "MarkdStage $GITHUB_REF_NAME" \
+              --notes-file release-notes.md
+            gh release upload "$GITHUB_REF_NAME" "${assets[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "MarkdStage $GITHUB_REF_NAME" \
+              --notes-file release-notes.md
+          fi
+
+      - name: Verify published release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          assets=$(gh release view "$GITHUB_REF_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '.assets[].name')
+          for required in \
+            "markdstage-${GITHUB_REF_NAME}.zip" \
+            "markdstage-${GITHUB_REF_NAME}.zip.sha256" \
+            MarkdStage-win-x64.zip \
+            MarkdStage-win-x64.zip.sha256 \
+            MarkdStage-win-arm64.zip \
+            MarkdStage-win-arm64.zip.sha256; do
+            grep -qx "$required" <<<"$assets" || {
+              echo "Missing release asset: $required"
+              exit 1
+            }
+          done
+          curl -fsSIL \
+            "https://github.com/${GITHUB_REPOSITORY}/tree/${GITHUB_REF_NAME}/.github/extensions/markdstage" \
+            >/dev/null
+          curl -fsSIL \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/MarkdStage-win-x64.zip" \
+            >/dev/null
+          curl -fsSIL \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}/MarkdStage-win-arm64.zip" \
+            >/dev/null
