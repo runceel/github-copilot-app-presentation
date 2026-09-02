@@ -83,6 +83,9 @@ pictures above those shapes. Decorative backgrounds, gradients, highlighted code
 unsupported HTML/CSS are preserved as background artwork. The export report lists these fallbacks
 instead of silently omitting them.
 
+Native Japanese text uses Yu Gothic as its primary East Asian font, while Latin text keeps the font
+selected by the rendered slide.
+
 PowerPoint export uses the same 13.333333 x 7.5 inch page size and frozen in-memory deck snapshot as
 PDF export, including temporary slide replacements and the automatic back cover. Speaker notes and
 Architecture editing controls are excluded. The result aims for practical fidelity, not

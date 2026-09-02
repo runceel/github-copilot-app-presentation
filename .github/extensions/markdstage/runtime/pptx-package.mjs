@@ -16,6 +16,7 @@ const NS_R =
   "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const NS_REL =
   "http://schemas.openxmlformats.org/package/2006/relationships";
+const JAPANESE_FONT_FACE = "Yu Gothic";
 
 const REL = {
   officeDocument: `${NS_R}/officeDocument`,
@@ -364,7 +365,7 @@ function paragraphXml(paragraph, path, relationships) {
       runXml(run, `${path}.runs[${index}]`, relationships),
     )
     .join("");
-  return `<a:p><a:pPr algn="${align}" lvl="${level}">${bullet}</a:pPr>${runs}<a:endParaRPr lang="en-US"/></a:p>`;
+  return `<a:p><a:pPr algn="${align}" lvl="${level}">${bullet}</a:pPr>${runs}<a:endParaRPr lang="en-US"><a:ea typeface="${JAPANESE_FONT_FACE}"/></a:endParaRPr></a:p>`;
 }
 
 function runXml(run, path, relationships) {
@@ -393,6 +394,7 @@ function runXml(run, path, relationships) {
     }
     properties += `<a:latin typeface="${xmlEscape(run.fontFace)}"/>`;
   }
+  properties += `<a:ea typeface="${JAPANESE_FONT_FACE}"/>`;
   if (run.href !== undefined) {
     if (typeof run.href !== "string" || !run.href) {
       fail(`${path}.href must be a non-empty string`);
@@ -838,7 +840,7 @@ function appXml(slideCount) {
 }
 
 function themeXml() {
-  return `${XML}<a:theme xmlns:a="${NS_A}" name="MarkdStage"><a:themeElements><a:clrScheme name="MarkdStage"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F1F1F"/></a:dk2><a:lt2><a:srgbClr val="F2F2F2"/></a:lt2><a:accent1><a:srgbClr val="4472C4"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2><a:accent3><a:srgbClr val="A5A5A5"/></a:accent3><a:accent4><a:srgbClr val="FFC000"/></a:accent4><a:accent5><a:srgbClr val="5B9BD5"/></a:accent5><a:accent6><a:srgbClr val="70AD47"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme><a:fontScheme name="MarkdStage"><a:majorFont><a:latin typeface="Aptos Display"/><a:ea typeface=""/><a:cs typeface=""/></a:majorFont><a:minorFont><a:latin typeface="Aptos"/><a:ea typeface=""/><a:cs typeface=""/></a:minorFont></a:fontScheme><a:fmtScheme name="MarkdStage"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="accent1"/></a:solidFill><a:solidFill><a:schemeClr val="accent2"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="19050"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="28575"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill><a:solidFill><a:schemeClr val="lt2"/></a:solidFill><a:solidFill><a:schemeClr val="dk1"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`;
+  return `${XML}<a:theme xmlns:a="${NS_A}" name="MarkdStage"><a:themeElements><a:clrScheme name="MarkdStage"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F1F1F"/></a:dk2><a:lt2><a:srgbClr val="F2F2F2"/></a:lt2><a:accent1><a:srgbClr val="4472C4"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2><a:accent3><a:srgbClr val="A5A5A5"/></a:accent3><a:accent4><a:srgbClr val="FFC000"/></a:accent4><a:accent5><a:srgbClr val="5B9BD5"/></a:accent5><a:accent6><a:srgbClr val="70AD47"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme><a:fontScheme name="MarkdStage"><a:majorFont><a:latin typeface="Aptos Display"/><a:ea typeface="${JAPANESE_FONT_FACE}"/><a:cs typeface=""/><a:font script="Jpan" typeface="${JAPANESE_FONT_FACE}"/></a:majorFont><a:minorFont><a:latin typeface="Aptos"/><a:ea typeface="${JAPANESE_FONT_FACE}"/><a:cs typeface=""/><a:font script="Jpan" typeface="${JAPANESE_FONT_FACE}"/></a:minorFont></a:fontScheme><a:fmtScheme name="MarkdStage"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="accent1"/></a:solidFill><a:solidFill><a:schemeClr val="accent2"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="19050"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="28575"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill><a:solidFill><a:schemeClr val="lt2"/></a:solidFill><a:solidFill><a:schemeClr val="dk1"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`;
 }
 
 function slideMasterXml() {

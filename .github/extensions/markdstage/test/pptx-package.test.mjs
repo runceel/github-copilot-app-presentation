@@ -226,6 +226,56 @@ test("emits native text, hyperlinks, tables, images, shapes, and connector segme
   assert.match(slide, /<a:t>Flow<\/a:t>/);
 });
 
+test("uses Yu Gothic for Japanese theme fonts and native text", () => {
+  const files = readStoredZip(
+    buildPptxPackage({
+      slides: [
+        {
+          elements: [
+            {
+              type: "text",
+              x: 40,
+              y: 40,
+              width: 600,
+              height: 80,
+              paragraphs: [
+                {
+                  runs: [
+                    {
+                      text: "日本語の編集可能テキスト",
+                      fontFace: "Segoe UI",
+                      fontSize: "28px",
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  const theme = xml(files, "ppt/theme/theme1.xml");
+  const slide = xml(files, "ppt/slides/slide1.xml");
+
+  assert.match(
+    theme,
+    /<a:majorFont><a:latin typeface="Aptos Display"\/><a:ea typeface="Yu Gothic"\/><a:cs typeface=""\/><a:font script="Jpan" typeface="Yu Gothic"\/><\/a:majorFont>/,
+  );
+  assert.match(
+    theme,
+    /<a:minorFont><a:latin typeface="Aptos"\/><a:ea typeface="Yu Gothic"\/><a:cs typeface=""\/><a:font script="Jpan" typeface="Yu Gothic"\/><\/a:minorFont>/,
+  );
+  assert.match(
+    slide,
+    /<a:latin typeface="Segoe UI"\/><a:ea typeface="Yu Gothic"\/>[\s\S]*?<a:t>日本語の編集可能テキスト<\/a:t>/,
+  );
+  assert.match(
+    slide,
+    /<a:endParaRPr lang="en-US"><a:ea typeface="Yu Gothic"\/><\/a:endParaRPr>/,
+  );
+});
+
 test("keeps rich text and visible styling together in a configured AutoShape", () => {
   const files = readStoredZip(
     buildPptxPackage({
