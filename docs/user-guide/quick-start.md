@@ -35,7 +35,7 @@ Save the file with a `.md` or `.markdown` extension.
 Use either method:
 
 - Ask GitHub Copilot: `Present this deck using docs/user-guide/examples/quick-start.md.`
-- Open the MarkdStage canvas, select **📂 Load Markdown**, and choose the file.
+- Open the MarkdStage canvas, select **More controls > Open Markdown**, and choose the file.
 
 The complete deck opens immediately. Use **◀**, **▶**, the arrow keys, or **☰** to navigate.
 
@@ -55,8 +55,8 @@ The main window shows the current slide, next slide, and current speaker notes.
 
 ## 4. Present
 
-- **Canvas Extension:** Select **⛶** for an external audience window, or open **Presenter view** to
-  keep the current slide, next slide, and notes together.
+- **Canvas Extension:** Select **More controls > External window** for an external audience window,
+  or **More controls > Presenter view** to keep the current slide, next slide, and notes together.
 - **Desktop:** Select **Start presentation** to open the synchronized audience window.
 - Press `F11` in the audience window for fullscreen and `Esc` to leave fullscreen.
 
@@ -64,8 +64,8 @@ The main window shows the current slide, next slide, and current speaker notes.
 
 PDF export is available in the Canvas Extension:
 
-1. Select **16:9** and correct any clipping warning.
-2. Select the printer icon.
+1. Select **More controls > Output preview** and correct any clipping warning.
+2. Select **More controls > Export PDF**.
 3. Use the generated 16:9 PDF from the workspace.
 
 MarkdStage Desktop does not export PDF.

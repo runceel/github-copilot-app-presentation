@@ -436,7 +436,7 @@ should determine placement without writing every coordinate.
 ### Placement editing
 
 Architecture diagrams can be moved directly over the rendered result. For decks
-imported through 📂, edits write back to the source `architecture` fence and
+imported through **More controls > Open Markdown**, edits write back to the source `architecture` fence and
 survive re-import. Decks supplied directly through open / `load_deck` cannot be
 reversibly mapped to a source file, so they save only to canvas deck state.
 In the standalone CLI, `markdstage present slides.md --watch` enables the same
@@ -516,7 +516,7 @@ blocks.
 - Saving reloads any MarkdStage canvas or watched CLI presentation showing the
   same Markdown while preserving the current page and theme.
 
-Source-backed decks imported through 📂 and CLI `present --watch` enable
+Source-backed decks imported through **More controls > Open Markdown** and CLI `present --watch` enable
 **Advanced editing**. Agents can open the editor canvas directly:
 
 ```json

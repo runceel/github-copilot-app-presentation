@@ -122,6 +122,7 @@ theme-file: themes/brand/theme.css
 ## 発表前にレイアウトを確認する
 
 伸縮する Canvas ではうまく見えても、固定 16:9 の出力では内容が見切れることがあります。
-Canvas Extension で **16:9** を選び、書き出す前に警告をすべて解消してください。
+Canvas Extension で **More controls > Output preview** を選び、書き出す前に警告をすべて
+解消してください。
 
 [次へ: 図とメディア →](diagrams-and-media.md)

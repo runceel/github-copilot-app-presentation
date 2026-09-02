@@ -70,13 +70,14 @@ and layered layouts. Connectors support straight, orthogonal, and polyline routi
 
 ## Adjust placement in the Canvas Extension
 
-Select **✎** to enter the lightweight placement editor. Select an element, drag it, or use the arrow
-keys. The editor provides Undo, Redo, layout release, and an **Advanced edit** entry point.
+Select **More controls > Shape editing** to enter the lightweight placement editor. Select an
+element, drag it, or use the arrow keys. The editor provides Undo, Redo, layout release, and an
+**Advanced edit** entry point.
 
 ![Architecture placement editing in the Canvas Extension](images/canvas-architecture-edit.png)
 
-For Markdown imported with **📂**, placement changes are saved back to the source Architecture
-block. Decks created directly in the canvas keep changes in canvas state.
+For Markdown imported with **More controls > Open Markdown**, placement changes are saved back to
+the source Architecture block. Decks created directly in the canvas keep changes in canvas state.
 
 Leave edit mode before presenting.
 
@@ -97,8 +98,8 @@ The editor can:
 Changes remain a draft until you select **Save**. If the Markdown changes externally, the editor
 does not overwrite it; reload the source and reapply the intended change.
 
-Advanced editing requires a source-backed deck imported through **📂** and an existing
-`architecture` block. An empty block is valid and can be populated by the editor:
+Advanced editing requires a source-backed deck imported through **More controls > Open Markdown**
+and an existing `architecture` block. An empty block is valid and can be populated by the editor:
 
 ````markdown
 ```architecture

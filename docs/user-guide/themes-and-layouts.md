@@ -122,6 +122,6 @@ For the complete property reference, see
 ## Check layout before presenting
 
 Content can look acceptable in a flexible canvas but clip in fixed 16:9 output. In the Canvas
-Extension, select **16:9** and resolve every warning before exporting.
+Extension, select **More controls > Output preview** and resolve every warning before exporting.
 
 [Next: Diagrams and media →](diagrams-and-media.md)

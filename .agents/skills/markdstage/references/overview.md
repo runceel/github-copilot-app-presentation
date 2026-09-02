@@ -23,8 +23,8 @@ Canvas iframe (renderer/)
   | highlights language-tagged code fences with highlight.js
   | converts ```mermaid blocks with mermaid.run
   | converts validated ```architecture JSON DSL into a safe SVG DOM
-  | provides ◀ ▶, ✎, 16:9 PDF preview, margin clicks, arrow keys, and the ☰ slide list
-  | opens a synchronized external window with ⛶
+  | keeps ◀ page ▶, ☰, and ⋯ visible in a compact control bar
+  | groups editing, presentation, preview, import, refresh, and export under ⋯
   v
 The themed slide is displayed and updates automatically
 ```
@@ -71,26 +71,30 @@ The themed slide is displayed and updates automatically
 - Put **speaker notes** in top-level HTML comments on each slide. Presenter view
   renders notes as Markdown and follows navigation. Notes are absent from
   regular slides, the external presenter, and PDF output.
-- The **canvas renderer** owns navigation controls, ✎ editing, the slide list,
-  and current position. ✎ toggles the same placement mode as
-  `edit_architecture`. For Markdown loaded with 📂, **Advanced editing** opens
+- The **canvas renderer** owns the compact navigation controls, shape editing,
+  the slide list, and current position. **More controls > Shape editing**
+  toggles the same placement mode as `edit_architecture`. For Markdown loaded
+  with **More controls > Open Markdown**, **Advanced editing** opens
   the dedicated `architecture-editor` canvas. The agent only opens the deck and
   does not run an `ask_user` loop. Margin clicks are installed only in normal
   canvas and presenter modes, never print mode. `goto_slide` remains available
   for an explicit page request from chat.
-- **PDF Export is available from the printer icon.** When `sourceName` is passed
+- **PDF Export is available from More controls > Export PDF.** When
+  `sourceName` is passed
   to open / `load_deck`, the printer saves `<source-name>.pdf` in the workspace.
   It does not load or watch that file. AI may call `export_pdf` with another
   `outputPath`. Hidden print mode renders every page, then headless Edge/Chrome
   produces a 16:9 PDF with backgrounds, images, highlighted code, and Mermaid.
-- **Hybrid editable PowerPoint export is available from the P control.** It
+- **Hybrid editable PowerPoint export is available from More controls > Export
+  PowerPoint.** It
   preserves supported text, lists, links, tables, raster images, and Architecture
   DSL objects as native PowerPoint content. Architecture nodes, groups, and
   connector-label pills are visible AutoShapes with integrated text; icons use a
   transparent foreground picture layer. Mermaid and unsupported styling stay
   visible as background artwork and are listed in the export report. AI may call
   `export_pptx` with another workspace-confined `.pptx` path.
-- Use the **16:9 control** to letterbox the current slide inside the canvas with
+- Use **More controls > Output preview** to letterbox the current slide inside
+  the canvas with
   the same fixed 1280×720 typography, spacing, diagram limits, and clipping used
   by PDF output. This preview is local to the canvas and does not change deck
   state. A visible and accessible warning identifies content that would be
@@ -105,7 +109,8 @@ The themed slide is displayed and updates automatically
   element hints. Call `capture_slides` only when visual inspection is needed;
   PNGs are fixed 1280×720 files and the action returns paths instead of inline
   image data.
-- Open the **external presenter** with ⛶ or `open_presenter`. Edge / Chrome /
+- Open the **external presenter** with **More controls > External window** or
+  `open_presenter`. Edge / Chrome /
   Chromium starts in a dedicated temporary profile as a movable, resizable
   1280×720 app-mode window. It shares `/state`, `/navigate`, and SSE with the
   canvas, so keyboard and Surface Pen position remain synchronized. Move it to
@@ -120,7 +125,7 @@ The themed slide is displayed and updates automatically
 - Add language names such as `csharp`, `json`, or `diff` to code fences for
   highlight.js syntax highlighting.
 
-Users can load workspace Markdown directly with the canvas 📂 button (deterministic splitting without AI; natural-language summarization remains the AI's responsibility). The workspace root is the Git repository root when available, otherwise the folder opened for the current session.
-Use MarkdStage's ✎ control to adjust the placement of an existing Architecture diagram. In the CLI, run `markdstage present slides.md --watch`; it starts in viewing mode and enables the same placement editor plus the detailed Architecture designer. CLI `present` without `--watch` is read-only. Comprehensive edits affect the source Markdown only when explicitly saved.
+Users can load workspace Markdown directly with **More controls > Open Markdown** (deterministic splitting without AI; natural-language summarization remains the AI's responsibility). The workspace root is the Git repository root when available, otherwise the folder opened for the current session.
+Use **More controls > Shape editing** to adjust the placement of an existing Architecture diagram. In the CLI, run `markdstage present slides.md --watch`; it starts in viewing mode and enables the same placement editor plus the detailed Architecture designer. CLI `present` without `--watch` is read-only. Comprehensive edits affect the source Markdown only when explicitly saved.
 
 For details, request `slide-format`, `themes`, `custom-themes`, `theme-schema`, `architecture-dsl`, or `architecture-schema`.

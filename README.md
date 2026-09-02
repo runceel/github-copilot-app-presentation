@@ -78,9 +78,10 @@ Because the MarkdStage canvas contributes the active deck and Architecture DSL t
 Copilot App context, you can describe the diagram you want and ask Copilot to write or revise the
 Markdown for you.
 
-For visual changes, import source Markdown with **📂**, choose **✎ → Advanced editing**, and use the
-dedicated Architecture Editor. It can add, remove, arrange, and inspect nodes, groups, images, and
-connectors; changes remain a draft until **Save** writes them back to Markdown.
+For visual changes, use **More controls > Open Markdown**, choose **More controls > Shape editing >
+Advanced editing**, and use the dedicated Architecture Editor. It can add, remove, arrange, and
+inspect nodes, groups, images, and connectors; changes remain a draft until **Save** writes them
+back to Markdown.
 
 <p align="center">
   <img src="./assets/readme/architecture-editor.png" alt="The MarkdStage Architecture Editor with an API node selected" width="100%">
@@ -90,7 +91,7 @@ connectors; changes remain a draft until **Save** writes them back to Markdown.
 
 | Surface | Purpose |
 | --- | --- |
-| **MarkdStage canvas** | Ask GitHub Copilot to summarize and format Markdown, or load it directly with the canvas 📂 button |
+| **MarkdStage canvas** | Ask GitHub Copilot to summarize and format Markdown, or load it directly with **More controls > Open Markdown** |
 | **MarkdStage Desktop** | Present on Windows while viewing the Markdown, next slide, and speaker notes without opening GitHub Copilot |
 | **MarkdStage CLI** | Present, validate, capture, and export from a terminal, CI, Codex, or Claude Code without the canvas |
 | **MarkStageForMac** | Present on macOS with the community-built native app |
@@ -114,12 +115,12 @@ the latest development version.
 1. Edit `slides.md` and separate slides with `---` after a blank line.
 2. Ask Copilot, "Present this deck using `slides.md`."
 3. Navigate with **◀ ▶**, the **arrow keys**, or the **☰ slide list** in the MarkdStage canvas.
-4. Use **16:9** before PDF or PowerPoint export. Copilot can run `inspect_layout` first and generate selected PNG previews only when needed.
+4. Use **More controls > Output preview** before PDF or PowerPoint export. Copilot can run `inspect_layout` first and generate selected PNG previews only when needed.
 
-You can also open Markdown directly from the workspace with the canvas **📂** button or the `I`
-key, without using AI. In a Git repository, the workspace is the repository root; otherwise it
-is the folder opened for the current session. When calling `open_canvas` directly, use canvas ID
-**`MarkdStage`**.
+You can also open Markdown directly from the workspace with **More controls > Open Markdown** or
+the `I` key, without using AI. In a Git repository, the workspace is the repository root;
+otherwise it is the folder opened for the current session. When calling `open_canvas` directly,
+use canvas ID **`MarkdStage`**.
 
 ```text
 canvasId: MarkdStage

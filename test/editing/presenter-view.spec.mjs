@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { startHarness } from "../harness/server.mjs";
+import { clickMoreControl, openMoreControls } from "../utils/nav.mjs";
 import { waitForSlideReady } from "../utils/ready.mjs";
 
 const SLIDES = [
@@ -15,7 +16,7 @@ test("presenter view provides presentation controls and returns to the slide", a
     await page.goto(harness.url, { waitUntil: "load" });
     await waitForSlideReady(page);
 
-    await page.getByRole("button", { name: "Presenter view" }).click();
+    await clickMoreControl(page, "#navPresenterView");
     await expect(page.locator("#presenterView")).toBeVisible();
     await expect(page.locator("#presenterCurrent")).toHaveAttribute(
       "src",
@@ -95,6 +96,7 @@ test("hides controls for actions that the host cannot provide", async ({ page })
     await page.goto(harness.url, { waitUntil: "load" });
     await waitForSlideReady(page);
 
+    await openMoreControls(page);
     await expect(page.locator("#navPresent")).toBeHidden();
     await expect(page.locator("#navPresenterView")).toBeHidden();
     await expect(page.locator("#navExport")).toBeHidden();

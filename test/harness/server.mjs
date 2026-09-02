@@ -145,8 +145,8 @@ export async function startHarness({
   pptxExportAvailable = true,
   markdownImportAvailable = true,
 } = {}) {
-  if (!Array.isArray(slides) || slides.length === 0) {
-    throw new Error("startHarness requires a non-empty slides array");
+  if (!Array.isArray(slides)) {
+    throw new Error("startHarness requires a slides array");
   }
 
   // Reconstruct once at startup and retain in memory. SHA-256 has been verified for both chunks and
@@ -160,7 +160,7 @@ export async function startHarness({
     version: 1,
     deckVersion: 1,
     slides: slides.slice(),
-    index: Math.min(Math.max(index, 0), slides.length - 1),
+    index: slides.length ? Math.min(Math.max(index, 0), slides.length - 1) : 0,
     theme,
     customThemeCss,
     customThemeMeta,
@@ -301,10 +301,9 @@ export async function startHarness({
         -1,
         Math.min(1, Number.parseInt(requestUrl.searchParams.get("offset") || "0", 10) || 0),
       );
-      const targetIndex = Math.min(
-        Math.max(state.index + offset, 0),
-        state.slides.length - 1,
-      );
+      const targetIndex = state.slides.length
+        ? Math.min(Math.max(state.index + offset, 0), state.slides.length - 1)
+        : 0;
       sendJson(res, 200, {
         version: state.version,
         deckVersion: state.deckVersion,
@@ -554,7 +553,7 @@ export async function startHarness({
       return;
     }
 
-    // Markdown import (the canvas 📂 button). Use the same shared scanning and splitting modules as
+    // Markdown import (the canvas Open Markdown control). Use the same shared scanning and splitting modules as
     // production; this harness only replaces the deck.
     if (pathname === "/markdown-files") {
       if (req.method !== "GET") {

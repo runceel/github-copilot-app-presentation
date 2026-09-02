@@ -78,8 +78,8 @@ GitHub Copilot Canvas、投影用ウィンドウ、Desktop アプリ、PDF エ�
 MarkdStage Canvas は、表示中のデッキと Architecture DSL を GitHub Copilot App のコンテキストに渡します。
 そのため、描きたい図をことばで説明するだけで、Markdown の作成や修正を Copilot に任せられます。
 
-画面上で図を編集したいときは、**📂** でソースの Markdown を読み込み、
-**✎ → Advanced editing** から専用の Architecture Editor を開きます。
+画面上で図を編集したいときは、**More controls > Open Markdown** でソースの Markdown を読み込み、
+**More controls > Shape editing > Advanced editing** から専用の Architecture Editor を開きます。
 ノード、グループ、画像、コネクターの追加、削除、配置、確認ができます。
 変更は下書きとして保持され、**Save** を選ぶと Markdown に書き戻されます。
 
@@ -91,7 +91,7 @@ MarkdStage Canvas は、表示中のデッキと Architecture DSL を GitHub Cop
 
 | 利用環境 | 用途 |
 | --- | --- |
-| **MarkdStage Canvas** | GitHub Copilot に Markdown の要約やスライド化を任せるか、Canvas の 📂 ボタンから直接読み込みます |
+| **MarkdStage Canvas** | GitHub Copilot に Markdown の要約やスライド化を任せるか、**More controls > Open Markdown** から直接読み込みます |
 | **MarkdStage Desktop** | GitHub Copilot を開かずに、Markdown、次のスライド、スピーカーノートを手元で見ながら Windows で発表します |
 | **MarkdStage CLI** | Canvas を使わずに、ターミナル、CI、Codex、Claude Code から発表・検証・取得・エクスポートします |
 | **MarkStageForMac** | コミュニティ製の macOS ネイティブアプリで発表します |
@@ -118,9 +118,9 @@ Extension は利用者の環境でローカルのコードを実行します。�
 1. `slides.md` を編集し、空行の後の `---` でスライドを区切ります。
 2. Copilot に「`slides.md` を使ってこのデッキをプレゼンテーションしてください」と依頼します。
 3. MarkdStage Canvas の **◀ ▶**、**矢印キー**、または **☰ スライド一覧**でスライドを送ります。
-4. PDF に書き出す前に **16:9** で確認します。Copilot に `inspect_layout` を先に実行させれば、確認が必要なページだけを PNG プレビューにできます。
+4. PDF に書き出す前に **More controls > Output preview** で確認します。Copilot に `inspect_layout` を先に実行させれば、確認が必要なページだけを PNG プレビューにできます。
 
-Canvas の **📂** ボタンか `I` キーを使えば、AI を介さずにワークスペースの Markdown をそのまま開けます。
+Canvas の **More controls > Open Markdown** か `I` キーを使えば、AI を介さずにワークスペースの Markdown をそのまま開けます。
 Git リポジトリではリポジトリルート、それ以外では現在のセッションで開いているフォルダーが
 ワークスペースになります。`open_canvas` を直接呼び出す場合の Canvas ID は
 **`MarkdStage`** です。

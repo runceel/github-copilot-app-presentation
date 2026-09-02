@@ -70,12 +70,12 @@ Mermaid の構文に誤りがある場合は、スライドの他の内容はそ
 
 ## Canvas Extension で配置を調整する
 
-**✎** を選ぶと、手早く使える配置エディターが開きます。要素を選び、ドラッグか矢印キーで動かします。
+**More controls > Shape editing** を選ぶと、手早く使える配置エディターが開きます。要素を選び、ドラッグか矢印キーで動かします。
 エディターには Undo、Redo、レイアウト解除、**Advanced edit** があります。
 
 ![Canvas Extension での Architecture 配置編集](../images/canvas-architecture-edit.png)
 
-**📂** で読み込んだ Markdown では、配置の変更が元の Architecture ブロックに保存されます。
+**More controls > Open Markdown** で読み込んだ Markdown では、配置の変更が元の Architecture ブロックに保存されます。
 Canvas で直接作ったデッキでは、変更は Canvas 側に保存されます。
 
 発表を始める前に、編集モードを終了してください。
@@ -97,8 +97,9 @@ Canvas で直接作ったデッキでは、変更は Canvas 側に保存され�
 変更は **Save** を選ぶまで下書きのままです。Markdown が外部で書き換えられていた場合、
 エディターはそれを上書きしません。元のファイルを読み込み直してから、変更をやり直してください。
 
-Advanced editing を使うには、**📂** で読み込んだ元ファイルとひも付くデッキと、
-`architecture` ブロックが必要です。次のように中身が空でも構いません。エディターから要素を足せます。
+Advanced editing を使うには、**More controls > Open Markdown** で読み込んだ元ファイルと
+ひも付くデッキと、`architecture` ブロックが必要です。次のように中身が空でも構いません。
+エディターから要素を足せます。
 
 ````markdown
 ```architecture
