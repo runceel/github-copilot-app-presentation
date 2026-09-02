@@ -124,6 +124,10 @@ async function readJsonBody(req, limit = 1_000_000) {
  * @param {string}  [options.theme]   dark | light | microsoft | custom
  * @param {number}  [options.index]   Initially displayed slide (zero-based)
  * @param {string}  [options.printToken] Token used in print mode
+ * @param {boolean} [options.presenterWindowAvailable] Whether the host can launch a presenter
+ * @param {boolean} [options.presenterViewAvailable] Whether the host provides presenter view
+ * @param {boolean} [options.pdfExportAvailable] Whether the host can export PDF from the renderer
+ * @param {boolean} [options.markdownImportAvailable] Whether the host can import Markdown
  */
 export async function startHarness({
   slides,
@@ -132,6 +136,10 @@ export async function startHarness({
   printToken = "test-print-token",
   architectureEdit = false,
   markdownRoot = "",
+  presenterWindowAvailable = true,
+  presenterViewAvailable = true,
+  pdfExportAvailable = true,
+  markdownImportAvailable = true,
 } = {}) {
   if (!Array.isArray(slides) || slides.length === 0) {
     throw new Error("startHarness requires a non-empty slides array");
@@ -162,6 +170,10 @@ export async function startHarness({
     sourceWatchError: "",
     sourceWatcher: null,
     presenterRunning: false,
+    presenterWindowAvailable,
+    presenterViewAvailable,
+    pdfExportAvailable,
+    markdownImportAvailable,
   };
   // Print results posted by the renderer, retained so tests can verify "ready".
   const printReports = [];
@@ -300,6 +312,10 @@ export async function startHarness({
         sourceWatchStatus: state.sourceWatchStatus,
         sourceWatchError: state.sourceWatchError,
         presenterRunning: state.presenterRunning,
+        presenterWindowAvailable: state.presenterWindowAvailable,
+        presenterViewAvailable: state.presenterViewAvailable,
+        pdfExportAvailable: state.pdfExportAvailable,
+        markdownImportAvailable: state.markdownImportAvailable,
         architectureEditAvailable: true,
         architectureEdit: state.architectureEdit,
       });

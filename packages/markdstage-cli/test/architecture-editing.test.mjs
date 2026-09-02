@@ -78,6 +78,10 @@ test("present without watch is read-only", async () => {
       assert.equal(state.architectureEditAvailable, false);
       assert.equal(state.architectureEdit, false);
       assert.equal(state.architectureDetailedEdit, false);
+      assert.equal(state.presenterWindowAvailable, false);
+      assert.equal(state.presenterViewAvailable, false);
+      assert.equal(state.pdfExportAvailable, false);
+      assert.equal(state.markdownImportAvailable, false);
 
       const mode = await post(server.url, "edit-mode", { enabled: true });
       assert.equal(mode.status, 501);

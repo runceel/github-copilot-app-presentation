@@ -778,11 +778,11 @@ function renderSlide(markdown) {
   architectureEditors.forEach((editor) => editor.destroy());
   architectureEditors = [];
   applyCustomThemeCss(customThemeCss);
+  const token = ++renderToken;
   const slide = createSlide(markdown, deckTheme);
   document.title = slide.title;
   document.documentElement.setAttribute("data-theme", slide.theme);
 
-  const token = ++renderToken;
   document.body.classList.add("mermaid-loading");
   document.getElementById("stage").replaceChildren(slide.deck);
   if (layoutFrame) {
@@ -1079,6 +1079,10 @@ let sourceWatchStatus = "inactive";
 let sourceWatchError = "";
 let presenterRequestPending = false;
 let presenterRunning = false;
+let presenterWindowAvailable = false;
+let presenterViewAvailable = false;
+let pdfExportAvailable = false;
+let markdownImportAvailable = false;
 let presenterViewOpen = false;
 let pdfExportPending = false;
 
@@ -1359,9 +1363,22 @@ async function fetchState() {
     data.customThemeMeta && typeof data.customThemeMeta === "object"
       ? data.customThemeMeta
       : null;
+  if (typeof data.presenterWindowAvailable === "boolean") {
+    presenterWindowAvailable = data.presenterWindowAvailable;
+  }
+  if (typeof data.presenterViewAvailable === "boolean") {
+    presenterViewAvailable = data.presenterViewAvailable;
+  }
+  if (typeof data.pdfExportAvailable === "boolean") {
+    pdfExportAvailable = data.pdfExportAvailable;
+  }
+  if (typeof data.markdownImportAvailable === "boolean") {
+    markdownImportAvailable = data.markdownImportAvailable;
+  }
   if (typeof data.presenterRunning === "boolean") {
     updatePresenterButton(data.presenterRunning);
   }
+  updateHostActionButtons();
   if (typeof data.sourceBacked === "boolean") sourceBacked = data.sourceBacked;
   if (typeof data.sourceModeAvailable === "boolean") {
     sourceModeAvailable = data.sourceModeAvailable;
@@ -1449,7 +1466,7 @@ function goToIndex(i) {
 }
 
 async function setPresenterRunning(running) {
-  if (presenterRequestPending) return;
+  if (!presenterWindowAvailable || presenterRequestPending) return;
   presenterRequestPending = true;
   const button = document.getElementById("navPresent");
   const status = document.getElementById("presentStatus");
@@ -1503,6 +1520,21 @@ function togglePresenterWindow() {
   return setPresenterRunning(!presenterRunning);
 }
 
+function updateHostActionButtons() {
+  const present = document.getElementById("navPresent");
+  if (present) present.hidden = presenterMode || !presenterWindowAvailable;
+  const presenterView = document.getElementById("navPresenterView");
+  if (presenterView) presenterView.hidden = presenterMode || !presenterViewAvailable;
+  const presenterToggle = document.getElementById("presenterToggleButton");
+  if (presenterToggle) presenterToggle.hidden = !presenterWindowAvailable;
+  const exportButton = document.getElementById("navExport");
+  if (exportButton) exportButton.hidden = presenterMode || !pdfExportAvailable;
+  const importButton = document.getElementById("navImport");
+  if (importButton) importButton.hidden = presenterMode || !markdownImportAvailable;
+  if (!presenterViewAvailable && presenterViewOpen) closePresenterView();
+  if (!markdownImportAvailable && importOpen) closeImportPicker();
+}
+
 function updatePresenterButton(running, message = "") {
   presenterRunning = running;
   const button = document.getElementById("navPresent");
@@ -1520,7 +1552,7 @@ function updatePresenterButton(running, message = "") {
 }
 
 async function exportPdfFromCanvas() {
-  if (pdfExportPending) return;
+  if (!pdfExportAvailable || pdfExportPending) return;
   pdfExportPending = true;
   const button = document.getElementById("navExport");
   const status = document.getElementById("exportStatus");
@@ -1587,10 +1619,10 @@ function toggleFixedPreviewMode() {
 function updateNav() {
   const nav = document.getElementById("nav");
   if (!nav) return;
-  // Outside presenter view, show only the load button even when no deck exists,
-  // allowing Markdown import before any slide has been loaded.
+  // Outside presenter view, show only the load button when the host supports
+  // Markdown import before any slide has been loaded.
   const empty = navTotal <= 0;
-  nav.hidden = previewMode || (empty && presenterMode);
+  nav.hidden = previewMode || (empty && (presenterMode || !markdownImportAvailable));
   nav.classList.toggle("nav-empty", empty);
   const counter = document.getElementById("navCounter");
   if (counter) {
@@ -1607,7 +1639,7 @@ function updateNav() {
 }
 
 function openPresenterView() {
-  if (presenterMode || navTotal <= 0) return;
+  if (presenterMode || !presenterViewAvailable || navTotal <= 0) return;
   presenterViewOpen = true;
   document.body.classList.add("presenter-view-mode");
   const view = document.getElementById("presenterView");
@@ -1828,7 +1860,7 @@ async function importMarkdown(path) {
 }
 
 function openImportPicker() {
-  if (presenterMode) return;
+  if (presenterMode || !markdownImportAvailable) return;
   importOpen = true;
   const el = document.getElementById("importPicker");
   if (el) el.hidden = false;

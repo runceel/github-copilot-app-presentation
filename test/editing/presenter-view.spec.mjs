@@ -67,3 +67,25 @@ test("speaker notes do not leak into slide overview titles", async ({ page }) =>
     await harness.close();
   }
 });
+
+test("hides controls for actions that the host cannot provide", async ({ page }) => {
+  const harness = await startHarness({
+    slides: SLIDES,
+    presenterWindowAvailable: false,
+    presenterViewAvailable: false,
+    pdfExportAvailable: false,
+    markdownImportAvailable: false,
+  });
+  try {
+    await page.goto(harness.url, { waitUntil: "load" });
+    await waitForSlideReady(page);
+
+    await expect(page.locator("#navPresent")).toBeHidden();
+    await expect(page.locator("#navPresenterView")).toBeHidden();
+    await expect(page.locator("#navExport")).toBeHidden();
+    await expect(page.locator("#navImport")).toBeHidden();
+    await expect(page.locator("#presenterToggleButton")).toBeHidden();
+  } finally {
+    await harness.close();
+  }
+});
