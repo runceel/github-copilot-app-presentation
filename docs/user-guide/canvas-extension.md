@@ -64,8 +64,9 @@ prompt examples. For a complete prompt-to-PDF exercise, follow the
 | **✎** | Enter or leave Architecture placement editing |
 | **⛶** | Open a synchronized external audience window |
 | **Presenter icon** | Open presenter view with current slide, next slide, and notes |
-| **16:9** | Preview the fixed PDF layout and display clipping warnings |
+| **16:9** | Preview the fixed PDF/PowerPoint layout and display clipping warnings |
 | **Printer** | Export the complete deck as a 16:9 PDF |
+| **P** | Export a hybrid editable 16:9 PowerPoint deck |
 | **📂** | Load a Markdown file from the workspace |
 | **Refresh** | Switch a source-backed deck between snapshot and automatic refresh |
 | **☰** | Open the slide list |

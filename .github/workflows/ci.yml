@@ -78,6 +78,9 @@ jobs:
       - name: PDF regression
         run: npm run test:pdf
 
+      - name: PowerPoint regression
+        run: npm run test:pptx
+
       - name: Save reports on failure
         if: failure()
         uses: actions/upload-artifact@v5

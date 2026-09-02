@@ -18,6 +18,7 @@ preparation and export tools differ by surface.
 | Fullscreen audience view | `F11` | `F11` |
 | 16:9 clipping preview | Yes | No |
 | PDF export | Yes | No |
+| Editable PowerPoint export | Yes | No |
 | Surface Pen | Supported on Windows | Supported while audience window is open |
 
 ## Prepare presenter view
@@ -65,5 +66,24 @@ filename. The exported file contains one 16:9 page per slide, including the back
 backgrounds, images, highlighted code, Mermaid, and Architecture diagrams.
 
 Speaker notes and Architecture editing controls are excluded.
+
+## Export editable PowerPoint
+
+1. Reload the source if it changed after the deck opened.
+2. Select **16:9** and resolve clipping warnings.
+3. Select **P**, or run `markdstage export slides.md --output slides.pptx`.
+4. Open the generated presentation and review every slide.
+
+Headings, paragraphs, lists, links, simple tables, supported images, and Architecture DSL objects
+are native PowerPoint content. Architecture nodes, groups, and connector-label pills are visible
+AutoShapes with their labels stored inside the shape; diagram icons are transparent foreground
+pictures above those shapes. Decorative backgrounds, gradients, highlighted code, Mermaid, and
+unsupported HTML/CSS are preserved as background artwork. The export report lists these fallbacks
+instead of silently omitting them.
+
+PowerPoint export uses the same 13.333333 x 7.5 inch page size and frozen in-memory deck snapshot as
+PDF export, including temporary slide replacements and the automatic back cover. Speaker notes and
+Architecture editing controls are excluded. The result aims for practical fidelity, not
+pixel-perfect Chromium equivalence or general HTML/CSS conversion.
 
 [Next: Troubleshooting →](troubleshooting.md)

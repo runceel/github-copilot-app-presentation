@@ -167,6 +167,7 @@ export async function startPresentationServer(
         presenterWindowAvailable: false,
         presenterViewAvailable: false,
         pdfExportAvailable: false,
+        pptxExportAvailable: false,
         markdownImportAvailable: false,
         architectureEditAvailable: editingAvailable,
         architectureEdit: editingAvailable && Boolean(session.architectureEdit),

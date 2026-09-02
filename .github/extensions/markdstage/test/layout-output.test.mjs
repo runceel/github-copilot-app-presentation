@@ -6,13 +6,17 @@ import { fileURLToPath } from "node:url";
 
 const extensionRoot = fileURLToPath(new URL("..", import.meta.url));
 
-test("canvas exposes lightweight layout inspection and bounded PNG capture", async () => {
+test("canvas exposes layout, PNG, PDF, and editable PowerPoint output", async () => {
   const source = await readFile(join(extensionRoot, "extension.mjs"), "utf8");
   // The headless browser flags live in the runtime shared with the CLI.
   const browser = await readFile(join(extensionRoot, "runtime", "browser.mjs"), "utf8");
+  const html = await readFile(join(extensionRoot, "renderer", "index.html"), "utf8");
 
   assert.match(source, /name: "inspect_layout"/);
   assert.match(source, /name: "capture_slides"/);
+  assert.match(source, /name: "export_pdf"/);
+  assert.match(source, /name: "export_pptx"/);
+  assert.match(source, /^    if \(pathname === "\/export-pptx"\)/m);
   assert.match(source, /maxItems: MAX_CAPTURE_SLIDES/);
   assert.match(source, /never inline image bytes/);
   assert.match(browser, /--window-size=1280,720/);
@@ -23,6 +27,9 @@ test("canvas exposes lightweight layout inspection and bounded PNG capture", asy
   assert.match(source, /sourceName is metadata and never reads or watches Markdown/);
   assert.match(source, /registered in-memory output snapshot/);
   assert.match(source, /targeted inspections must be serialized/);
+  assert.match(browser, /runPptxOutputBrowser/);
+  assert.match(browser, /window\.__presentationPptxModel/);
+  assert.match(html, /id="navExportPptx"/);
 });
 
 test("print, capture, and fixed preview share one 1280x720 output surface", async () => {

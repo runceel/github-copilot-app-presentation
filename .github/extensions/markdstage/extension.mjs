@@ -80,11 +80,16 @@ import {
   isProcessRunning,
   terminateProcessTree,
 } from "./runtime/browser.mjs";
-import { isPathInside, pdfNameForSource } from "./runtime/output-paths.mjs";
+import {
+  isPathInside,
+  pdfNameForSource,
+  pptxNameForSource,
+} from "./runtime/output-paths.mjs";
 import {
   MAX_CAPTURE_SLIDES,
   captureSlides as runtimeCaptureSlides,
   exportPdf as runtimeExportPdf,
+  exportPptx as runtimeExportPptx,
   inspectLayout as runtimeInspectLayout,
 } from "./runtime/output.mjs";
 import { loadCustomTheme as runtimeLoadCustomTheme } from "./runtime/custom-theme.mjs";
@@ -349,6 +354,10 @@ function captureSlides(inst, requestedIndexes, requestedDirectory, requestedThem
 
 function exportPdf(inst, requestedPath, requestedTheme) {
   return runOutputAction(() => runtimeExportPdf(inst, requestedPath, requestedTheme));
+}
+
+function exportPptx(inst, requestedPath, requestedTheme) {
+  return runOutputAction(() => runtimeExportPptx(inst, requestedPath, requestedTheme));
 }
 
 let logger = null;
@@ -1178,6 +1187,7 @@ async function startServer(inst) {
           presenterWindowAvailable: true,
           presenterViewAvailable: true,
           pdfExportAvailable: true,
+          pptxExportAvailable: true,
           markdownImportAvailable: true,
           architectureEditAvailable: true,
           architectureEdit: Boolean(inst.architectureEdit),
@@ -1267,6 +1277,46 @@ async function startServer(inst) {
             ok: false,
             error: error?.code || "pdf_export_failed",
             message: error?.message || "PDF export failed.",
+          }),
+        );
+      }
+      return;
+    }
+    if (pathname === "/export-pptx") {
+      if (req.method !== "POST") {
+        res.statusCode = 405;
+        res.setHeader("Allow", "POST");
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "method_not_allowed" }));
+        return;
+      }
+      const origin = req.headers.origin;
+      if (origin && origin !== new URL(inst.url).origin) {
+        res.statusCode = 403;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(JSON.stringify({ ok: false, error: "origin_not_allowed" }));
+        return;
+      }
+      try {
+        activateInstance(inst);
+        const result = await exportPptx(
+          inst,
+          pptxNameForSource(inst.sourceName),
+          inst.theme,
+        );
+        res.statusCode = 200;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(JSON.stringify(result));
+      } catch (error) {
+        res.statusCode =
+          error?.code === "no_deck" || error?.code === "export_in_progress" ? 409 : 500;
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.end(
+          JSON.stringify({
+            ok: false,
+            error: error?.code || "pptx_export_failed",
+            message: error?.message || "PowerPoint export failed.",
           }),
         );
       }
@@ -2027,7 +2077,7 @@ const session = await joinSession({
       id: "MarkdStage",
       displayName: "MarkdStage",
       description:
-        "Markdown, ready for the stage. A MarkdStage canvas that displays themed Markdown slides. Pass slides/index/theme to open the deck immediately; omit input only to refocus an existing instance. Any non-empty open input must include slides. sourceName is metadata and never reads or watches Markdown. Use the 16:9 control for PDF-equivalent preview, inspect_layout for compact clipping diagnostics, capture_slides for selected 1280x720 PNGs, open_presenter for an external presentation window, and export_pdf for final PDF output. Navigate within the canvas with ◀ ▶, arrow keys, the slide list, or a Surface Pen on supported Windows systems.",
+        "Markdown, ready for the stage. A MarkdStage canvas that displays themed Markdown slides. Pass slides/index/theme to open the deck immediately; omit input only to refocus an existing instance. Any non-empty open input must include slides. sourceName is metadata and never reads or watches Markdown. Use the 16:9 control for output preview, inspect_layout for compact clipping diagnostics, capture_slides for selected 1280x720 PNGs, open_presenter for an external presentation window, export_pdf for final PDF output, and export_pptx for hybrid editable PowerPoint output. Navigate within the canvas with ◀ ▶, arrow keys, the slide list, or a Surface Pen on supported Windows systems.",
       inputSchema: {
         type: "object",
         description:
@@ -2462,6 +2512,39 @@ const session = await joinSession({
             }
             activateInstance(inst);
             return exportPdf(inst, ctx.input?.outputPath, ctx.input?.theme);
+          },
+        },
+        {
+          name: "export_pptx",
+          description:
+            "Export the displayed deck to a hybrid editable 16:9 PowerPoint presentation. Supported text, lists, links, tables, images, and Architecture DSL objects remain editable. Mermaid, decorative styling, and unsupported content are preserved as background artwork and reported as fallbacks. Temporary show_slide content and the automatic back cover are included.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              outputPath: {
+                type: "string",
+                description:
+                  "PowerPoint path relative to the workspace. Defaults to markdstage.pptx. Paths outside the workspace and non-.pptx paths are rejected.",
+              },
+              theme: {
+                type: "string",
+                enum: ["dark", "light", "microsoft", "custom"],
+                description:
+                  "Theme applied to the PowerPoint export. Defaults to the displayed deck theme and does not change the canvas.",
+              },
+            },
+            additionalProperties: false,
+          },
+          handler: async (ctx) => {
+            const inst = instances.get(keyOf(ctx));
+            if (!inst) {
+              throw new CanvasError(
+                "canvas_not_open",
+                "MarkdStage canvas is not open; open it before exporting PowerPoint",
+              );
+            }
+            activateInstance(inst);
+            return exportPptx(inst, ctx.input?.outputPath, ctx.input?.theme);
           },
         },
         {

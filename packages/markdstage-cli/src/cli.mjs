@@ -40,7 +40,7 @@ const COMMANDS = [
   ["validate", "Check deck structure, Architecture DSL blocks, and themes."],
   ["inspect", "Report 1280x720 clipping diagnostics for a deck."],
   ["capture", "Write 1280x720 PNG files for selected or clipped slides."],
-  ["export", "Export the deck as a 16:9 PDF."],
+  ["export", "Export the deck as PDF or editable PowerPoint."],
   ["guide", "Print the canonical MarkdStage authoring guide."],
   ["skill", "Install or check the portable MarkdStage Agent Skills."],
   ["help", "Show help for MarkdStage or for one command."],
@@ -133,9 +133,10 @@ function usage(command) {
       "Without --pages only the slides reported as clipped are captured.",
     ],
     export: [
-      "Usage: markdstage export <file.md> [--output slides.pdf]",
+      "Usage: markdstage export <file.md> [--output slides.pdf|slides.pptx]",
       "",
-      "Produces the same 16:9 PDF as the MarkdStage canvas.",
+      "Produces the same 16:9 PDF or hybrid editable PowerPoint as the MarkdStage canvas.",
+      "The output extension selects the format; omitting --output keeps PDF as the default.",
     ],
     guide: [
       "Usage: markdstage guide [topic] [--json]",

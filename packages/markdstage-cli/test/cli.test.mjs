@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { run } from "../src/cli.mjs";
+import { exportCommand } from "../src/commands/export.mjs";
 import { inspectCommand } from "../src/commands/inspect.mjs";
 import { EXIT_DECK, EXIT_ISSUES, EXIT_OK, EXIT_USAGE } from "../src/exit.mjs";
 
@@ -183,6 +184,30 @@ test("inspect forwards the requested zero-based slide index", async () => {
       },
     );
     assert.deepEqual(received, { index: 1, includeFits: true });
+  });
+});
+
+test("export selects PDF or PowerPoint from the output extension", async () => {
+  await withDeck(VALID_DECK, async ({ file }) => {
+    const calls = [];
+    const exporters = {
+      pdf: async (_session, output) => {
+        calls.push({ format: "pdf", output });
+        return { ok: true, format: "pdf" };
+      },
+      pptx: async (_session, output) => {
+        calls.push({ format: "pptx", output });
+        return { ok: true, format: "pptx" };
+      },
+    };
+
+    await exportCommand({ file, output: "deck.pdf" }, exporters);
+    await exportCommand({ file, output: "deck.pptx" }, exporters);
+
+    assert.deepEqual(calls, [
+      { format: "pdf", output: "deck.pdf" },
+      { format: "pptx", output: "deck.pptx" },
+    ]);
   });
 });
 

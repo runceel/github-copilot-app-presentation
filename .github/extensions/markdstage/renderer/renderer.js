@@ -766,6 +766,7 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
     sizeMode,
     titleSlide,
     sectionSlide,
+    centerSlide,
     backcoverSlide,
     title: meta.title || meta.deck || "Slide",
   };
@@ -862,6 +863,960 @@ async function reportOutputStatus(token, status, error = "", layout = null) {
     cache: "no-store",
   });
   if (!response.ok) throw new Error(`Could not report output status (${response.status}).`);
+}
+
+const PPTX_RASTER_IMAGE = /\.(?:png|jpe?g|gif)(?:$|[?#])/i;
+
+function normalizeCssColor(value) {
+  const text = String(value || "").trim();
+  if (!text || text === "none" || text === "transparent") return null;
+  const shortHex = text.match(/^#([\da-f])([\da-f])([\da-f])$/i);
+  if (shortHex) {
+    return `#${shortHex.slice(1).map((part) => part.repeat(2)).join("")}`.toUpperCase();
+  }
+  const hex = text.match(/^#([\da-f]{6})(?:[\da-f]{2})?$/i);
+  if (hex) return `#${text.slice(1).toUpperCase()}`;
+  const rgb = text.match(
+    /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+%?))?\s*\)$/i,
+  );
+  if (!rgb) return text;
+  if (rgb[4] === "0" || rgb[4] === "0%") return null;
+  const channels = rgb
+    .slice(1, 4)
+    .map((part) => Math.max(0, Math.min(255, Math.round(Number(part)))));
+  if (rgb[4] !== undefined) {
+    const alpha = rgb[4].endsWith("%") ? Number.parseFloat(rgb[4]) / 100 : Number(rgb[4]);
+    if (Number.isFinite(alpha) && alpha < 1) {
+      return `rgba(${channels.join(", ")}, ${Math.max(0, alpha)})`;
+    }
+  }
+  return `#${channels
+    .map((part) => part.toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase()}`;
+}
+
+function resolveModelColor(value, context) {
+  if (!value || value === "none" || value === "transparent") return null;
+  const probe = document.createElement("span");
+  probe.style.color = String(value);
+  probe.style.position = "absolute";
+  probe.style.visibility = "hidden";
+  context.appendChild(probe);
+  const resolved = normalizeCssColor(getComputedStyle(probe).color);
+  probe.remove();
+  return resolved;
+}
+
+function relativeBounds(element, deck) {
+  const rect = element.getBoundingClientRect();
+  const slide = deck.getBoundingClientRect();
+  return {
+    x: roundedMetric(rect.left - slide.left),
+    y: roundedMetric(rect.top - slide.top),
+    width: roundedMetric(rect.width),
+    height: roundedMetric(rect.height),
+  };
+}
+
+function rasterImageSupported(image) {
+  const source = image.currentSrc || image.getAttribute("src") || "";
+  if (["cover", "none"].includes(getComputedStyle(image).objectFit)) return false;
+  if (/^data:image\/(?:png|jpeg|gif)[;,]/i.test(source)) return true;
+  try {
+    const url = new URL(source, window.location.href);
+    return url.origin === window.location.origin && PPTX_RASTER_IMAGE.test(url.href);
+  } catch (_) {
+    return false;
+  }
+}
+
+function runStyle(element) {
+  const style = getComputedStyle(element);
+  const numericWeight = Number.parseInt(style.fontWeight, 10);
+  return {
+    fontFace: style.fontFamily.split(",")[0].trim().replace(/^["']|["']$/g, ""),
+    fontSize: roundedMetric(parseFloat(style.fontSize)),
+    bold: Number.isFinite(numericWeight) ? numericWeight >= 600 : style.fontWeight === "bold",
+    italic: style.fontStyle !== "normal",
+    underline: style.textDecorationLine.includes("underline"),
+    color: normalizeCssColor(style.color),
+  };
+}
+
+function collectTextRuns(root, { omitNestedLists = false } = {}) {
+  const runs = [];
+  const append = (text, element) => {
+    if (!text) return;
+    const anchor = element.closest("a[href]");
+    const run = {
+      text,
+      ...runStyle(element),
+      ...(anchor ? { href: anchor.getAttribute("href") || anchor.href } : {}),
+    };
+    const previous = runs.at(-1);
+    const previousStyle = previous && { ...previous, text: undefined };
+    const nextStyle = { ...run, text: undefined };
+    if (previous && JSON.stringify(previousStyle) === JSON.stringify(nextStyle)) {
+      previous.text += text;
+    } else {
+      runs.push(run);
+    }
+  };
+  const visit = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      append(node.nodeValue || "", node.parentElement || root);
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    if (node.tagName === "BR") {
+      append("\n", node.parentElement || root);
+      return;
+    }
+    if (
+      node !== root &&
+      (node.matches("pre, table, .architecture-diagram, .architecture-error, .mermaid") ||
+        (omitNestedLists && node.matches("ul, ol")))
+    ) {
+      return;
+    }
+    node.childNodes.forEach(visit);
+  };
+  root.childNodes.forEach(visit);
+  return runs;
+}
+
+function pptxAlignment(value) {
+  if (value === "center" || value === "right" || value === "justify") return value;
+  if (value === "end") return "right";
+  return "left";
+}
+
+function paragraphFor(element, options = {}) {
+  const style = getComputedStyle(element);
+  const runs = collectTextRuns(element, options);
+  return {
+    alignment: pptxAlignment(style.textAlign),
+    lineHeight: roundedMetric(parseFloat(style.lineHeight)),
+    runs,
+    ...(options.level !== undefined ? { level: options.level } : {}),
+    ...(options.bullet ? { bullet: options.bullet } : {}),
+  };
+}
+
+function unsupportedEffects(element) {
+  const style = getComputedStyle(element);
+  const effects = [];
+  if (style.textShadow && style.textShadow !== "none") effects.push("text-shadow");
+  if (style.boxShadow && style.boxShadow !== "none") effects.push("box-shadow");
+  if (style.filter && style.filter !== "none") effects.push("filter");
+  if (style.backdropFilter && style.backdropFilter !== "none") effects.push("backdrop-filter");
+  if (style.mixBlendMode && style.mixBlendMode !== "normal") effects.push("mix-blend-mode");
+  if (style.transform && style.transform !== "none") effects.push("transform");
+  if (Number(style.opacity) < 1) effects.push("opacity");
+  return effects;
+}
+
+function effectFallbackRoot(element) {
+  return element.closest(
+    "p, li, blockquote, table, img, h1, h2, h3, h4, h5, h6, .kicker, .slide-title, .theme-backcover-logo-text, .theme-backcover-copyright, .body, header, footer",
+  );
+}
+
+function pptxFallback(type, element, deck, reason) {
+  return {
+    type,
+    path: elementPath(element, deck),
+    reason,
+    ...relativeBounds(element, deck),
+  };
+}
+
+function preserveBoxShadow(element, deck) {
+  const style = getComputedStyle(element);
+  if (!style.boxShadow || style.boxShadow === "none") return;
+  const bounds = relativeBounds(element, deck);
+  const decoration = document.createElement("div");
+  decoration.className = "pptx-effect-fallback";
+  Object.assign(decoration.style, {
+    position: "absolute",
+    left: `${bounds.x}px`,
+    top: `${bounds.y}px`,
+    width: `${bounds.width}px`,
+    height: `${bounds.height}px`,
+    borderRadius: style.borderRadius,
+    boxShadow: style.boxShadow,
+    pointerEvents: "none",
+  });
+  decoration.setAttribute("aria-hidden", "true");
+  deck.appendChild(decoration);
+}
+
+function blobDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "")), {
+      once: true,
+    });
+    reader.addEventListener(
+      "error",
+      () => reject(reader.error || new Error("Could not encode Architecture artwork.")),
+      { once: true },
+    );
+    reader.readAsDataURL(blob);
+  });
+}
+
+function freezeSvgPaint(source, clone) {
+  const sourceNodes = [source, ...source.querySelectorAll("*")];
+  const cloneNodes = [clone, ...clone.querySelectorAll("*")];
+  sourceNodes.forEach((node, index) => {
+    const target = cloneNodes[index];
+    if (!target) return;
+    const style = getComputedStyle(node);
+    for (const property of ["fill", "stroke", "color"]) {
+      if (style[property]) target.setAttribute(property, style[property]);
+    }
+  });
+}
+
+async function inlineSvgImageSources(root) {
+  for (const image of root.querySelectorAll("image")) {
+    const href = image.getAttribute("href") || image.getAttribute("xlink:href");
+    if (!href || href.startsWith("data:")) continue;
+    const response = await fetch(new URL(href, window.location.href), { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Could not load Architecture image artwork (${response.status}).`);
+    }
+    const dataUrl = await blobDataUrl(await response.blob());
+    image.setAttribute("href", dataUrl);
+    image.removeAttribute("xlink:href");
+  }
+}
+
+async function architectureForegroundPng(svg, sources, width, height, crop) {
+  if (!sources.length) return "";
+  const clone = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+  const viewBox = svg.viewBox?.baseVal;
+  clone.setAttribute("viewBox", svg.getAttribute("viewBox") || "0 0 1 1");
+  clone.setAttribute("width", String(viewBox?.width || 1));
+  clone.setAttribute("height", String(viewBox?.height || 1));
+  clone.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  const defs = svg.querySelector(":scope > defs");
+  if (defs) clone.appendChild(defs.cloneNode(true));
+  for (const source of sources) {
+    const copy = source.cloneNode(true);
+    freezeSvgPaint(source, copy);
+    const ownOpacityValue = Number(getComputedStyle(source).opacity);
+    const ownOpacity = Number.isFinite(ownOpacityValue) ? ownOpacityValue : 1;
+    const node = source.closest('[data-architecture-type="node"]');
+    const parentOpacityAttribute =
+      node && node !== source ? node.getAttribute("opacity") : null;
+    const parentOpacityValue =
+      parentOpacityAttribute === null ? 1 : Number(parentOpacityAttribute);
+    const parentOpacity = Number.isFinite(parentOpacityValue) ? parentOpacityValue : 1;
+    copy.setAttribute("opacity", String(ownOpacity * parentOpacity));
+    clone.appendChild(copy);
+  }
+  await inlineSvgImageSources(clone);
+  const markup = new XMLSerializer().serializeToString(clone);
+  const url = URL.createObjectURL(new Blob([markup], { type: "image/svg+xml" }));
+  try {
+    const image = new Image();
+    image.src = url;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.ceil(width));
+    canvas.height = Math.max(1, Math.ceil(height));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Could not create Architecture artwork canvas.");
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    if (!crop) return canvas.toDataURL("image/png");
+    const cropped = document.createElement("canvas");
+    cropped.width = Math.max(1, Math.ceil(crop.width));
+    cropped.height = Math.max(1, Math.ceil(crop.height));
+    const croppedContext = cropped.getContext("2d");
+    if (!croppedContext) throw new Error("Could not crop Architecture artwork.");
+    croppedContext.drawImage(
+      canvas,
+      crop.x,
+      crop.y,
+      crop.width,
+      crop.height,
+      0,
+      0,
+      cropped.width,
+      cropped.height,
+    );
+    return cropped.toDataURL("image/png");
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function collectArchitectureObjects(wrapper, deck, blockIndex) {
+  const snapshot = wrapper.__presentationPptxSnapshot;
+  const svg = wrapper.querySelector("svg.architecture-svg");
+  if (!snapshot || !svg) {
+    return {
+      elements: [],
+      fallbacks: [pptxFallback("architecture", wrapper, deck, "architecture-model-unavailable")],
+    };
+  }
+  const svgRect = svg.getBoundingClientRect();
+  const deckRect = deck.getBoundingClientRect();
+  const scale = Math.min(
+    svgRect.width / snapshot.canvas.width,
+    svgRect.height / snapshot.canvas.height,
+  );
+  const usedWidth = snapshot.canvas.width * scale;
+  const usedHeight = snapshot.canvas.height * scale;
+  const originX = svgRect.left - deckRect.left + (svgRect.width - usedWidth) / 2;
+  const originY = svgRect.top - deckRect.top + (svgRect.height - usedHeight) / 2;
+  const mapBounds = (object) => ({
+    x: roundedMetric(originX + object.x * scale),
+    y: roundedMetric(originY + object.y * scale),
+    width: roundedMetric(object.width * scale),
+    height: roundedMetric(object.height * scale),
+  });
+  const mapColorFields = (object) => {
+    const mapped = { ...object };
+    const mapParagraphs = (paragraphs) =>
+      paragraphs.map((paragraph) => ({
+        ...paragraph,
+        runs: paragraph.runs.map((run) => ({
+          ...run,
+          color: resolveModelColor(run.color, deck),
+          fontFace: getComputedStyle(svg).fontFamily
+            .split(",")[0]
+            .trim()
+            .replace(/^["']|["']$/g, ""),
+          fontSize: roundedMetric(run.fontSize * scale),
+          bold: Number(run.fontWeight) >= 600,
+        })),
+      }));
+    if (mapped.dash !== undefined) mapped.dash = mapped.dash ? "dash" : "solid";
+    for (const key of ["fill", "stroke", "color"]) {
+      if (key in mapped) mapped[key] = resolveModelColor(mapped[key], deck);
+    }
+    if (Array.isArray(mapped.paragraphs)) {
+      mapped.paragraphs = mapParagraphs(mapped.paragraphs);
+    }
+    if (mapped.text?.paragraphs) {
+      mapped.text = {
+        ...mapped.text,
+        paragraphs: mapParagraphs(mapped.text.paragraphs),
+      };
+    }
+    if (mapped.textInsets) {
+      mapped.textInsets = Object.fromEntries(
+        Object.entries(mapped.textInsets).map(([key, value]) => [
+          key,
+          roundedMetric(value * scale),
+        ]),
+      );
+    }
+    return mapped;
+  };
+  const fallbacks = snapshot.fallbacks.map((fallback) => ({
+    ...fallback,
+    path: `architecture[${blockIndex}].${fallback.path}`,
+    ...mapBounds(fallback),
+  }));
+  const elements = [];
+  const architectureGroups = [...wrapper.querySelectorAll("[data-architecture-type]")];
+  const findById = (id) =>
+    architectureGroups.find((element) => element.getAttribute("data-architecture-id") === id);
+  const foregroundCandidates = [];
+  for (const icon of snapshot.icons || []) {
+    const group = findById(icon.id);
+    const source = group?.querySelector("[data-architecture-icon]");
+    if (source) {
+      const rawBounds = mapBounds(icon);
+      const padding = Math.max(
+        0,
+        Math.min(2, rawBounds.x - originX, rawBounds.y - originY),
+      );
+      const bounds = {
+        x: rawBounds.x - padding,
+        y: rawBounds.y - padding,
+        width: rawBounds.width + padding * 2,
+        height: rawBounds.height + padding * 2,
+      };
+      foregroundCandidates.push({
+        key: `icon:${icon.id}`,
+        source,
+        alt: `${icon.icon} icon`,
+        bounds,
+        crop: {
+          x: bounds.x - originX,
+          y: bounds.y - originY,
+          width: bounds.width,
+          height: bounds.height,
+        },
+        architecture: {
+          kind: "icon-picture",
+          id: icon.id,
+          sourcePath: icon.sourcePath,
+          order: icon.order,
+          z: icon.z,
+        },
+      });
+    }
+  }
+  for (const object of snapshot.objects.filter((entry) => entry.type === "image")) {
+    const source = findById(object.architecture.id);
+    if (source) {
+      const rawBounds = mapBounds(object);
+      const padding = Math.max(
+        0,
+        Math.min(2, rawBounds.x - originX, rawBounds.y - originY),
+      );
+      const bounds = {
+        x: rawBounds.x - padding,
+        y: rawBounds.y - padding,
+        width: rawBounds.width + padding * 2,
+        height: rawBounds.height + padding * 2,
+      };
+      foregroundCandidates.push({
+        key: `image:${object.architecture.id}`,
+        source,
+        alt: `${object.architecture.id} image`,
+        bounds,
+        crop: {
+          x: bounds.x - originX,
+          y: bounds.y - originY,
+          width: bounds.width,
+          height: bounds.height,
+        },
+        architecture: {
+          ...object.architecture,
+          kind: "image-picture",
+        },
+      });
+    }
+  }
+  const foregroundLayers = new Map();
+  const expectedForegrounds =
+    (snapshot.icons?.length || 0) +
+    snapshot.objects.filter((object) => object.type === "image").length;
+  let foregroundReady = foregroundCandidates.length === expectedForegrounds;
+  try {
+    if (foregroundReady) {
+      const generated = await Promise.all(
+        foregroundCandidates.map(async (candidate) => ({
+          ...candidate,
+          src: await architectureForegroundPng(
+            svg,
+            [candidate.source],
+            usedWidth,
+            usedHeight,
+            candidate.crop,
+          ),
+        })),
+      );
+      generated.forEach((layer) => foregroundLayers.set(layer.key, layer));
+    } else {
+      throw new Error("Architecture foreground source was not found.");
+    }
+  } catch (error) {
+    foregroundReady = false;
+    foregroundLayers.clear();
+    fallbacks.push(
+      pptxFallback(
+        "architecture-foreground",
+        wrapper,
+        deck,
+        `foreground-picture-failed: ${error?.message || "unknown error"}`,
+      ),
+    );
+  }
+  const foregroundElement = (layer) => ({
+    type: "image",
+    src: layer.src,
+    alt: layer.alt,
+    fit: "fill",
+    opacity: 1,
+    ...layer.bounds,
+    architecture: layer.architecture,
+  });
+  if (!foregroundReady) {
+    fallbacks.push(
+      pptxFallback(
+        "architecture",
+        wrapper,
+        deck,
+        "architecture-rendered-as-artwork-after-foreground-failure",
+      ),
+    );
+    return { elements: [], fallbacks };
+  }
+
+  for (const sourceObject of snapshot.objects) {
+    const object = mapColorFields({
+      ...sourceObject,
+      ...mapBounds(sourceObject),
+      ...(sourceObject.points
+        ? {
+            points: sourceObject.points.map((point) => ({
+              x: roundedMetric(originX + point.x * scale),
+              y: roundedMetric(originY + point.y * scale),
+            })),
+          }
+        : {}),
+      ...(sourceObject.strokeWidth !== undefined
+        ? { strokeWidth: roundedMetric(sourceObject.strokeWidth * scale) }
+        : {}),
+      ...(sourceObject.cornerRadius !== undefined
+        ? { cornerRadius: roundedMetric(sourceObject.cornerRadius * scale) }
+        : {}),
+    });
+    if (object.type === "shape") {
+      const opacity = Number.isFinite(object.opacity) ? object.opacity : 1;
+      if (object.text?.paragraphs) {
+        object.text = {
+          ...object.text,
+          paragraphs: object.text.paragraphs.map((paragraph) => ({
+            ...paragraph,
+            runs: paragraph.runs.map((run) => ({
+              ...run,
+              opacity: (Number.isFinite(run.opacity) ? run.opacity : 1) * opacity,
+            })),
+          })),
+        };
+      }
+    }
+    if (object.type === "image") {
+      const layer = foregroundLayers.get(`image:${object.architecture.id}`);
+      fallbacks.push({
+        type: "architecture-image",
+        path: `architecture[${blockIndex}].${object.architecture.sourcePath}`,
+        reason: foregroundReady && layer
+          ? "architecture-image-rendered-as-foreground-picture"
+          : "architecture-image-rendered-as-artwork",
+        ...mapBounds(sourceObject),
+      });
+      if (foregroundReady && layer) elements.push(foregroundElement(layer));
+      continue;
+    }
+    elements.push(object);
+    if (object.type === "shape" && object.architecture?.kind === "node" && sourceObject.icon) {
+      const layer = foregroundLayers.get(`icon:${object.architecture.id}`);
+      if (foregroundReady && layer) elements.push(foregroundElement(layer));
+    }
+  }
+  for (const icon of snapshot.icons || []) {
+    const layer = foregroundLayers.get(`icon:${icon.id}`);
+    fallbacks.push({
+      type: "architecture-icon",
+      path: `architecture[${blockIndex}].${icon.sourcePath}`,
+      reason: foregroundReady && layer
+        ? "icon-rendered-as-foreground-picture"
+        : "icon-rendered-as-artwork",
+      icon: icon.icon,
+      ...mapBounds(icon),
+    });
+  }
+  for (const sourceObject of snapshot.objects) {
+    const architecture = sourceObject.architecture;
+    if (!architecture) continue;
+    if (architecture.kind === "group" || architecture.kind === "node") {
+      const group = findById(architecture.id);
+      if (!group) continue;
+      [...group.children]
+        .filter((child) =>
+          foregroundReady
+            ? child.matches("rect, ellipse, text")
+            : child.matches("text"),
+        )
+        .forEach((child) => child.setAttribute("data-pptx-native", sourceObject.type));
+    } else if (architecture.kind === "connector") {
+      architectureGroups
+        .filter(
+          (element) =>
+            element.getAttribute("data-architecture-type") === "connector" &&
+            element.getAttribute("data-architecture-order") === String(architecture.order),
+        )
+        .forEach((group) =>
+          [...group.children]
+            .filter((child) => child.matches("path"))
+            .forEach((child) => child.setAttribute("data-pptx-native", "connector")),
+        );
+    } else if (architecture.kind.startsWith("connector-label")) {
+      wrapper
+        .querySelectorAll(
+          `[data-architecture-connector-label][data-architecture-label-layer]`,
+        )
+        .forEach((label) => label.setAttribute("data-pptx-native", sourceObject.type));
+    }
+  }
+  if (foregroundReady) {
+    foregroundCandidates.forEach((candidate) => {
+      if (foregroundLayers.has(candidate.key)) {
+        candidate.source.setAttribute("data-pptx-native", "image");
+      }
+    });
+  }
+  if (snapshot.routing.degraded) {
+    fallbacks.push(
+      pptxFallback(
+        "architecture-routing",
+        wrapper,
+        deck,
+        "routing-warning-rendered-as-artwork",
+      ),
+    );
+  }
+  return { elements, fallbacks };
+}
+
+async function collectPptxSlide(slide, index) {
+  const { deck } = slide;
+  const elements = [];
+  const fallbacks = [];
+  const fallbackRoots = new Set();
+  const addFallback = (type, element, reason) => {
+    if (fallbackRoots.has(element)) return;
+    fallbackRoots.add(element);
+    fallbacks.push(pptxFallback(type, element, deck, reason));
+  };
+
+  for (const element of deck.querySelectorAll("header *, .body, .body *, footer *")) {
+    if (element.closest("pre, .architecture-diagram, .architecture-error")) continue;
+    const effects = unsupportedEffects(element).filter((effect) => effect !== "box-shadow");
+    if (!effects.length) continue;
+    const root = effectFallbackRoot(element);
+    if (root) {
+      addFallback(
+        "effect",
+        root,
+        `element-rendered-as-artwork: ${effects.join(", ")}`,
+      );
+    }
+  }
+
+  deck.querySelectorAll("pre.mermaid").forEach((element) =>
+    addFallback("mermaid", element, "mermaid-rendered-as-artwork"),
+  );
+  deck.querySelectorAll("pre:not(.mermaid)").forEach((element) =>
+    addFallback("code", element, "code-block-rendered-as-artwork"),
+  );
+  deck.querySelectorAll(".architecture-error").forEach((element) =>
+    addFallback("architecture", element, "architecture-error-rendered-as-artwork"),
+  );
+  deck
+    .querySelectorAll(
+      ".body div:not(.architecture-diagram):not(.architecture-error):not(.architecture-routing-warning), .body section, .body article, .body aside, .body details, .body video, .body audio, .body iframe, .body canvas, .body object, .body embed",
+    )
+    .forEach((element) => {
+      if (!element.closest(".architecture-diagram")) {
+        addFallback("html", element, "arbitrary-html-rendered-as-artwork");
+      }
+    });
+
+  const insideFallback = (element) =>
+    [...fallbackRoots].some((root) => root === element || root.contains(element));
+  const textCandidates = [
+    ...deck.querySelectorAll(
+      ".kicker, .slide-title, .body h1, .body h2, .body h3, .body h4, .body h5, .body h6, .body p, .body blockquote, .body li, footer > span, .theme-backcover-logo-text, .theme-backcover-copyright",
+    ),
+  ].filter(
+    (element) =>
+      !insideFallback(element) &&
+      !element.closest(".architecture-diagram") &&
+      !element.closest("table") &&
+      !(element.matches("p") && element.closest("blockquote, li")),
+  );
+  for (const element of textCandidates) {
+    const list = element.matches("li")
+      ? [...element.querySelectorAll(":scope > ul, :scope > ol")]
+      : [];
+    const parentList = element.matches("li") ? element.parentElement : null;
+    const actualLevel = element.matches("li")
+      ? Math.max(0, [...element.closest(".body").querySelectorAll("ul, ol")].filter((candidate) =>
+          candidate.contains(element),
+        ).length - 1)
+      : undefined;
+    const paragraph = paragraphFor(element, {
+      omitNestedLists: list.length > 0,
+      level: actualLevel,
+      bullet: parentList
+        ? {
+            type: parentList.tagName === "OL" ? "number" : "bullet",
+            character:
+              parentList.tagName === "OL"
+                ? `${Number(parentList.getAttribute("start") || 1) + [...parentList.children].indexOf(element)}.`
+                : "•",
+            ...(parentList.tagName === "OL"
+              ? { start: Number(parentList.getAttribute("start") || 1) + [...parentList.children].indexOf(element) }
+              : {}),
+          }
+        : undefined,
+    });
+    if (!paragraph.runs.some((run) => run.text.trim())) continue;
+    elements.push({
+      type: "text",
+      path: elementPath(element, deck),
+      ...relativeBounds(element, deck),
+      paragraphs: [paragraph],
+      opacity: Number(getComputedStyle(element).opacity) || 1,
+    });
+    element.setAttribute("data-pptx-native", "text");
+  }
+
+  for (const table of deck.querySelectorAll(".body table")) {
+    if (insideFallback(table)) continue;
+    const descendantEffects = new Set();
+    for (const descendant of table.querySelectorAll("*")) {
+      for (const effect of unsupportedEffects(descendant)) descendantEffects.add(effect);
+    }
+    if (descendantEffects.size) {
+      addFallback(
+        "effect",
+        table,
+        `element-rendered-as-artwork: ${[...descendantEffects].join(", ")}`,
+      );
+      continue;
+    }
+    const effects = unsupportedEffects(table);
+    if (parseFloat(getComputedStyle(table).borderRadius) > 0) effects.push("border-radius");
+    const artworkEffects = effects.filter(
+      (effect) => effect !== "box-shadow" && effect !== "border-radius",
+    );
+    if (artworkEffects.length) {
+      addFallback(
+        "effect",
+        table,
+        `element-rendered-as-artwork: ${effects.join(", ")}`,
+      );
+      continue;
+    }
+    const domRows = [...table.rows];
+    const columnCount = domRows[0]?.cells.length || 0;
+    if (
+      !columnCount ||
+      domRows.some(
+        (row) =>
+          row.cells.length !== columnCount ||
+          [...row.cells].some((cell) => cell.colSpan !== 1 || cell.rowSpan !== 1),
+      )
+    ) {
+      addFallback("table", table, "merged-table-rendered-as-artwork");
+      continue;
+    }
+    const rows = domRows.map((row) => ({
+      height: roundedMetric(row.getBoundingClientRect().height),
+      cells: [...row.cells].map((cell) => {
+        const style = getComputedStyle(cell);
+        return {
+          ...relativeBounds(cell, deck),
+          header: cell.tagName === "TH",
+          colspan: cell.colSpan,
+          rowspan: cell.rowSpan,
+          fill: normalizeCssColor(style.backgroundColor),
+          color: normalizeCssColor(style.color),
+          stroke: normalizeCssColor(style.borderColor),
+          strokeWidth: roundedMetric(parseFloat(style.borderWidth)) || 1,
+          alignment: pptxAlignment(style.textAlign),
+          paragraphs: [paragraphFor(cell)],
+        };
+      }),
+    }));
+    elements.push({
+      type: "table",
+      path: elementPath(table, deck),
+      ...relativeBounds(table, deck),
+      rows,
+    });
+    if (effects.length) {
+      fallbacks.push(
+        pptxFallback(
+          "effect",
+          table,
+          deck,
+          `native-table-approximates: ${effects.join(", ")}`,
+        ),
+      );
+      if (effects.includes("box-shadow")) preserveBoxShadow(table, deck);
+    }
+    table.setAttribute("data-pptx-native", "table");
+  }
+
+  for (const image of deck.querySelectorAll("img")) {
+    if (
+      image.closest(".architecture-diagram") ||
+      image.classList.contains("theme-cover-background") ||
+      insideFallback(image)
+    ) {
+      continue;
+    }
+    if (!rasterImageSupported(image)) {
+      const fit = getComputedStyle(image).objectFit;
+      addFallback(
+        "image",
+        image,
+        ["cover", "none"].includes(fit) ? "unsupported-image-fit" : "unsupported-image-format",
+      );
+      continue;
+    }
+    const style = getComputedStyle(image);
+    const effects = unsupportedEffects(image);
+    if (parseFloat(style.borderRadius) > 0) effects.push("border-radius");
+    const artworkEffects = effects.filter(
+      (effect) => effect !== "box-shadow" && effect !== "border-radius",
+    );
+    if (artworkEffects.length) {
+      addFallback(
+        "effect",
+        image,
+        `element-rendered-as-artwork: ${effects.join(", ")}`,
+      );
+      continue;
+    }
+    elements.push({
+      type: "image",
+      path: elementPath(image, deck),
+      ...relativeBounds(image, deck),
+      src: image.currentSrc || image.src,
+      alt: image.alt || "",
+      fit: style.objectFit || "contain",
+      opacity: Number(style.opacity) || 1,
+      naturalWidth: image.naturalWidth,
+      naturalHeight: image.naturalHeight,
+    });
+    image.setAttribute("data-pptx-native", "image");
+    if (effects.length) {
+      fallbacks.push(
+        pptxFallback(
+          "effect",
+          image,
+          deck,
+          `native-image-approximates: ${effects.join(", ")}`,
+        ),
+      );
+    }
+  }
+
+  const architectureWrappers = [...deck.querySelectorAll(".architecture-diagram")];
+  for (const [blockIndex, wrapper] of architectureWrappers.entries()) {
+    if (insideFallback(wrapper)) continue;
+    const architecture = await collectArchitectureObjects(wrapper, deck, blockIndex);
+    elements.push(...architecture.elements);
+    fallbacks.push(...architecture.fallbacks);
+  }
+
+  const layout = slide.titleSlide
+    ? "title"
+    : slide.sectionSlide
+      ? "section"
+      : slide.centerSlide
+        ? "center"
+        : slide.backcoverSlide
+          ? "backcover"
+          : "standard";
+  const visibleTitle = deck.querySelector("h1, h2")?.textContent?.trim();
+  return {
+    index,
+    layout,
+    theme: slide.theme,
+    title: visibleTitle || slide.title,
+    width: OUTPUT_WIDTH,
+    height: OUTPUT_HEIGHT,
+    elements,
+    fallbacks,
+  };
+}
+
+async function renderPptxDeck(
+  slides,
+  theme,
+  customCss = "",
+  themeMetadata = null,
+  themeLocked = false,
+) {
+  deckTheme = normalizeTheme(theme);
+  deckThemeLocked = Boolean(themeLocked);
+  customThemeMeta = themeMetadata && typeof themeMetadata === "object" ? themeMetadata : null;
+  applyCustomThemeCss(customCss);
+  document.documentElement.setAttribute("data-theme", deckTheme);
+  document.body.classList.add("pptx-mode", "fixed-output-mode", "mermaid-loading");
+  const rendered = slides.map((markdown) => createSlide(markdown, deckTheme));
+  const stage = document.getElementById("stage");
+  stage.replaceChildren(...rendered.map((slide) => slide.deck));
+  document.title = rendered[0]?.title || "MarkdStage";
+
+  if (document.fonts?.ready) await document.fonts.ready;
+  await afterLayout();
+  for (const slide of rendered) {
+    if (
+      slide.sizeMode === "auto" &&
+      !slide.titleSlide &&
+      !slide.sectionSlide &&
+      !slide.backcoverSlide
+    ) {
+      applyAutoSize(slide.deck, slide.bodyEl);
+    }
+  }
+  const token = ++renderToken;
+  for (const slide of rendered) {
+    await runMermaid(slide.bodyEl, slide.theme, token, false);
+  }
+  await waitForImages(stage);
+  await afterLayout();
+
+  const pptxSlides = [];
+  for (const [index, slide] of rendered.entries()) {
+    pptxSlides.push(await collectPptxSlide(slide, index));
+  }
+  const model = {
+    version: 1,
+    width: OUTPUT_WIDTH,
+    height: OUTPUT_HEIGHT,
+    slides: pptxSlides,
+  };
+  window.__presentationPptxModel = JSON.parse(JSON.stringify(model));
+  document.body.classList.add("pptx-artwork-mode");
+  document.body.setAttribute("data-pptx-artwork", "ready");
+  document.body.classList.remove("mermaid-loading");
+  document.documentElement.setAttribute("data-pptx-ready", "true");
+  return {
+    model: window.__presentationPptxModel,
+    layout: collectDeckLayout(rendered),
+  };
+}
+
+async function initPptx(params) {
+  const token = params.get("token") || "";
+  if (!token) throw new Error("Missing PowerPoint export token.");
+  try {
+    const response = await fetch(`./export-data?token=${encodeURIComponent(token)}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`Could not load PowerPoint export data (${response.status}).`);
+    const data = await response.json();
+    if (
+      !Array.isArray(data.slides) ||
+      data.slides.length === 0 ||
+      !data.slides.every((slide) => typeof slide === "string")
+    ) {
+      throw new Error("PowerPoint export data does not contain a valid deck.");
+    }
+    const output = await renderPptxDeck(
+      data.slides,
+      data.theme,
+      data.customThemeCss,
+      data.customThemeMeta,
+      data.themeLocked,
+    );
+    await reportOutputStatus(token, "ready", "", output.layout);
+  } catch (error) {
+    const message = error?.message || "PowerPoint rendering failed.";
+    console.error(message);
+    document.body.classList.remove("mermaid-loading");
+    document.documentElement.setAttribute("data-pptx-error", "true");
+    await reportOutputStatus(token, "error", message).catch(() => {});
+  }
 }
 
 async function renderPrintDeck(
@@ -1055,6 +2010,13 @@ function reportCaptureBootstrapFailure(error) {
   document.documentElement.setAttribute("data-capture-error", "true");
 }
 
+function reportPptxBootstrapFailure(error) {
+  const message = error?.message || "PowerPoint rendering failed.";
+  console.error(message);
+  document.body.classList.remove("mermaid-loading");
+  document.documentElement.setAttribute("data-pptx-error", "true");
+}
+
 // --- live update -----------------------------------------------------------
 // /state is the single source of truth for *what to show* (latest slide markdown
 // + a monotonic version + the deck position). SSE is just a low-latency "version
@@ -1082,9 +2044,11 @@ let presenterRunning = false;
 let presenterWindowAvailable = false;
 let presenterViewAvailable = false;
 let pdfExportAvailable = false;
+let pptxExportAvailable = false;
 let markdownImportAvailable = false;
 let presenterViewOpen = false;
 let pdfExportPending = false;
+let pptxExportPending = false;
 
 // Derive a short overview title from a slide fragment: first heading, else first
 // non-empty body line, trimmed. Mirrors the skill's title rule.
@@ -1372,6 +2336,9 @@ async function fetchState() {
   if (typeof data.pdfExportAvailable === "boolean") {
     pdfExportAvailable = data.pdfExportAvailable;
   }
+  if (typeof data.pptxExportAvailable === "boolean") {
+    pptxExportAvailable = data.pptxExportAvailable;
+  }
   if (typeof data.markdownImportAvailable === "boolean") {
     markdownImportAvailable = data.markdownImportAvailable;
   }
@@ -1529,6 +2496,8 @@ function updateHostActionButtons() {
   if (presenterToggle) presenterToggle.hidden = !presenterWindowAvailable;
   const exportButton = document.getElementById("navExport");
   if (exportButton) exportButton.hidden = presenterMode || !pdfExportAvailable;
+  const pptxButton = document.getElementById("navExportPptx");
+  if (pptxButton) pptxButton.hidden = presenterMode || !pptxExportAvailable;
   const importButton = document.getElementById("navImport");
   if (importButton) importButton.hidden = presenterMode || !markdownImportAvailable;
   if (!presenterViewAvailable && presenterViewOpen) closePresenterView();
@@ -1552,11 +2521,13 @@ function updatePresenterButton(running, message = "") {
 }
 
 async function exportPdfFromCanvas() {
-  if (!pdfExportAvailable || pdfExportPending) return;
+  if (!pdfExportAvailable || pdfExportPending || pptxExportPending) return;
   pdfExportPending = true;
   const button = document.getElementById("navExport");
+  const pptxButton = document.getElementById("navExportPptx");
   const status = document.getElementById("exportStatus");
   if (button) button.disabled = true;
+  if (pptxButton) pptxButton.disabled = true;
   if (status) status.textContent = "Saving PDF.";
 
   try {
@@ -1587,6 +2558,51 @@ async function exportPdfFromCanvas() {
   } finally {
     pdfExportPending = false;
     if (button) button.disabled = false;
+    if (pptxButton) pptxButton.disabled = false;
+  }
+}
+
+async function exportPptxFromCanvas() {
+  if (!pptxExportAvailable || pdfExportPending || pptxExportPending) return;
+  pptxExportPending = true;
+  const button = document.getElementById("navExportPptx");
+  const pdfButton = document.getElementById("navExport");
+  const status = document.getElementById("exportStatus");
+  if (button) button.disabled = true;
+  if (pdfButton) pdfButton.disabled = true;
+  if (status) status.textContent = "Saving editable PowerPoint.";
+
+  try {
+    const response = await fetch("./export-pptx", {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(data.message || `PowerPoint export failed (${response.status}).`);
+    }
+    const filename = data.path ? data.path.split(/[\\/]/).pop() : "PowerPoint";
+    const fallback =
+      data.fallbackCount > 0 ? ` ${data.fallbackCount} fallback item(s) preserved.` : "";
+    const message = `Saved ${filename}.${fallback}`;
+    if (status) status.textContent = message;
+    if (button) {
+      button.dataset.state = "active";
+      button.title = message;
+    }
+  } catch (error) {
+    const message = error?.message || "Could not save the PowerPoint presentation.";
+    console.error("PowerPoint export failed", error);
+    if (status) status.textContent = message;
+    if (button) {
+      button.dataset.state = "error";
+      button.title = message;
+    }
+  } finally {
+    pptxExportPending = false;
+    if (button) button.disabled = false;
+    if (pdfButton) pdfButton.disabled = false;
   }
 }
 
@@ -2001,6 +3017,7 @@ function wireControls() {
   bind("navPresenterView", openPresenterView);
   bind("navFixedPreview", toggleFixedPreviewMode);
   bind("navExport", exportPdfFromCanvas);
+  bind("navExportPptx", exportPptxFromCanvas);
   bind("navImport", toggleImportPicker);
   bind("navSourceMode", toggleSourceMode);
   bind("navList", toggleOverview);
@@ -2104,6 +3121,10 @@ function init() {
   } catch (_) {}
 
   const params = new URLSearchParams(window.location.search);
+  if (params.get("pptx") === "1") {
+    initPptx(params).catch(reportPptxBootstrapFailure);
+    return;
+  }
   if (params.get("capture") === "1") {
     initCapture(params).catch(reportCaptureBootstrapFailure);
     return;

@@ -413,7 +413,7 @@ body.presenter-mode .nav{opacity:0;}
 body.presenter-mode .nav:hover,body.presenter-mode .nav:focus-within{opacity:1;}
 body.presenter-mode #navPresent{display:none;}
 body.presenter-mode #navPresenterView{display:none;}
-body.presenter-mode #navExport{display:none;}
+body.presenter-mode #navExport,body.presenter-mode #navExportPptx{display:none;}
 body.presenter-mode #navImport{display:none;}
 body.presenter-mode #navSourceMode{display:none;}
 body.preview-mode .nav,body.preview-mode .overview{display:none!important;}
@@ -582,6 +582,46 @@ body.capture-mode #stage{display:block;width:1280px;height:720px;}
 body.capture-mode .nav,body.capture-mode .overview,body.capture-mode .layout-warning{
   display:none!important;
 }
+
+/* ===== Headless hybrid PowerPoint export =====
+   The complete deck is stacked at the same 1280x720 geometry as PDF output.
+   Native objects become transparent only after renderer.js has measured them,
+   leaving backgrounds, decoration, Mermaid, code, and other fallback artwork. */
+html:has(body.pptx-mode),body.pptx-mode{width:1280px;height:auto;overflow:visible;}
+body.pptx-mode{background:none;}
+body.pptx-mode #stage{display:block;width:1280px;height:auto;}
+body.pptx-mode .deck{display:flex;}
+body.pptx-mode .nav,body.pptx-mode .overview,body.pptx-mode .layout-warning,
+body.pptx-mode .mermaidTooltip{display:none!important;}
+body.pptx-artwork-mode [data-pptx-native="text"],
+body.pptx-artwork-mode [data-pptx-native="text"] *,
+body.pptx-artwork-mode [data-pptx-native="table"],
+body.pptx-artwork-mode [data-pptx-native="table"] *{
+  color:transparent!important;
+  -webkit-text-fill-color:transparent!important;
+  text-decoration-color:transparent!important;
+  caret-color:transparent!important;
+}
+body.pptx-artwork-mode li[data-pptx-native="text"]::marker{color:transparent!important;}
+body.pptx-artwork-mode [data-pptx-native="table"]{visibility:hidden!important;}
+body.pptx-artwork-mode img[data-pptx-native="image"]{
+  object-fit:none!important;
+  object-position:99999px 99999px!important;
+}
+body.pptx-artwork-mode svg [data-pptx-native="shape"],
+body.pptx-artwork-mode svg [data-pptx-native="shape"] *,
+body.pptx-artwork-mode svg [data-pptx-native="text"],
+body.pptx-artwork-mode svg [data-pptx-native="text"] *,
+body.pptx-artwork-mode svg [data-pptx-native="connector"],
+body.pptx-artwork-mode svg [data-pptx-native="connector"] *,
+body.pptx-artwork-mode svg [data-pptx-native="table"]{
+  fill:transparent!important;
+  stroke:transparent!important;
+  color:transparent!important;
+  -webkit-text-fill-color:transparent!important;
+}
+body.pptx-artwork-mode svg path[data-pptx-native="connector"]{marker-end:none!important;}
+body.pptx-artwork-mode svg [data-pptx-native="image"]{opacity:0!important;}
 
 /* ===== Headless PDF export ===== */
 @page{size:13.333333in 7.5in;margin:0;}

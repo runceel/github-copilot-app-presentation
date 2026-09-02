@@ -3826,6 +3826,233 @@ export function architectureSemanticSnapshot(model) {
   };
 }
 
+/**
+ * Preserve the normalized DSL and final routed geometry for hybrid PowerPoint
+ * export. Coordinates remain in Architecture canvas units here; renderer.js
+ * maps them through the rendered SVG viewBox into slide pixels.
+ */
+export function architecturePowerPointSnapshot(model, documentRef = globalThis.document) {
+  const lookup = new Map(
+    model.elements
+      .filter((element) => element.type !== "connector")
+      .map((element) => [element.id, element]),
+  );
+  const { routes, diagnostics } = planConnectorRoutes(model, lookup);
+  const objects = [];
+  const fallbacks = [];
+  const icons = [];
+  const frontLabels = [];
+  const source = (element, kind = element.type) => ({
+    kind,
+    id: element.id || "",
+    sourcePath: element.sourcePath,
+    order: element.order,
+    z: element.z,
+  });
+  const style = (element) => ({
+    fill: element.style.fill,
+    stroke: element.style.stroke,
+    strokeWidth: element.style.strokeWidth,
+    dash: element.style.dash,
+    opacity: element.style.opacity,
+    cornerRadius: element.style.cornerRadius,
+  });
+  const shapeText = (element, text, options = {}) =>
+    text
+      ? {
+          paragraphs: [
+            {
+              alignment: options.alignment || "center",
+              runs: [
+                {
+                  text,
+                  fontSize: options.fontSize || element.style.fontSize,
+                  fontWeight: options.fontWeight || 600,
+                  bold: (options.fontWeight || 600) >= 600,
+                  color: element.style.textColor,
+                },
+              ],
+            },
+          ],
+        }
+      : undefined;
+
+  for (const element of model.elements) {
+    if (element.type === "group") {
+      objects.push({
+        type: "shape",
+        shape: "roundedRect",
+        x: element.x,
+        y: element.y,
+        width: element.width,
+        height: element.height,
+        ...style(element),
+        text: shapeText(element, element.title, {
+          alignment: "left",
+          fontWeight: 700,
+        }),
+        verticalAlignment: "top",
+        textWrap: "none",
+        textInsets: {
+          left: 24,
+          top: Math.max(0, element.style.fontSize * 0.2),
+          right: 24,
+          bottom: 0,
+        },
+        architecture: source(element),
+      });
+      continue;
+    }
+
+    if (element.type === "node") {
+      const iconSize = element.icon
+        ? Math.min(58, element.height * 0.36, element.width * 0.2)
+        : 0;
+      const iconX = element.x + Math.max(20, element.width * 0.08);
+      const iconY = element.y + element.height / 2 - iconSize / 2;
+      const textInset = element.icon
+        ? Math.max(20, element.width * 0.08) + iconSize + 16
+        : 16;
+      const availableTextWidth = Math.max(32, element.width - textInset - 16);
+      const longestLine = Math.max(
+        ...element.text.split(/\r?\n/).slice(0, 8).map(textWidthUnits),
+        1,
+      );
+      const fittedFontSize = Math.min(
+        element.style.fontSize,
+        Math.max(MIN_FONT_SIZE, availableTextWidth / longestLine),
+      );
+      objects.push({
+        type: "shape",
+        shape:
+          element.shape === "ellipse"
+            ? "ellipse"
+            : element.shape === "rounded-rect"
+              ? "roundedRect"
+              : "rect",
+        x: element.x,
+        y: element.y,
+        width: element.width,
+        height: element.height,
+        ...style(element),
+        text: shapeText(element, element.text, {
+          fontSize: fittedFontSize,
+        }),
+        verticalAlignment: "middle",
+        textWrap: element.text.includes("\n") ? "square" : "none",
+        textInsets: {
+          left: textInset,
+          top: 12,
+          right: 16,
+          bottom: 12,
+        },
+        icon: element.icon || "",
+        architecture: source(element),
+      });
+      if (element.icon) {
+        icons.push({
+          id: element.id,
+          icon: element.icon,
+          sourcePath: element.sourcePath,
+          x: iconX,
+          y: iconY,
+          width: iconSize,
+          height: iconSize,
+          opacity: element.style.opacity,
+          order: element.order,
+          z: element.z,
+        });
+      }
+      continue;
+    }
+
+    if (element.type === "image") {
+      objects.push({
+        type: "image",
+        x: element.x,
+        y: element.y,
+        width: element.width,
+        height: element.height,
+        src: localAssetUrl(documentRef || {}, element.src),
+        source: element.src,
+        fit: element.fit,
+        opacity: element.style.opacity,
+        architecture: source(element),
+      });
+      continue;
+    }
+
+    const points = routes.get(element);
+    objects.push({
+      type: "connector",
+      points,
+      x: Math.min(...points.map((point) => point.x)),
+      y: Math.min(...points.map((point) => point.y)),
+      width:
+        Math.max(...points.map((point) => point.x)) -
+        Math.min(...points.map((point) => point.x)),
+      height:
+        Math.max(...points.map((point) => point.y)) -
+        Math.min(...points.map((point) => point.y)),
+      stroke: element.style.stroke,
+      strokeWidth: element.style.strokeWidth,
+      dash: element.style.dash,
+      opacity: element.style.opacity,
+      arrowEnd: element.arrow,
+      from: element.from,
+      to: element.to,
+      architecture: source(element),
+    });
+    if (element.label) {
+      const metrics = connectorLabelMetrics(element, model.canvas);
+      const anchor = connectorLabelAnchor(element, points, metrics, model.canvas);
+      const labelShape = {
+        type: "shape",
+        shape: "roundedRect",
+        x: anchor.x - metrics.width / 2,
+        y: anchor.y - metrics.height / 2,
+        width: metrics.width,
+        height: metrics.height,
+        fill: "var(--surface)",
+        stroke: "var(--border)",
+        strokeWidth: CONNECTOR_LABEL_STROKE_WIDTH,
+        dash: "",
+        opacity: element.style.opacity,
+        cornerRadius: metrics.height / 2,
+        text: shapeText(element, metrics.text, {
+          fontSize: metrics.fontSize,
+        }),
+        verticalAlignment: "middle",
+        textWrap: "none",
+        textInsets: {
+          left: 8,
+          top: 2,
+          right: 8,
+          bottom: 2,
+        },
+        architecture: source(element, "connector-label"),
+      };
+      if (element.labelLayer === "front") frontLabels.push(labelShape);
+      else objects.push(labelShape);
+    }
+  }
+  objects.push(...frontLabels);
+
+  return {
+    version: model.version,
+    title: model.title,
+    description: model.description,
+    canvas: { ...model.canvas },
+    routing: {
+      degraded: diagnostics.length > 0,
+      diagnostics,
+    },
+    objects,
+    icons,
+    fallbacks,
+  };
+}
+
 export function renderArchitectureDiagram(
   model,
   documentRef = globalThis.document,
@@ -3931,6 +4158,12 @@ export function renderArchitectureDiagram(
   });
   frontLabels.forEach((label) => svg.appendChild(label));
   wrapper.appendChild(svg);
+  const powerPointSnapshot = architecturePowerPointSnapshot(model, documentRef);
+  Object.defineProperty(wrapper, "__presentationPptxSnapshot", {
+    value: powerPointSnapshot,
+    enumerable: true,
+  });
+  wrapper.setAttribute("data-architecture-pptx", "ready");
   appendRoutingWarning(documentRef, wrapper, routingDiagnostics);
   return wrapper;
 }

@@ -29,6 +29,7 @@ markdstage validate slides.md --json
 markdstage inspect slides.md --json
 markdstage capture slides.md --pages 2,4
 markdstage export slides.md --output slides.pdf
+markdstage export slides.md --output slides.pptx
 markdstage guide architecture-dsl
 markdstage skill install --target codex
 ```
@@ -39,7 +40,7 @@ markdstage skill install --target codex
 | `validate` | Checks deck structure, Architecture DSL blocks, themes, and theme paths. |
 | `inspect` | Reports the same compact 1280x720 clipping diagnostics as the canvas `inspect_layout` action. Use `--slide <n>` for one page, `--all` to include slides that fit, and `--fail-on-issues` to exit with code 5. |
 | `capture` | Writes 1280x720 PNG files. Without `--pages` only the slides reported as clipped are captured. |
-| `export` | Produces the same 16:9 PDF as the Canvas Extension. |
+| `export` | Produces the same 16:9 PDF or hybrid editable PowerPoint as the Canvas Extension. The `--output` extension selects the format; PDF remains the default. |
 | `guide` | Prints the canonical MarkdStage authoring guide: `overview`, `slide-format`, `themes`, `custom-themes`, `theme-schema`, `architecture-dsl`, and `architecture-schema`. |
 | `skill` | Installs or checks the portable Agent Skills. |
 | `help` | Shows the overview, or the help for one command. `markdstage help <command>` prints the same text as `markdstage <command> --help`. |
@@ -57,9 +58,9 @@ markdstage capture --help
 
 1. Write the deck in Markdown and separate slides with `---` after a blank line.
 2. `markdstage validate slides.md` — check structure, themes, and Architecture DSL.
-3. `markdstage inspect slides.md` — find slides that would be clipped in the 16:9 PDF.
+3. `markdstage inspect slides.md` — find slides that would be clipped in fixed 16:9 output.
 4. `markdstage capture slides.md` — review the clipped slides as PNG files.
-5. `markdstage present slides.md --watch` or `markdstage export slides.md`.
+5. Present the deck, export PDF, or use `markdstage export slides.md --output slides.pptx`.
 
 ## Architecture editing in watch mode
 
