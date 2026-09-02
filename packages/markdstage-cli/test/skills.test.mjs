@@ -58,6 +58,28 @@ test("generated skills explain watch-mode Architecture editing", async () => {
   assert.match(skill, /without\s+`--watch`\s+is read-only/);
 });
 
+test("generated skills teach the diagnostic-first authoring loop", async () => {
+  const skill = (await buildSkillFiles("codex")).get("SKILL.md");
+  const stages = [
+    "markdstage guide slide-format",
+    "markdstage validate slides.md --json",
+    "markdstage present slides.md --watch",
+    "markdstage inspect slides.md --json",
+    "markdstage capture slides.md",
+    "markdstage presentation slides.md",
+    "markdstage export slides.md --output slides.pdf",
+    "markdstage export slides.md --output slides.pptx",
+  ];
+  let previous = -1;
+  for (const stage of stages) {
+    const index = skill.indexOf(stage);
+    assert.ok(index > previous, `${stage} must appear in workflow order`);
+    previous = index;
+  }
+  assert.match(skill, /captures only clipped slides/);
+  assert.match(skill, /Prefer structured validation\s+and layout diagnostics over capturing every slide/);
+});
+
 test("generation is deterministic", async () => {
   const first = await buildSkillFiles("codex");
   const second = await buildSkillFiles("codex");

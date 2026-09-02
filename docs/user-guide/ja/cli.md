@@ -58,13 +58,29 @@ markdstage help capture
 markdstage capture --help
 ```
 
-## 基本の流れ
+## 推奨する資料作成フロー
 
-1. Markdown でデッキを書き、空行の後の `---` でスライドを区切ります。
-2. `markdstage validate slides.md` で構造、テーマ、Architecture DSL を確認します。
-3. `markdstage inspect slides.md` で固定 16:9 出力に収まらないスライドを見つけます。
-4. `markdstage capture slides.md` で該当スライドを PNG として確認します。
-5. 発表するか、PDF を出力するか、`markdstage export slides.md --output slides.pptx` で PowerPoint を出力します。
+1. 元資料、対象者、目的、おおよその枚数または発表時間、テーマ、必要な図、最終出力を決めます。
+2. デッキに必要なガイドだけを確認します。最初に `markdstage guide slide-format` を実行し、
+   必要に応じて `themes`、`custom-themes`、`architecture-dsl` を参照します。
+3. Markdown を唯一の正本としてデッキ全体を作成し、空行の後の `---` でスライドを区切ります。
+4. 見た目を確認する前に `markdstage validate slides.md --json` を実行し、構造、テーマ、
+   Architecture DSL のエラーを修正します。
+5. 編集中は `markdstage present slides.md --watch` を実行します。保存時に再読み込みし、表示中の
+   スライドを維持しながら、一時的に不完全な保存では直前の正常なデッキを表示し続けます。
+6. `markdstage inspect slides.md --json` で固定 16:9 出力のクリッピングを確認します。局所的な
+   修正後は `--slide <n>`、CI などの品質ゲートでは `--fail-on-issues` を使います。
+7. `inspect` の後で必要な場合だけ `markdstage capture slides.md` を実行します。既定では
+   クリッピングされたスライドだけを取得し、バランス、余白、図の見た目を確認したいページには
+   `--pages 2,4` を使います。
+8. Markdown を修正し、検証と対象ページの診断を繰り返して、エラーやクリッピングがなく、簡潔で
+   視覚的なバランスが取れた状態にします。
+9. `markdstage presentation slides.md` で発表するか、
+   `markdstage export slides.md --output slides.pdf` で PDF を出力するか、
+   `markdstage export slides.md --output slides.pptx` で PowerPoint を出力します。
+
+全スライドを最初から画像化するのではなく、構造化された検証とレイアウト診断を優先します。
+配布前には最終出力の全ページを確認します。
 
 ## watch モードで Architecture を編集する
 

@@ -57,13 +57,31 @@ markdstage help capture
 markdstage capture --help
 ```
 
-## Typical workflow
+## Recommended authoring workflow
 
-1. Write the deck in Markdown and separate slides with `---` after a blank line.
-2. `markdstage validate slides.md` — check structure, themes, and Architecture DSL.
-3. `markdstage inspect slides.md` — find slides that would be clipped in fixed 16:9 output.
-4. `markdstage capture slides.md` — review the clipped slides as PNG files.
-5. Start `markdstage presentation slides.md`, export PDF, or use `markdstage export slides.md --output slides.pptx`.
+1. Define the source material, audience, objective, approximate length, theme, required diagrams,
+   and final output.
+2. Read only the guidance needed for the deck. Start with
+   `markdstage guide slide-format`, then retrieve `themes`, `custom-themes`, or
+   `architecture-dsl` when necessary.
+3. Create the complete Markdown deck as the source of truth and separate slides with `---` after a
+   blank line.
+4. Run `markdstage validate slides.md --json` and fix structure, theme, and Architecture DSL errors
+   before visual review.
+5. Run `markdstage present slides.md --watch` while editing. The browser reloads on save, preserves
+   the current slide, and keeps the last valid deck if a save is temporarily incomplete.
+6. Run `markdstage inspect slides.md --json` to find fixed 16:9 clipping. Use `--slide <n>` after a
+   localized change and `--fail-on-issues` in CI or other quality gates.
+7. Run `markdstage capture slides.md` only after inspection. It captures clipped slides by default;
+   use `--pages 2,4` when specific pages need visual review for balance, spacing, or diagrams.
+8. Revise the Markdown and repeat validation plus targeted inspection until the deck is valid,
+   unclipped, concise, and visually balanced.
+9. Start `markdstage presentation slides.md`, run
+   `markdstage export slides.md --output slides.pdf`, or use
+   `markdstage export slides.md --output slides.pptx`.
+
+Prefer structured validation and layout diagnostics over capturing every slide. Review every final
+export before distribution.
 
 ## Architecture editing in watch mode
 

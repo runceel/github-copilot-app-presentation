@@ -1,6 +1,6 @@
 ---
 name: markdstage
-description: 'Turn Markdown files into slides and present them in the MarkdStage canvas. Use for requests such as "present slides.md," "present this Markdown," "present @name.md," "use a Microsoft style," or "turn this file into slides." When the source is prose-heavy, summarize and restructure each page as a heading with bullets. Generate the complete deck once at startup and pass every slide to the open input of canvas ID MarkdStage. Navigation then stays inside the canvas through buttons, arrow keys, the slide list, and Surface Pen on supported Windows systems. Use when the user wants to turn a Markdown file into a presentation and present it with MarkdStage.'
+description: 'Turn Markdown files into slides and present them in the MarkdStage canvas, or use the MarkdStage CLI to create, validate, inspect, capture, present, and export source-backed decks. Use for requests such as "present slides.md," "present this Markdown," "present @name.md," "use a Microsoft style," "turn this file into slides," "check whether my slides fit," or "export the deck to PDF or PowerPoint." When the source is prose-heavy, summarize and restructure each page as a heading with bullets. Generate the complete deck once at startup and pass every slide to the open input of canvas ID MarkdStage. Navigation then stays inside the canvas through buttons, arrow keys, the slide list, and Surface Pen on supported Windows systems.'
 ---
 
 # MarkdStage skill
@@ -84,6 +84,57 @@ canvas 📂 button. This deterministic split does not involve AI.
 
 When a user asks AI to present a file, follow this skill and generate the deck.
 The 📂 button is a separate user workflow, not an AI shortcut.
+
+## CLI-assisted authoring workflow
+
+For an immediate request to present Markdown in GitHub Copilot, keep using the
+Canvas startup procedure below. Use the MarkdStage CLI when the task also needs
+a persistent source-backed authoring loop, terminal or CI validation, fixed
+16:9 diagnostics, targeted PNG review, or PDF/PowerPoint output. The CLI uses
+the same parser, renderer, themes, Architecture DSL, and output pipeline as the
+Canvas.
+
+Run commands with `npx @markdstage/markdstage` or install
+`@markdstage/markdstage` globally and use `markdstage`.
+
+### Recommended create-review-deliver loop
+
+1. **Establish the brief.** Identify the source material, audience, objective,
+   approximate slide count or duration, theme, required diagrams, and output
+   format. Preserve facts and required terminology from the source.
+2. **Read only the relevant guidance.** Start with
+   `markdstage guide slide-format`, then retrieve `themes`, `custom-themes`, or
+   `architecture-dsl` only when the deck needs them.
+3. **Create the complete Markdown deck.** Keep Markdown as the single source of
+   truth. Separate slides with `---`, use front matter for layouts and themes,
+   and never hand-write slide HTML or CSS.
+4. **Validate before visual review.** Run
+   `markdstage validate slides.md --json` and fix deck, theme, and Architecture
+   DSL errors before judging layout.
+5. **Use watch mode for live authoring.** Run
+   `markdstage present slides.md --watch`, edit the Markdown, and review the
+   reloaded deck without losing the current slide. The browser begins in
+   viewing mode; the pencil control enables Architecture placement and detailed
+   editing.
+6. **Inspect fixed 16:9 output.** Run
+   `markdstage inspect slides.md --json`. Use `--slide <n>` after a localized
+   change and `--fail-on-issues` in CI or other quality gates.
+7. **Capture only what needs visual judgment.** Run
+   `markdstage capture slides.md` to capture clipped slides, or use
+   `--pages 2,4` for specific pages. Do not capture the whole deck by default;
+   structured diagnostics are faster and more precise for fit problems.
+8. **Revise and repeat targeted checks.** Update Markdown, re-run validation
+   when structure, themes, or diagrams change, then inspect affected pages.
+   Repeat until the deck is valid, unclipped, concise, and visually balanced.
+9. **Deliver from the same source.** Use
+   `markdstage presentation slides.md` for presenter view,
+   `markdstage export slides.md --output slides.pdf` for PDF, or
+   `markdstage export slides.md --output slides.pptx` for hybrid editable
+   PowerPoint.
+
+Use screenshots to assess balance, spacing, or diagram appearance, not as the
+primary way to discover structural or clipping errors. Review every final
+export before distribution.
 
 ## Processing model
 
