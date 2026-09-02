@@ -7,6 +7,11 @@ const SLIDES = [
   ["---", "title: First", "---", "## First", "", "- Short content"].join("\n"),
   ["---", "title: Second", "---", "## Second", "", "- Another slide"].join("\n"),
 ];
+const TITLE_SLIDE = ["---", "layout: title", "---", "# Branded title"].join("\n");
+const CUSTOM_THEME_META = {
+  version: 1,
+  cover: { background: { image: "/assets/sample.svg" } },
+};
 
 async function settleFrames(page) {
   await page.evaluate(
@@ -54,6 +59,32 @@ test("16:9 preview uses the fixed PDF surface and keeps navigation active", asyn
     await settleFrames(page);
     await expect(page.locator("body")).not.toHaveClass(/fixed-preview-mode/);
     await expect(button).toHaveAttribute("aria-pressed", "false");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("16:9 preview keeps a theme background covering the full title slide", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 900 });
+  const harness = await startHarness({
+    slides: [TITLE_SLIDE],
+    theme: "custom",
+    customThemeMeta: CUSTOM_THEME_META,
+  });
+  try {
+    await page.goto(`${harness.url}/`, { waitUntil: "load" });
+    await waitForSlideReady(page);
+    await page.locator("#navFixedPreview").click();
+    await settleFrames(page);
+
+    const dimensions = await page.locator("#stage > .deck").evaluate((deck) => {
+      const background = deck.querySelector(".theme-cover-background");
+      return {
+        deck: { width: deck.clientWidth, height: deck.clientHeight },
+        background: { width: background.clientWidth, height: background.clientHeight },
+      };
+    });
+    expect(dimensions.background).toEqual(dimensions.deck);
   } finally {
     await harness.close();
   }
