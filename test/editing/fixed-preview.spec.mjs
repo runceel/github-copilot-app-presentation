@@ -64,7 +64,9 @@ test("16:9 preview uses the fixed PDF surface and keeps navigation active", asyn
   }
 });
 
-test("16:9 preview keeps a theme background covering the full title slide", async ({ page }) => {
+test("16:9 preview on a square display keeps the theme background covering the title slide", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 900, height: 900 });
   const harness = await startHarness({
     slides: [TITLE_SLIDE],
