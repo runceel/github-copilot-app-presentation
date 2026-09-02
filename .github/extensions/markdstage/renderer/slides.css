@@ -566,7 +566,7 @@ body.fixed-output-mode .deck.backcover-slide{background:var(--backcover-bg,var(-
 body.fixed-output-mode .deck::before{position:absolute;}
 body.fixed-output-mode .body{overflow:hidden;}
 body.fixed-output-mode .kicker{font-size:12px;}
-body.fixed-output-mode img{max-height:346px;}
+body.fixed-output-mode img:not(.theme-cover-background){max-height:346px;}
 body.fixed-output-mode pre.mermaid svg{max-height:317px;}
 body.fixed-output-mode .architecture-svg{max-height:504px;}
 body.fixed-output-mode footer{gap:.65em;font-size:11px;margin-top:16px;}
