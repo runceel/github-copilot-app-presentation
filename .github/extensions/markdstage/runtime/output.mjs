@@ -1,4 +1,4 @@
-// PDF export, PNG capture, and fixed 16:9 layout inspection.
+// PDF/PowerPoint export, PNG capture, and fixed 16:9 layout inspection.
 //
 // The Canvas Extension and the MarkdStage CLI share this implementation so both
 // produce byte-identical output. Callers provide a session object with:
@@ -17,17 +17,27 @@ import {
   findChromiumBrowser,
   runCdpOutputBrowser,
   runPdfBrowser,
+  runPptxOutputBrowser,
   verifyPdf,
   verifyPng,
 } from "./browser.mjs";
 import {
   prepareWorkspaceDirectory,
   preparePdfOutputDirectory,
+  preparePptxOutputDirectory,
   resolveCaptureOutputDirectory,
   resolvePdfOutputPath,
+  resolvePptxOutputPath,
 } from "./output-paths.mjs";
+import {
+  buildPptxPackage,
+  inspectPptxPackage,
+  PPTX_DIMENSIONS,
+} from "./pptx-package.mjs";
 
 export const MAX_CAPTURE_SLIDES = 10;
+export const MAX_PPTX_ASSET_BYTES = 10 * 1024 * 1024;
+export const MAX_PPTX_TOTAL_ASSET_BYTES = 100 * 1024 * 1024;
 
 function logFor(inst, message, level = "info") {
   try {
@@ -68,6 +78,142 @@ export function createOutputJob(snapshot, kind) {
     error: "",
     layout: null,
   };
+}
+
+function decodeDataImage(source) {
+  const match = /^data:(image\/(?:png|jpeg|gif))(;base64)?,([\s\S]*)$/i.exec(source);
+  if (!match) {
+    throw new Error("Only PNG, JPEG, or GIF data URLs can be embedded in PowerPoint.");
+  }
+  const data = match[2]
+    ? Buffer.from(match[3], "base64")
+    : Buffer.from(decodeURIComponent(match[3]), "binary");
+  return { data, contentType: match[1].toLowerCase() };
+}
+
+function ensurePptxAssetSize(data, source, currentTotal) {
+  if (data.length > MAX_PPTX_ASSET_BYTES) {
+    throw new Error(
+      `PowerPoint image exceeds ${MAX_PPTX_ASSET_BYTES} bytes: ${source}`,
+    );
+  }
+  if (currentTotal + data.length > MAX_PPTX_TOTAL_ASSET_BYTES) {
+    throw new Error(
+      `PowerPoint image assets exceed ${MAX_PPTX_TOTAL_ASSET_BYTES} bytes in total.`,
+    );
+  }
+}
+
+async function loadPptxImage(inst, source, fetchImpl, currentTotal) {
+  if (typeof source !== "string" || !source) {
+    throw new Error("PowerPoint image is missing its source URL.");
+  }
+  if (source.startsWith("data:")) {
+    const decoded = decodeDataImage(source);
+    ensurePptxAssetSize(decoded.data, "data URL", currentTotal);
+    return decoded;
+  }
+
+  const base = new URL(inst.url);
+  const url = new URL(source, base);
+  if (url.origin !== base.origin) {
+    throw new Error(`PowerPoint image must be served by the MarkdStage workspace: ${source}`);
+  }
+  const response = await fetchImpl(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Could not load PowerPoint image (${response.status}): ${source}`);
+  }
+  const data = Buffer.from(await response.arrayBuffer());
+  ensurePptxAssetSize(data, source, currentTotal);
+  const responseType = response.headers.get("content-type")?.split(";")[0].trim().toLowerCase();
+  const contentType = ["image/png", "image/jpeg", "image/gif"].includes(responseType)
+    ? responseType
+    : undefined;
+  return { data, contentType };
+}
+
+export async function preparePptxPackageModel(
+  inst,
+  model,
+  backgrounds,
+  fetchImpl = fetch,
+) {
+  if (
+    !model ||
+    model.version !== 1 ||
+    model.width !== PPTX_DIMENSIONS.widthPx ||
+    model.height !== PPTX_DIMENSIONS.heightPx ||
+    !Array.isArray(model.slides) ||
+    model.slides.length === 0
+  ) {
+    throw new Error("The renderer returned an unsupported PowerPoint export model.");
+  }
+  if (!Array.isArray(backgrounds) || backgrounds.length !== model.slides.length) {
+    throw new Error("PowerPoint fallback artwork does not match the slide count.");
+  }
+
+  const assets = [];
+  const sourceAssets = new Map();
+  let totalAssetBytes = 0;
+  for (const [index, background] of backgrounds.entries()) {
+    if (!Buffer.isBuffer(background)) {
+      throw new Error(`PowerPoint fallback artwork for slide ${index + 1} is invalid.`);
+    }
+    ensurePptxAssetSize(background, `slide ${index + 1} fallback artwork`, totalAssetBytes);
+    totalAssetBytes += background.length;
+    assets.push({
+      id: `markdstage-background-${index + 1}`,
+      contentType: "image/png",
+      data: background,
+    });
+  }
+
+  const slides = [];
+  for (const [slideIndex, sourceSlide] of model.slides.entries()) {
+    if (!sourceSlide || !Array.isArray(sourceSlide.elements)) {
+      throw new Error(`PowerPoint slide ${slideIndex + 1} has an invalid element list.`);
+    }
+    const elements = [];
+    for (const sourceElement of sourceSlide.elements) {
+      if (sourceElement?.type !== "image") {
+        elements.push(sourceElement);
+        continue;
+      }
+      const source = sourceElement.src;
+      let assetId = sourceAssets.get(source);
+      if (!assetId) {
+        const loaded = await loadPptxImage(inst, source, fetchImpl, totalAssetBytes);
+        totalAssetBytes += loaded.data.length;
+        assetId = `markdstage-image-${sourceAssets.size + 1}`;
+        sourceAssets.set(source, assetId);
+        assets.push({ id: assetId, ...loaded });
+      }
+      const { src: _src, source: _source, ...image } = sourceElement;
+      if (
+        (image.fit === "contain" || image.fit === "scale-down") &&
+        image.naturalWidth > 0 &&
+        image.naturalHeight > 0
+      ) {
+        const scale = Math.min(
+          image.width / image.naturalWidth,
+          image.height / image.naturalHeight,
+          image.fit === "scale-down" ? 1 : Number.POSITIVE_INFINITY,
+        );
+        const width = image.naturalWidth * scale;
+        const height = image.naturalHeight * scale;
+        image.x += (image.width - width) / 2;
+        image.y += (image.height - height) / 2;
+        image.width = width;
+        image.height = height;
+      }
+      elements.push({ ...image, assetId });
+    }
+    slides.push({
+      backgroundAssetId: `markdstage-background-${slideIndex + 1}`,
+      elements,
+    });
+  }
+  return { slides, assets };
 }
 
 async function runLayoutInspectionJob(inst, snapshot, browser) {
@@ -114,7 +260,7 @@ export async function inspectLayout(inst, requestedIndex, includeFits = false) {
   if (inst.exporting) {
     throw new MarkdStageError(
       "output_in_progress",
-      "Another PDF, layout inspection, or PNG output job is already running for this canvas.",
+      "Another PDF, PowerPoint, layout inspection, or PNG output job is already running for this canvas.",
     );
   }
   const snapshot = createOutputSnapshot(inst);
@@ -194,7 +340,7 @@ export async function captureSlides(
   if (inst.exporting) {
     throw new MarkdStageError(
       "output_in_progress",
-      "Another PDF, layout inspection, or PNG output job is already running for this canvas.",
+      "Another PDF, PowerPoint, layout inspection, or PNG output job is already running for this canvas.",
     );
   }
   const snapshot = createOutputSnapshot(inst, requestedTheme);
@@ -315,9 +461,10 @@ export async function exportPdf(inst, requestedPath, requestedTheme) {
   if (inst.exporting) {
     throw new MarkdStageError(
       "export_in_progress",
-      "Another PDF, layout inspection, or PNG output job is already running for this canvas.",
+      "Another PDF, PowerPoint, layout inspection, or PNG output job is already running for this canvas.",
     );
   }
+
   inst.exporting = true;
   let token = "";
   let profileDir = "";
@@ -362,6 +509,7 @@ export async function exportPdf(inst, requestedPath, requestedTheme) {
     logFor(inst, `MarkdStage: exported ${snapshot.slides.length} slides to ${outputPath}`);
     return {
       ok: true,
+      format: "pdf",
       path: outputPath,
       total: snapshot.slides.length,
       theme: snapshot.theme,
@@ -380,6 +528,121 @@ export async function exportPdf(inst, requestedPath, requestedTheme) {
     inst.exporting = false;
     if (profileDir) {
       await rm(profileDir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+}
+
+export async function exportPptx(
+    inst,
+    requestedPath,
+    requestedTheme,
+    dependencies = {},
+) {
+    const findBrowser = dependencies.findChromiumBrowser ?? findChromiumBrowser;
+    const runBrowser = dependencies.runPptxOutputBrowser ?? runPptxOutputBrowser;
+    const prepareModel = dependencies.preparePptxPackageModel ?? preparePptxPackageModel;
+    const buildPackage = dependencies.buildPptxPackage ?? buildPptxPackage;
+    const inspectPackage = dependencies.inspectPptxPackage ?? inspectPptxPackage;
+    if (inst.exporting) {
+      throw new MarkdStageError(
+        "export_in_progress",
+        "Another PDF, PowerPoint, layout inspection, or PNG output job is already running for this canvas.",
+      );
+    }
+    inst.exporting = true;
+    let token = "";
+    let profileDir = "";
+    let temporaryOutputPath = "";
+
+    try {
+      const snapshot = createOutputSnapshot(inst, requestedTheme);
+      if (!snapshot.slides.length) {
+        throw new MarkdStageError(
+          "no_deck",
+          "No slides are loaded. Load a deck before exporting PowerPoint.",
+        );
+      }
+
+      const browser = findBrowser();
+      if (!browser) {
+        throw new MarkdStageError(
+          "pptx_browser_not_found",
+          "PowerPoint export requires Microsoft Edge, Google Chrome, or Chromium.",
+        );
+      }
+
+      const outputPath = resolvePptxOutputPath(inst.workspaceRoot, requestedPath);
+      const outputParent = await preparePptxOutputDirectory(inst.workspaceRoot, outputPath);
+      token = randomUUID();
+      profileDir = await mkdtemp(join(tmpdir(), "markdstage-pptx-"));
+      const outputBase = basename(outputPath, extname(outputPath)) || "markdstage";
+      temporaryOutputPath = join(outputParent, `.${outputBase}.${token}.tmp.pptx`);
+      const job = createOutputJob(snapshot, "pptx");
+      inst.exportJobs.set(token, job);
+
+      const pageUrl = pageUrlFor(inst, { pptx: 1, token });
+      const { model, backgrounds } = await runBrowser(
+        browser,
+        pageUrl,
+        profileDir,
+        job,
+        snapshot.slides.length,
+      );
+      const packageModel = await prepareModel(inst, model, backgrounds);
+      const buffer = buildPackage({
+        title: model.slides[0]?.title || outputBase,
+        ...packageModel,
+      });
+      const packageSummary = inspectPackage(buffer);
+      if (
+        !packageSummary.valid ||
+        packageSummary.slideCount !== snapshot.slides.length ||
+        packageSummary.dimensions.widthEmu !== PPTX_DIMENSIONS.widthEmu ||
+        packageSummary.dimensions.heightEmu !== PPTX_DIMENSIONS.heightEmu
+      ) {
+        throw new Error("The generated PowerPoint package failed validation.");
+      }
+
+      await writeFile(temporaryOutputPath, buffer);
+      await rename(temporaryOutputPath, outputPath);
+      temporaryOutputPath = "";
+      const fallbacks = model.slides.flatMap((slide, slideIndex) =>
+        (Array.isArray(slide.fallbacks) ? slide.fallbacks : []).map((fallback) => ({
+          slideIndex,
+          page: slideIndex + 1,
+          ...fallback,
+        })),
+      );
+      logFor(
+        inst,
+        `MarkdStage: exported ${snapshot.slides.length} slides to ${outputPath} (${fallbacks.length} fallbacks)`,
+      );
+      return {
+        ok: true,
+        format: "pptx",
+        path: outputPath,
+        total: snapshot.slides.length,
+        theme: snapshot.theme,
+        bytes: buffer.length,
+        fallbackCount: fallbacks.length,
+        fallbacks,
+      };
+    } catch (error) {
+      if (error instanceof MarkdStageError) throw error;
+      throw new MarkdStageError(
+        "pptx_export_failed",
+        error?.message || "PowerPoint export failed.",
+      );
+    } finally {
+      if (token) {
+        inst.exportJobs.delete(token);
+      }
+      if (temporaryOutputPath) {
+        await rm(temporaryOutputPath, { force: true }).catch(() => {});
+      }
+      inst.exporting = false;
+      if (profileDir) {
+        await rm(profileDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 }

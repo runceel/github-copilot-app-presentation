@@ -30,6 +30,7 @@ markdstage validate slides.md --json
 markdstage inspect slides.md --json
 markdstage capture slides.md --pages 2,4
 markdstage export slides.md --output slides.pdf
+markdstage export slides.md --output slides.pptx
 markdstage guide architecture-dsl
 markdstage skill install --target codex
 ```
@@ -40,7 +41,7 @@ markdstage skill install --target codex
 | `validate` | デッキ構造、Architecture DSL ブロック、テーマ、テーマのパスを検証します。 |
 | `inspect` | Canvas の `inspect_layout` と同じ 1280x720 のクリッピング診断を返します。`--slide <n>` で 1 ページだけ、`--all` で収まっているスライドも含め、`--fail-on-issues` で終了コード 5 を返します。 |
 | `capture` | 1280x720 の PNG を書き出します。`--pages` を指定しない場合はクリッピングが報告されたスライドだけを取得します。 |
-| `export` | Canvas Extension と同じ 16:9 の PDF を生成します。 |
+| `export` | Canvas Extension と同じ 16:9 の PDF、または編集可能な要素を残したハイブリッド PowerPoint を生成します。`--output` の拡張子で形式を選び、省略時は PDF です。 |
 | `guide` | MarkdStage の公式ガイド（`overview`、`slide-format`、`themes`、`custom-themes`、`theme-schema`、`architecture-dsl`、`architecture-schema`）を表示します。 |
 | `skill` | 持ち運べる Agent Skills を導入・確認します。 |
 | `help` | 全体の使い方、または 1 つのコマンドのヘルプを表示します。`markdstage help <command>` は `markdstage <command> --help` と同じ内容です。 |
@@ -58,9 +59,9 @@ markdstage capture --help
 
 1. Markdown でデッキを書き、空行の後の `---` でスライドを区切ります。
 2. `markdstage validate slides.md` で構造、テーマ、Architecture DSL を確認します。
-3. `markdstage inspect slides.md` で 16:9 の PDF に収まらないスライドを見つけます。
+3. `markdstage inspect slides.md` で固定 16:9 出力に収まらないスライドを見つけます。
 4. `markdstage capture slides.md` で該当スライドを PNG として確認します。
-5. `markdstage present slides.md --watch` で発表するか、`markdstage export slides.md` で出力します。
+5. 発表するか、PDF を出力するか、`markdstage export slides.md --output slides.pptx` で PowerPoint を出力します。
 
 ## watch モードで Architecture を編集する
 

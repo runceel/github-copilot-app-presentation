@@ -83,6 +83,13 @@ The themed slide is displayed and updates automatically
   It does not load or watch that file. AI may call `export_pdf` with another
   `outputPath`. Hidden print mode renders every page, then headless Edge/Chrome
   produces a 16:9 PDF with backgrounds, images, highlighted code, and Mermaid.
+- **Hybrid editable PowerPoint export is available from the P control.** It
+  preserves supported text, lists, links, tables, raster images, and Architecture
+  DSL objects as native PowerPoint content. Architecture nodes, groups, and
+  connector-label pills are visible AutoShapes with integrated text; icons use a
+  transparent foreground picture layer. Mermaid and unsupported styling stay
+  visible as background artwork and are listed in the export report. AI may call
+  `export_pptx` with another workspace-confined `.pptx` path.
 - Use the **16:9 control** to letterbox the current slide inside the canvas with
   the same fixed 1280×720 typography, spacing, diagram limits, and clipping used
   by PDF output. This preview is local to the canvas and does not change deck

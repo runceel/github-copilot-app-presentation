@@ -32,7 +32,8 @@
 </p>
 
 MarkdStage is an open-source presentation tool that turns Markdown directly into polished slides,
-with editing, synchronized presenting, speaker notes, and PDF export. Its native GitHub Copilot
+with editing, synchronized presenting, speaker notes, PDF export, and hybrid editable PowerPoint
+export. Its native GitHub Copilot
 canvas Extension and standalone Windows app share one renderer, so authors can keep Markdown as
 the source of truth from the first draft to the stage.
 
@@ -41,14 +42,14 @@ the source of truth from the first draft to the stage.
 - **Markdown is the source**: Keep `.md` as the source of truth instead of moving to a proprietary format
 - **Write, then present immediately**: Open a file in the canvas or Desktop and it becomes a slide deck
 - **Present technical content directly**: Supports code, Mermaid, Architecture DSL, images, tables, and speaker notes
-- **Keep output consistent**: Use the same renderer in the canvas, presentation window, Desktop, and PDF
+- **Keep output consistent**: Use the same renderer in the canvas, presentation window, Desktop, PDF, and PowerPoint export
 - **Validate PDF fit before export**: Preview the fixed 16:9 layout, inspect clipping, and capture only pages that need visual review
 - **Keep controls focused on presenting**: Navigate with buttons, the keyboard, or Surface Pen in supported environments
 
 ## See Markdown on stage
 
-The same Markdown renderer powers the GitHub Copilot canvas, presenter window, Desktop app, and
-PDF export.
+The same Markdown renderer powers the GitHub Copilot canvas, presenter window, Desktop app, PDF
+export, and hybrid editable PowerPoint export.
 
 <table>
   <tr>
@@ -113,7 +114,7 @@ the latest development version.
 1. Edit `slides.md` and separate slides with `---` after a blank line.
 2. Ask Copilot, "Present this deck using `slides.md`."
 3. Navigate with **◀ ▶**, the **arrow keys**, or the **☰ slide list** in the MarkdStage canvas.
-4. Use **16:9** before PDF export. Copilot can run `inspect_layout` first and generate selected PNG previews only when needed.
+4. Use **16:9** before PDF or PowerPoint export. Copilot can run `inspect_layout` first and generate selected PNG previews only when needed.
 
 You can also open Markdown directly from the workspace with the canvas **📂** button or the `I`
 key, without using AI. In a Git repository, the workspace is the repository root; otherwise it

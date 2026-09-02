@@ -127,11 +127,14 @@ async function readJsonBody(req, limit = 1_000_000) {
  * @param {boolean} [options.presenterWindowAvailable] Whether the host can launch a presenter
  * @param {boolean} [options.presenterViewAvailable] Whether the host provides presenter view
  * @param {boolean} [options.pdfExportAvailable] Whether the host can export PDF from the renderer
+ * @param {boolean} [options.pptxExportAvailable] Whether the host can export PowerPoint
  * @param {boolean} [options.markdownImportAvailable] Whether the host can import Markdown
  */
 export async function startHarness({
   slides,
   theme = "dark",
+  customThemeCss = "",
+  customThemeMeta = null,
   index = 0,
   printToken = "test-print-token",
   architectureEdit = false,
@@ -139,6 +142,7 @@ export async function startHarness({
   presenterWindowAvailable = true,
   presenterViewAvailable = true,
   pdfExportAvailable = true,
+  pptxExportAvailable = true,
   markdownImportAvailable = true,
 } = {}) {
   if (!Array.isArray(slides) || slides.length === 0) {
@@ -158,6 +162,8 @@ export async function startHarness({
     slides: slides.slice(),
     index: Math.min(Math.max(index, 0), slides.length - 1),
     theme,
+    customThemeCss,
+    customThemeMeta,
     // Architecture diagram edit mode. Production extension.mjs toggles this with a canvas action;
     // the harness fixes it through a startup option.
     architectureEdit: Boolean(architectureEdit),
@@ -173,6 +179,7 @@ export async function startHarness({
     presenterWindowAvailable,
     presenterViewAvailable,
     pdfExportAvailable,
+    pptxExportAvailable,
     markdownImportAvailable,
   };
   // Print results posted by the renderer, retained so tests can verify "ready".
@@ -305,6 +312,8 @@ export async function startHarness({
         index: targetIndex,
         total: state.slides.length,
         theme: state.theme,
+        customThemeCss: state.customThemeCss,
+        customThemeMeta: state.customThemeMeta,
         mode: "deck",
         sourceBacked: state.sourceWriteback,
         sourceModeAvailable: true,
@@ -315,6 +324,7 @@ export async function startHarness({
         presenterWindowAvailable: state.presenterWindowAvailable,
         presenterViewAvailable: state.presenterViewAvailable,
         pdfExportAvailable: state.pdfExportAvailable,
+        pptxExportAvailable: state.pptxExportAvailable,
         markdownImportAvailable: state.markdownImportAvailable,
         architectureEditAvailable: true,
         architectureEdit: state.architectureEdit,
@@ -345,7 +355,12 @@ export async function startHarness({
         sendText(res, 404, "Export snapshot not found");
         return;
       }
-      sendJson(res, 200, { slides: state.slides, theme: state.theme });
+      sendJson(res, 200, {
+        slides: state.slides,
+        theme: state.theme,
+        customThemeCss: state.customThemeCss,
+        customThemeMeta: state.customThemeMeta,
+      });
       return;
     }
 
@@ -676,8 +691,8 @@ export async function startHarness({
       return;
     }
 
-    // PDF export belongs to the SDK / external browser, so keep this as a stub.
-    if (pathname === "/export") {
+    // File export belongs to the SDK / external browser, so keep these as stubs.
+    if (pathname === "/export" || pathname === "/export-pptx") {
       if (req.method !== "POST") {
         res.setHeader("Allow", "POST");
         sendJson(res, 405, { ok: false, error: "method_not_allowed" });

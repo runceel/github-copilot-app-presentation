@@ -427,9 +427,8 @@ async function waitForOutputJob(job, child, diagnostics) {
   }
 }
 
-export async function runCdpOutputBrowser(browser, pageUrl, profileDir, job, capturePng) {
+function launchCdpOutputBrowser(browser, profileDir) {
   const diagnostics = { value: "" };
-  await rm(join(profileDir, "DevToolsActivePort"), { force: true }).catch(() => {});
   const args = withSandboxFallback([
     "--headless=new",
     "--disable-gpu",
@@ -457,7 +456,12 @@ export async function runCdpOutputBrowser(browser, pageUrl, profileDir, job, cap
   };
   child.stdout.on("data", appendDiagnostics);
   child.stderr.on("data", appendDiagnostics);
+  return { child, diagnostics };
+}
 
+async function openCdpOutputPage(browser, pageUrl, profileDir, job) {
+  await rm(join(profileDir, "DevToolsActivePort"), { force: true }).catch(() => {});
+  const { child, diagnostics } = launchCdpOutputBrowser(browser, profileDir);
   let cdp = null;
   try {
     const port = await waitForDevToolsPort(profileDir, child, diagnostics);
@@ -475,6 +479,22 @@ export async function runCdpOutputBrowser(browser, pageUrl, profileDir, job, cap
       throw new Error(`Chromium could not open the renderer: ${navigation.errorText}`);
     }
     await waitForOutputJob(job, child, diagnostics);
+    return { cdp, child };
+  } catch (error) {
+    cdp?.close();
+    if (isProcessRunning(child)) await terminateProcessTree(child);
+    throw error;
+  }
+}
+
+async function closeCdpOutputPage(cdp, child) {
+  cdp?.close();
+  if (isProcessRunning(child)) await terminateProcessTree(child);
+}
+
+export async function runCdpOutputBrowser(browser, pageUrl, profileDir, job, capturePng) {
+  const { cdp, child } = await openCdpOutputPage(browser, pageUrl, profileDir, job);
+  try {
     if (!capturePng) return null;
     await cdp.send("Runtime.evaluate", {
       expression:
@@ -491,8 +511,55 @@ export async function runCdpOutputBrowser(browser, pageUrl, profileDir, job, cap
     }
     return Buffer.from(screenshot.data, "base64");
   } finally {
-    cdp?.close();
-    if (isProcessRunning(child)) await terminateProcessTree(child);
+    await closeCdpOutputPage(cdp, child);
+  }
+}
+
+export async function runPptxOutputBrowser(browser, pageUrl, profileDir, job, total) {
+  const { cdp, child } = await openCdpOutputPage(browser, pageUrl, profileDir, job);
+  try {
+    const evaluated = await cdp.send("Runtime.evaluate", {
+      expression: "window.__presentationPptxModel",
+      returnByValue: true,
+    });
+    if (evaluated.exceptionDetails) {
+      throw new Error(
+        evaluated.exceptionDetails.text || "The renderer could not expose the PowerPoint model.",
+      );
+    }
+    const model = evaluated.result?.value;
+    if (!model || !Array.isArray(model.slides) || model.slides.length !== total) {
+      throw new Error("The renderer returned an invalid PowerPoint export model.");
+    }
+
+    await cdp.send("Runtime.evaluate", {
+      expression:
+        "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+      awaitPromise: true,
+    });
+
+    const backgrounds = [];
+    for (let index = 0; index < total; index += 1) {
+      const screenshot = await cdp.send("Page.captureScreenshot", {
+        format: "png",
+        fromSurface: true,
+        captureBeyondViewport: true,
+        clip: {
+          x: 0,
+          y: index * 720,
+          width: 1280,
+          height: 720,
+          scale: 1,
+        },
+      });
+      if (typeof screenshot.data !== "string" || screenshot.data.length === 0) {
+        throw new Error(`Chromium did not return fallback artwork for slide ${index + 1}.`);
+      }
+      backgrounds.push(Buffer.from(screenshot.data, "base64"));
+    }
+    return { model, backgrounds };
+  } finally {
+    await closeCdpOutputPage(cdp, child);
   }
 }
 

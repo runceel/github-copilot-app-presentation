@@ -1,7 +1,7 @@
 // Workspace-confined output path resolution shared by the Canvas Extension and
 // the MarkdStage CLI.
 //
-// Every generated file (PDF, PNG) must land inside the resolved workspace, and
+// Every generated file (PDF, PPTX, PNG) must land inside the resolved workspace, and
 // no intermediate directory may traverse a symlink or junction that escapes it.
 
 import { mkdir, realpath, stat } from "node:fs/promises";
@@ -18,6 +18,7 @@ import {
 import { MarkdStageError } from "./errors.mjs";
 
 export const DEFAULT_PDF_NAME = "markdstage.pdf";
+export const DEFAULT_PPTX_NAME = "markdstage.pptx";
 export const DEFAULT_CAPTURE_DIR = "markdstage-previews";
 
 function safeBaseName(sourceName) {
@@ -31,6 +32,10 @@ function safeBaseName(sourceName) {
 
 export function pdfNameForSource(sourceName) {
   return `${safeBaseName(sourceName) || basename(DEFAULT_PDF_NAME, ".pdf")}.pdf`;
+}
+
+export function pptxNameForSource(sourceName) {
+  return `${safeBaseName(sourceName) || basename(DEFAULT_PPTX_NAME, ".pptx")}.pptx`;
 }
 
 export function captureDirectoryName(sourceName) {
@@ -95,6 +100,14 @@ export function resolvePdfOutputPath(workspaceRoot, requestedPath) {
   });
 }
 
+export function resolvePptxOutputPath(workspaceRoot, requestedPath) {
+  return resolveWorkspaceOutputPath(workspaceRoot, requestedPath, {
+    defaultName: DEFAULT_PPTX_NAME,
+    extension: ".pptx",
+    label: "PowerPoint",
+  });
+}
+
 export function resolveCaptureOutputDirectory(workspaceRoot, sourceName, requestedPath) {
   const root = resolve(workspaceRoot);
   const requested =
@@ -156,4 +169,8 @@ export async function prepareWorkspaceDirectory(workspaceRoot, outputParent, lab
 
 export async function preparePdfOutputDirectory(workspaceRoot, outputPath) {
   return prepareWorkspaceDirectory(workspaceRoot, dirname(outputPath), "PDF");
+}
+
+export async function preparePptxOutputDirectory(workspaceRoot, outputPath) {
+  return prepareWorkspaceDirectory(workspaceRoot, dirname(outputPath), "PowerPoint");
 }

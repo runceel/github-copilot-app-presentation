@@ -64,9 +64,15 @@ export const { MarkdStageError } = errors;
 export const { createDeckSession, readDeckSlides, resolveDeckFile, resolveDeckTheme } =
   deckSession;
 export const { createUrlToken, startPresentationServer } = presentationServer;
-export const { captureSlides, exportPdf, inspectLayout, MAX_CAPTURE_SLIDES } = output;
+export const {
+  captureSlides,
+  exportPdf,
+  exportPptx,
+  inspectLayout,
+  MAX_CAPTURE_SLIDES,
+} = output;
 export const { findChromiumBrowser, terminateProcessTree, isProcessRunning } = browser;
-export const { captureDirectoryName, pdfNameForSource } = outputPaths;
+export const { captureDirectoryName, pdfNameForSource, pptxNameForSource } = outputPaths;
 export const {
   architectureValidationErrors,
   deckValidationFeedback,

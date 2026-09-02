@@ -55,6 +55,11 @@ export default defineConfig({
       testDir: "test/pdf",
       testMatch: /.*\.spec\.mjs/,
     },
+    {
+      name: "pptx",
+      testDir: "test/pptx",
+      testMatch: /.*\.spec\.mjs/,
+    },
     // Behavioral editing tests do not use screenshot baselines.
     {
       name: "editing",
