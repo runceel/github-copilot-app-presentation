@@ -53,7 +53,8 @@ user-facing JSON Schemas. Also include the split Mermaid assets and their manife
 
 ## MarkdStage Desktop
 
-Generate unpackaged, self-contained portable ZIP files with these commands:
+The tag-triggered release workflow generates unpackaged, self-contained portable ZIP files for x64
+and ARM64. Run the same commands locally during release validation:
 
 ```powershell
 apps\MarkdStage.Desktop\scripts\Publish.ps1 -Architecture x64
@@ -92,22 +93,45 @@ with the new canvas ID.
 ## MarkdStage CLI on npm
 
 The standalone CLI uses the same semantic version and release tag as the Canvas Extension, Skill,
-and Desktop. Commit the package version and any generated Skill updates to `main`, then create and
-push the shared product tag:
+and Desktop. npm publication authenticates through the configured Trusted Publisher and GitHub
+Actions OIDC; do not add a long-lived npm token.
+
+## Prepare the release commit
+
+Before tagging:
+
+1. Update `packages/markdstage-cli/package.json` to the new shared product version.
+2. Update every current-release Extension and Desktop URL in `README.md` and `README.ja.md` to use
+   the new tag. Do not change historical migration references.
+3. Add `.github/release-notes/vMAJOR.MINOR.PATCH.md` with the overview, compatibility statement,
+   breaking changes, and migration table described in `.github/release-notes/README.md`.
+4. Regenerate Agent Skills if their source changed.
+5. Run the validation commands above.
+6. Commit and merge all release preparation changes to `main`.
+
+Create and push the shared product tag from the verified `main` commit:
 
 ```powershell
 git tag v2.3.0
 git push origin v2.3.0
 ```
 
-`.github/workflows/npm-publish.yml` verifies that the tag matches the package version and that the
-tagged commit is reachable from `main`, then publishes `@markdstage/markdstage` with provenance.
-Publication authenticates through the configured npm Trusted Publisher and GitHub Actions OIDC; do
-not add a long-lived npm token.
+The tag starts `.github/workflows/npm-publish.yml`. The workflow:
+
+1. Verifies the stable SemVer tag, package version, `main` ancestry, and README links.
+2. Runs the complete JavaScript, browser, CLI, accessibility, performance, and PDF test suite.
+3. Builds and checksums the Extension ZIP.
+4. Tests and publishes the x64 and ARM64 Desktop ZIPs.
+5. Publishes `@markdstage/markdstage` with npm provenance.
+6. Generates release notes, creates the GitHub Release, uploads every asset, and verifies the
+   published URLs.
+
+The workflow is safe to rerun: existing npm versions are verified instead of republished, and
+existing GitHub Release assets are replaced with the newly verified artifacts.
 
 ## GitHub Release
 
-Include the following in the release notes:
+The workflow creates the GitHub Release and includes:
 
 - Change summary and verified commit SHA
 - Shared Canvas Extension, Skill, npm CLI, and Desktop version
@@ -116,13 +140,10 @@ Include the following in the release notes:
 - SHA-256 for each ZIP
 - Updated third-party notices when bundled open-source software changes
 
-## Post-release documentation
+## Post-release verification
 
-After publishing the GitHub Release:
+After the workflow succeeds:
 
-1. Update the root `README.md` so every **current release** link, version-pinned Extension folder
-   URL, and Desktop asset URL uses the new tag.
-2. Do not rewrite historical compatibility or migration references that intentionally name an older
-   version.
-3. Commit the documentation update to `main` and verify that every updated URL resolves to the
-   published release or one of its assets.
+1. Confirm the GitHub Release is marked latest and contains all six files.
+2. Confirm npm shows the matching `@markdstage/markdstage` version and provenance.
+3. Install the version-pinned Extension folder and verify the user-scoped Extension when applicable.

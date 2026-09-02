@@ -102,7 +102,7 @@ MarkdStage Canvas は、表示中のデッキと Architecture DSL を GitHub Cop
 
 このリポジトリをプロジェクトとして開くと、`.github/extensions/markdstage/` がプロジェクトスコープで
 読み込まれます。別のリポジトリへユーザースコープでインストールする場合は、現在の
-**[v2.1.3 リリース](https://github.com/runceel/markdstage/releases/tag/v2.1.3)** を指定して
+**[v2.2.0 リリース](https://github.com/runceel/markdstage/releases/tag/v2.2.0)** を指定して
 GitHub Copilot に依頼します。
 
 > 次の GitHub リポジトリフォルダーから MarkdStage をユーザースコープへインストールしてください。
@@ -137,7 +137,7 @@ canvasId: MarkdStage
 WinUI 3 アプリです。現在のスライドと次のスライド、そのスライドのスピーカーノートを並べて表示し、
 操作が同期するネイティブの投影用ウィンドウを開けます。
 
-現在の **[v2.1.3 リリース](https://github.com/runceel/markdstage/releases/tag/v2.1.3)** には、
+現在の **[v2.2.0 リリース](https://github.com/runceel/markdstage/releases/tag/v2.2.0)** には、
 Windows x64 / ARM64 向けのポータブルビルドと SHA-256 チェックサムファイルが含まれます。
 
 - [MarkdStage-win-x64.zip](https://github.com/runceel/markdstage/releases/download/v2.2.0/MarkdStage-win-x64.zip)
