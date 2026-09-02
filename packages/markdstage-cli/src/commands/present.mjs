@@ -169,6 +169,7 @@ export async function presentCommand(options, io) {
         };
       } finally {
         watcher?.close();
+        await closeAudience();
         if (isProcessRunning(browserProcess)) await terminateProcessTree(browserProcess);
         if (profileDir) await rm(profileDir, { recursive: true, force: true }).catch(() => {});
       }
