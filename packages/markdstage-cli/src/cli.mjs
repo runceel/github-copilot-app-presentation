@@ -36,6 +36,7 @@ import {
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const COMMANDS = [
+  ["presentation", "Open presenter view and launch the audience view from it."],
   ["present", "Serve a deck on loopback and open it in a browser window."],
   ["validate", "Check deck structure, Architecture DSL blocks, and themes."],
   ["inspect", "Report 1280x720 clipping diagnostics for a deck."],
@@ -58,6 +59,7 @@ const GLOBAL_OPTIONS = {
 };
 
 const COMMAND_OPTIONS = {
+  presentation: { watch: { type: "boolean" }, "no-open": { type: "boolean" } },
   present: { watch: { type: "boolean" }, "no-open": { type: "boolean" } },
   validate: {},
   inspect: { slide: { type: "string" }, all: { type: "boolean" }, "fail-on-issues": { type: "boolean" } },
@@ -101,6 +103,17 @@ function usage(command) {
     return lines.join("\n");
   }
   const help = {
+    presentation: [
+      "Usage: markdstage presentation <file.md> [options]",
+      "",
+      "Opens presenter view with the current slide, next-slide preview, and speaker notes.",
+      "Use Start presentation in that view to open the synchronized audience window.",
+      "",
+      "  --watch     Reload on save.",
+      "  --no-open   Serve the presenter view without launching a browser.",
+      "",
+      "Presentation requires an installed Microsoft Edge, Google Chrome, or Chromium.",
+    ],
     present: [
       "Usage: markdstage present <file.md> [options]",
       "",
@@ -252,6 +265,27 @@ export async function run(argv, io = {}) {
         const file = requireFile(positionals, "present");
         const report = await presentCommand(
           { ...deckOptions(file, values), watch: values.watch, open: !values["no-open"], until: io.until },
+          {
+            print: values.json ? () => {} : (message) => out(message),
+            status: (message, isError) => {
+              if (isError) err(message);
+              else if (!values.json) out(message);
+            },
+          },
+        );
+        if (values.json) json(report);
+        return EXIT_OK;
+      }
+      case "presentation": {
+        const file = requireFile(positionals, "presentation");
+        const report = await presentCommand(
+          {
+            ...deckOptions(file, values),
+            watch: values.watch,
+            open: !values["no-open"],
+            presenterView: true,
+            until: io.until,
+          },
           {
             print: values.json ? () => {} : (message) => out(message),
             status: (message, isError) => {

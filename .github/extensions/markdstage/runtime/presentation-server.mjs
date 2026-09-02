@@ -93,7 +93,7 @@ function broadcast(session) {
  */
 export async function startPresentationServer(
   session,
-  { editable = false, onLog, token = createUrlToken() } = {},
+  { editable = false, onLog, presenter, token = createUrlToken() } = {},
 ) {
   const base = `/${token}`;
   const architectureEditors = new Map();
@@ -163,9 +163,9 @@ export async function startPresentationServer(
         sourceMode: editingAvailable ? "live" : "snapshot",
         sourceWatchStatus: session.watchStatus || "inactive",
         sourceWatchError: session.watchError || "",
-        presenterRunning: false,
-        presenterWindowAvailable: false,
-        presenterViewAvailable: false,
+        presenterRunning: Boolean(presenter?.isRunning?.()),
+        presenterWindowAvailable: Boolean(presenter),
+        presenterViewAvailable: Boolean(presenter),
         pdfExportAvailable: false,
         pptxExportAvailable: false,
         markdownImportAvailable: false,
@@ -594,6 +594,29 @@ export async function startPresentationServer(
           message: error?.message || "Architecture Editor could not be opened.",
         });
         return;
+      }
+      return;
+    }
+
+    if (presenter && route === "/present") {
+      if (req.method !== "POST" && req.method !== "DELETE") {
+        res.setHeader("Allow", "POST, DELETE");
+        json(res, 405, { ok: false, error: "method_not_allowed" });
+        return;
+      }
+      if (!sameOrigin()) {
+        json(res, 403, { ok: false, error: "origin_not_allowed" });
+        return;
+      }
+      try {
+        const result = req.method === "POST" ? await presenter.open() : await presenter.close();
+        json(res, 200, { ok: true, ...result });
+      } catch (error) {
+        json(res, 500, {
+          ok: false,
+          error: error?.code || "presenter_launch_failed",
+          message: error?.message || "The audience view could not be updated.",
+        });
       }
       return;
     }

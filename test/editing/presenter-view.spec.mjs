@@ -52,6 +52,21 @@ test("presenter view provides presentation controls and returns to the slide", a
   }
 });
 
+test("presenter query opens presenter view at startup", async ({ page }) => {
+  const harness = await startHarness({ slides: SLIDES });
+  try {
+    const url = new URL(harness.url);
+    url.searchParams.set("presenter", "1");
+    await page.goto(url.href, { waitUntil: "load" });
+    await waitForSlideReady(page);
+
+    await expect(page.locator("#presenterView")).toBeVisible();
+    await expect(page.locator("#presenterToggleButton")).toHaveText("Start presentation");
+  } finally {
+    await harness.close();
+  }
+});
+
 test("speaker notes do not leak into slide overview titles", async ({ page }) => {
   const harness = await startHarness({
     slides: ["<!-- Internal talking point -->\nPublic body line"],

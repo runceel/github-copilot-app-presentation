@@ -18,6 +18,7 @@ CLI は Canvas Extension と同じ Markdown パーサー、レンダラー、テ
 ## インストール
 
 ```console
+npx @markdstage/markdstage presentation slides.md
 npx @markdstage/markdstage present slides.md
 npm install --global @markdstage/markdstage
 ```
@@ -25,6 +26,7 @@ npm install --global @markdstage/markdstage
 ## コマンド
 
 ```console
+markdstage presentation slides.md
 markdstage present slides.md --watch
 markdstage validate slides.md --json
 markdstage inspect slides.md --json
@@ -37,6 +39,7 @@ markdstage skill install --target codex
 
 | コマンド | 説明 |
 | --- | --- |
+| `presentation` | 現在のスライド、次のスライドのプレビュー、スピーカーノート、ナビゲーションを備えた発表者ビューを開きます。**Start presentation** を選ぶと同期された観客向けウィンドウを開き、**End presentation** で閉じます。`--watch` は保存時に再読み込みし、`--no-open` はブラウザーを起動せずに発表者ビューを配信します。 |
 | `present` | ループバックでデッキを配信し、発表用ウィンドウを開きます。ページ送り、発表者ビュー、次スライドのプレビュー、スピーカーノート、一覧、カスタムテーマ、Mermaid、Architecture DSL、ローカルアセットに対応します。`--watch` は Markdown の保存時に再読み込みし、表示中のページと直前の正常なデッキを保持しながら Architecture 編集を有効にします。`--watch` がない場合、ソースは読み取り専用です。`--no-open` はブラウザーを起動せずに配信だけ行います。 |
 | `validate` | デッキ構造、Architecture DSL ブロック、テーマ、テーマのパスを検証します。 |
 | `inspect` | Canvas の `inspect_layout` と同じ 1280x720 のクリッピング診断を返します。`--slide <n>` で 1 ページだけ、`--all` で収まっているスライドも含め、`--fail-on-issues` で終了コード 5 を返します。 |
