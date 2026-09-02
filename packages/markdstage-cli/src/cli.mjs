@@ -104,8 +104,11 @@ function usage(command) {
     present: [
       "Usage: markdstage present <file.md> [options]",
       "",
-      "  --watch     Reload the deck when the Markdown file is saved.",
+      "  --watch     Reload on save and enable Architecture editing.",
       "  --no-open   Serve the deck without launching a browser.",
+      "",
+      "Without --watch, presentation is read-only. Watch mode starts in normal viewing mode;",
+      "use the pencil control to edit Architecture diagrams and open the detailed designer.",
       "",
       "Presenting requires an installed Microsoft Edge, Google Chrome, or Chromium.",
     ],

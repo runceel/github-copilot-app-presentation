@@ -35,7 +35,7 @@ markdstage skill install --target codex
 
 | Command | Description |
 | --- | --- |
-| `present` | Serves the deck on loopback and opens the presenter window: navigation, presenter view, next-slide preview, speaker notes, overview, custom themes, Mermaid, Architecture DSL, and local assets. `--watch` reloads the deck when the Markdown file is saved, preserving the current slide and keeping the last valid deck if a save is incomplete. `--no-open` serves the deck without launching a browser. |
+| `present` | Serves the deck on loopback and opens the presenter window: navigation, presenter view, next-slide preview, speaker notes, overview, custom themes, Mermaid, Architecture DSL, and local assets. `--watch` reloads the deck when the Markdown file is saved, preserves the current slide, keeps the last valid deck if a save is incomplete, and enables Architecture editing. Without `--watch`, the source is read-only. `--no-open` serves the deck without launching a browser. |
 | `validate` | Checks deck structure, Architecture DSL blocks, themes, and theme paths. |
 | `inspect` | Reports the same compact 1280x720 clipping diagnostics as the canvas `inspect_layout` action. Use `--slide <n>` for one page, `--all` to include slides that fit, and `--fail-on-issues` to exit with code 5. |
 | `capture` | Writes 1280x720 PNG files. Without `--pages` only the slides reported as clipped are captured. |
@@ -60,6 +60,27 @@ markdstage capture --help
 3. `markdstage inspect slides.md` — find slides that would be clipped in the 16:9 PDF.
 4. `markdstage capture slides.md` — review the clipped slides as PNG files.
 5. `markdstage present slides.md --watch` or `markdstage export slides.md`.
+
+## Architecture editing in watch mode
+
+`markdstage present slides.md --watch` is the live authoring environment. The
+browser still starts in normal viewing mode:
+
+1. Select the pencil control on a slide containing Architecture DSL.
+2. Drag an element or use the arrow keys. Placement edits are saved atomically
+   to the matching `architecture` fence.
+3. Select **Advanced edit** for the detailed designer. It can add, update,
+   duplicate, reparent, and delete supported elements.
+4. Select **Save** in the detailed designer to write its draft to Markdown.
+
+If the source changed outside the editor, the save is rejected instead of
+overwriting it. After a successful save, watch mode reloads the deck and keeps
+the current slide. A temporarily incomplete Markdown save leaves the last valid
+deck on screen.
+
+`markdstage present slides.md` without `--watch` hides the editing control and
+cannot change the source. Presenter, capture, inspect, and export output also
+contains no editing UI. There is no separate preview command or edit option.
 
 ## Exit codes
 

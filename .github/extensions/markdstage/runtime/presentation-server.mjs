@@ -18,7 +18,10 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
 import { resolveAssetFile } from "../scripts/asset-paths.mjs";
+import { importedArchitectureBlockIndex } from "../scripts/markdown-blocks.mjs";
 import { isMarkdownPath, listMarkdownFiles } from "../scripts/markdown-files.mjs";
+import { startArchitectureEditorServer } from "./architecture-editor-server.mjs";
+import { saveArchitectureSource } from "./architecture-source.mjs";
 import { isPathInside } from "./output-paths.mjs";
 import { safeJoin, sendChunkedVendorAsset, sendFile } from "./static-files.mjs";
 
@@ -27,6 +30,7 @@ const EXT_DIR = resolve(RUNTIME_DIR, "..");
 const VENDOR_DIR = join(EXT_DIR, "vendor");
 const VENDOR_MANIFEST = join(VENDOR_DIR, "vendor-assets.lock.json");
 const MAX_BODY_BYTES = 4096;
+const MAX_EDIT_BODY_BYTES = 256 * 1024;
 
 export function createUrlToken() {
   return randomBytes(24).toString("base64url");
@@ -87,8 +91,13 @@ function broadcast(session) {
  * Returns `{ url, token, port, close, broadcast }`. `session.url` is set to the
  * token-scoped base URL so the shared output runtime can render from it.
  */
-export async function startPresentationServer(session, { onLog, token = createUrlToken() } = {}) {
+export async function startPresentationServer(
+  session,
+  { editable = false, onLog, token = createUrlToken() } = {},
+) {
   const base = `/${token}`;
+  const architectureEditors = new Map();
+  const editingAvailable = editable === true;
   let port = 0;
 
   const server = createServer(async (req, res) => {
@@ -149,13 +158,16 @@ export async function startPresentationServer(session, { onLog, token = createUr
         customThemeCss: session.customThemeCss,
         customThemeMeta: session.customThemeMeta,
         mode: session.mode,
-        sourceBacked: false,
-        sourceMode: "snapshot",
+        sourceBacked: editingAvailable,
+        sourceModeAvailable: false,
+        sourceMode: editingAvailable ? "live" : "snapshot",
         sourceWatchStatus: session.watchStatus || "inactive",
         sourceWatchError: session.watchError || "",
         presenterRunning: false,
-        architectureEdit: false,
-        architectureDetailedEdit: false,
+        architectureEditAvailable: editingAvailable,
+        architectureEdit: editingAvailable && Boolean(session.architectureEdit),
+        architectureDetailedEdit: editingAvailable,
+        architectureDetailedEditTarget: editingAvailable ? "window" : "",
       });
       return;
     }
@@ -371,8 +383,212 @@ export async function startPresentationServer(session, { onLog, token = createUr
       return;
     }
 
-    // Canvas-only routes. The CLI keeps them explicit so the browser reports an
-    // actionable message instead of a bare 404.
+    if (editingAvailable && route === "/edit-mode") {
+      if (req.method !== "POST") {
+        res.setHeader("Allow", "POST");
+        json(res, 405, { ok: false, error: "method_not_allowed" });
+        return;
+      }
+      if (!sameOrigin()) {
+        json(res, 403, { ok: false, error: "origin_not_allowed" });
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        res.setHeader("Connection", "close");
+        json(res, error?.message === "payload_too_large" ? 413 : 400, {
+          ok: false,
+          error: error?.message || "bad_request",
+        });
+        return;
+      }
+      if (typeof body.enabled !== "boolean") {
+        json(res, 400, { ok: false, error: "enabled (boolean) is required" });
+        return;
+      }
+      const changed = Boolean(session.architectureEdit) !== body.enabled;
+      session.architectureEdit = body.enabled;
+      json(res, 200, {
+        ok: true,
+        changed,
+        architectureEdit: session.architectureEdit,
+      });
+      return;
+    }
+
+    if (editingAvailable && route === "/edit") {
+      if (req.method !== "POST") {
+        res.setHeader("Allow", "POST");
+        json(res, 405, { ok: false, error: "method_not_allowed" });
+        return;
+      }
+      if (!sameOrigin()) {
+        json(res, 403, { ok: false, error: "origin_not_allowed" });
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req, MAX_EDIT_BODY_BYTES);
+      } catch (error) {
+        res.setHeader("Connection", "close");
+        json(res, error?.message === "payload_too_large" ? 413 : 400, {
+          ok: false,
+          error: error?.message || "bad_request",
+        });
+        return;
+      }
+      if (!session.architectureEdit) {
+        json(res, 409, { ok: false, error: "edit_mode_disabled" });
+        return;
+      }
+      if (typeof body.source !== "string" || !body.source.trim()) {
+        json(res, 400, { ok: false, error: "source (string) is required" });
+        return;
+      }
+      const index = Number.isInteger(body.index) ? body.index : session.index;
+      const block = Number.isInteger(body.block) ? body.block : 0;
+      const deckVersion = Number.isInteger(body.deckVersion)
+        ? body.deckVersion
+        : session.deckVersion;
+      if (index < 0 || index >= session.slides.length) {
+        json(res, 400, { ok: false, error: "index_out_of_range" });
+        return;
+      }
+      if (deckVersion !== session.deckVersion) {
+        json(res, 409, { ok: false, error: "deck_changed" });
+        return;
+      }
+      const globalBlock = importedArchitectureBlockIndex(session.slides, index, block);
+      if (globalBlock === null) {
+        json(res, 404, { ok: false, error: "block_not_found" });
+        return;
+      }
+      const result = await saveArchitectureSource({
+        workspaceRoot: session.workspaceRoot,
+        sourcePath: session.sourceName,
+        sourceFile: session.file,
+        blockIndex: globalBlock,
+        source: body.source,
+        expectedMarkdown: session.sourceMarkdown,
+      });
+      if (!result.ok) {
+        const status =
+          result.error === "source_changed"
+            ? 409
+            : result.error === "block_not_found"
+              ? 404
+              : result.error === "source_file_too_large"
+                ? 413
+                : result.error === "source_write_failed"
+                  ? 500
+                  : 422;
+        json(res, status, result);
+        return;
+      }
+      try {
+        await session.load({ preserveIndex: true });
+      } catch (error) {
+        json(res, 500, {
+          ok: false,
+          error: "source_reload_failed",
+          message: error?.message || "The saved deck could not be reloaded.",
+        });
+        return;
+      }
+      broadcast(session);
+      json(res, 200, {
+        ok: true,
+        version: session.version,
+        deckVersion: session.deckVersion,
+        index,
+        block,
+        markdown: session.markdown,
+        fileSaved: true,
+      });
+      return;
+    }
+
+    if (editingAvailable && route === "/architecture-editor/open") {
+      if (req.method !== "POST") {
+        res.setHeader("Allow", "POST");
+        json(res, 405, { ok: false, error: "method_not_allowed" });
+        return;
+      }
+      if (!sameOrigin()) {
+        json(res, 403, { ok: false, error: "origin_not_allowed" });
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (error) {
+        json(res, error?.message === "payload_too_large" ? 413 : 400, {
+          ok: false,
+          error: error?.message || "bad_request",
+        });
+        return;
+      }
+      const slideIndex = Number.isInteger(body.index) ? body.index : session.index;
+      const blockIndex = Number.isInteger(body.block) ? body.block : 0;
+      const globalBlock = importedArchitectureBlockIndex(
+        session.slides,
+        slideIndex,
+        blockIndex,
+      );
+      if (globalBlock === null) {
+        json(res, 404, { ok: false, error: "block_not_found" });
+        return;
+      }
+      const key = `${session.file}\0${globalBlock}`;
+      let editor = architectureEditors.get(key);
+      try {
+        if (!editor) {
+          editor = await startArchitectureEditorServer({
+            extensionDirectory: EXT_DIR,
+            workspaceRoot: session.workspaceRoot,
+            sourcePath: session.sourceName,
+            blockIndex: globalBlock,
+            theme: session.theme,
+            logger: onLog,
+            onMarkdownSaved: async ({ sourcePath }) => {
+              if (
+                resolve(session.workspaceRoot, sourcePath) !== resolve(session.file)
+              ) {
+                return;
+              }
+              await session.load({ preserveIndex: true });
+              broadcast(session);
+            },
+          });
+          architectureEditors.set(key, editor);
+        } else if (!editor.dirty) {
+          await editor.reload(
+            {
+              sourcePath: session.sourceName,
+              blockIndex: globalBlock,
+              theme: session.theme,
+            },
+            { discard: true },
+          );
+        } else {
+          editor.setTheme(session.theme);
+        }
+      } catch (error) {
+        json(res, error?.code === "block_not_found" ? 404 : 409, {
+          ok: false,
+          error: error?.code || "editor_open_failed",
+          message: error?.message || "Architecture Editor could not be opened.",
+        });
+        return;
+      }
+      json(res, 200, { ok: true, url: editor.url });
+      return;
+    }
+
+    // Routes that are unavailable in this CLI server mode stay explicit so the
+    // browser reports an actionable message instead of a bare 404.
     if (
       route === "/present" ||
       route === "/export" ||
@@ -487,8 +703,14 @@ export async function startPresentationServer(session, { onLog, token = createUr
     token,
     port,
     broadcast: () => broadcast(session),
-    close: () =>
-      new Promise((done) => {
+    close: async () => {
+      await Promise.all(
+        [...architectureEditors.values()].map((editor) =>
+          editor.close().catch(() => {}),
+        ),
+      );
+      architectureEditors.clear();
+      await new Promise((done) => {
         for (const client of [...session.clients]) {
           try {
             client.end();
@@ -499,7 +721,7 @@ export async function startPresentationServer(session, { onLog, token = createUr
         session.clients.clear();
         server.close(() => done());
         server.closeAllConnections?.();
-      }),
+      });
+    },
   };
 }
-

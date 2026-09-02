@@ -90,7 +90,9 @@ let lastMermaidTheme = null;
 // Editing mode is available only in normal view, not presenter or print mode.
 // Print mode returns early in init, so presenterMode is the effective branch here.
 let architectureEditMode = false;
+let architectureEditAvailable = false;
 let architectureDetailedEdit = false;
+let architectureDetailedEditTarget = "";
 let presenterMode = false;
 let previewMode = false;
 let previewOffset = 0;
@@ -1066,6 +1068,7 @@ let importOpen = false;
 let importPending = false;
 let importFiles = [];
 let sourceBacked = false;
+let sourceModeAvailable = false;
 let sourceMode = "snapshot";
 let sourceWatchStatus = "inactive";
 let sourceWatchError = "";
@@ -1119,7 +1122,7 @@ async function fetchDeck() {
  * early in init and never reaches this code. Return true only when the state changes.
  */
 function setArchitectureEditMode(enabled) {
-  const next = Boolean(enabled) && !presenterMode;
+  const next = Boolean(enabled) && architectureEditAvailable && !presenterMode;
   if (next === architectureEditMode) return false;
   architectureEditMode = next;
   document.body.classList.toggle("architecture-edit-mode", next);
@@ -1130,7 +1133,7 @@ function setArchitectureEditMode(enabled) {
 function updateArchitectureEditButton(enabled = architectureEditMode) {
   const button = document.getElementById("navEdit");
   if (!button) return;
-  button.hidden = presenterMode;
+  button.hidden = presenterMode || !architectureEditAvailable;
   button.dataset.state = enabled && !presenterMode ? "active" : "";
   button.title = enabled ? "Exit shape editing mode" : "Shape editing mode";
   button.setAttribute("aria-label", button.title);
@@ -1149,7 +1152,7 @@ function updateSourceModeButton() {
   const button = document.getElementById("navSourceMode");
   const status = document.getElementById("sourceStatus");
   if (!button) return;
-  button.hidden = presenterMode || !sourceBacked;
+  button.hidden = presenterMode || !sourceBacked || !sourceModeAvailable;
   if (!sourceBacked) {
     button.dataset.state = "";
     if (status) status.textContent = "";
@@ -1197,7 +1200,7 @@ async function requestSourceMode(mode) {
 }
 
 async function toggleSourceMode() {
-  if (presenterMode || !sourceBacked) return;
+  if (presenterMode || !sourceBacked || !sourceModeAvailable) return;
   await requestSourceMode(sourceMode === "live" ? "snapshot" : "live");
 }
 
@@ -1218,7 +1221,7 @@ async function requestArchitectureEditMode(enabled) {
 }
 
 async function toggleArchitectureEditMode() {
-  if (presenterMode) return;
+  if (presenterMode || !architectureEditAvailable) return;
   await requestArchitectureEditMode(!architectureEditMode);
   await fetchState();
 }
@@ -1283,6 +1286,9 @@ async function saveArchitectureBlock(index, block, source) {
 }
 
 async function openDetailedArchitectureEditor(index, block) {
+  const pendingWindow =
+    architectureDetailedEditTarget === "window" ? window.open("", "_blank") : null;
+  if (pendingWindow) pendingWindow.opener = null;
   let response;
   try {
     response = await fetch("./architecture-editor/open", {
@@ -1291,10 +1297,22 @@ async function openDetailedArchitectureEditor(index, block) {
       body: JSON.stringify({ index, block }),
     });
   } catch (_) {
+    pendingWindow?.close();
     return { ok: false, message: "Could not connect to the server." };
   }
   const result = await response.json().catch(() => ({}));
-  if (response.ok && result.ok === true) return result;
+  if (response.ok && result.ok === true) {
+    if (typeof result.url === "string" && result.url) {
+      if (pendingWindow) pendingWindow.location.replace(result.url);
+      else if (!window.open(result.url, "_blank", "noopener")) {
+        return { ok: false, message: "Allow pop-ups to open the Architecture Editor." };
+      }
+    } else {
+      pendingWindow?.close();
+    }
+    return result;
+  }
+  pendingWindow?.close();
   if (result.error === "source_not_available") {
     return {
       ok: false,
@@ -1324,6 +1342,9 @@ async function fetchState() {
     updatePresenterButton(data.presenterRunning);
   }
   if (typeof data.sourceBacked === "boolean") sourceBacked = data.sourceBacked;
+  if (typeof data.sourceModeAvailable === "boolean") {
+    sourceModeAvailable = data.sourceModeAvailable;
+  }
   sourceMode = data.sourceMode === "live" ? "live" : "snapshot";
   sourceWatchStatus =
     data.sourceWatchStatus === "watching" || data.sourceWatchStatus === "error"
@@ -1331,6 +1352,14 @@ async function fetchState() {
       : "inactive";
   sourceWatchError = typeof data.sourceWatchError === "string" ? data.sourceWatchError : "";
   updateSourceModeButton();
+  const editAvailabilityChanged =
+    typeof data.architectureEditAvailable === "boolean" &&
+    data.architectureEditAvailable !== architectureEditAvailable;
+  if (typeof data.architectureEditAvailable === "boolean") {
+    architectureEditAvailable = data.architectureEditAvailable;
+  }
+  architectureDetailedEditTarget =
+    data.architectureDetailedEditTarget === "window" ? "window" : "canvas";
   const detailedEditChanged =
     typeof data.architectureDetailedEdit === "boolean" &&
     data.architectureDetailedEdit !== architectureDetailedEdit;
@@ -1338,7 +1367,15 @@ async function fetchState() {
     architectureDetailedEdit = data.architectureDetailedEdit;
   }
   // Editing-mode changes do not increment the version, so process them before the version guard.
+  let availabilityDisabledEditMode = false;
+  if (editAvailabilityChanged) {
+    if (!architectureEditAvailable) {
+      availabilityDisabledEditMode = setArchitectureEditMode(false);
+    }
+    updateArchitectureEditButton();
+  }
   if (
+    availabilityDisabledEditMode ||
     (typeof data.architectureEdit === "boolean" &&
       setArchitectureEditMode(data.architectureEdit)) ||
     (architectureEditMode && detailedEditChanged)

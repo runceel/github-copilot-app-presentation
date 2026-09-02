@@ -5,8 +5,8 @@ import {
   THEME_TOKENS,
   parseArchitecture,
   renderArchitectureBlock,
-} from "/renderer/architecture.mjs";
-import { createArchitectureDocument } from "/renderer/architecture-document.mjs";
+} from "../renderer/architecture.mjs";
+import { createArchitectureDocument } from "../renderer/architecture-document.mjs";
 
 const COLORS = [...Object.keys(THEME_TOKENS), "black", "white", "transparent", "none"];
 const PORTS = ["auto", "top", "right", "bottom", "left"];
@@ -136,7 +136,7 @@ function queueDraft() {
   draftQueue = draftQueue
     .catch(() => {})
     .then(async () => {
-      const response = await fetch("/draft", {
+      const response = await fetch("./draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ source, revision, generation }),
@@ -566,7 +566,7 @@ async function loadAssetLibrary(preferredPath = "", request = assetLibraryReques
   setAssetDialogStatus("Loading images…");
   assetChooseButton.disabled = true;
   try {
-    const response = await fetch("/asset-library");
+    const response = await fetch("./asset-library");
     const result = await response.json().catch(() => ({}));
     if (request !== assetLibraryRequest || !assetDialog.open) return false;
     if (!response.ok || result.ok !== true || !Array.isArray(result.assets)) {
@@ -663,7 +663,7 @@ async function uploadAsset(file) {
   setAssetUploadPending(true);
   setAssetDialogStatus(`Importing ${file.name}…`);
   try {
-    const response = await fetch(`/asset-upload?name=${encodeURIComponent(file.name)}`, {
+    const response = await fetch(`./asset-upload?name=${encodeURIComponent(file.name)}`, {
       method: "POST",
       headers: { "Content-Type": file.type || "application/octet-stream" },
       body: file,
@@ -1414,7 +1414,7 @@ async function save() {
   announce("Saving to Markdown…");
   let response;
   try {
-    response = await fetch("/save", {
+    response = await fetch("./save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ generation, revision }),
@@ -1690,7 +1690,7 @@ function wireControls() {
 }
 
 async function refreshState() {
-  const response = await fetch("/state", { cache: "no-store" });
+  const response = await fetch("./state", { cache: "no-store" });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const state = await response.json();
   if (!Number.isInteger(state.version) || state.version < serverVersion) return;
@@ -1732,7 +1732,7 @@ async function init() {
   await refreshState();
   fitZoom();
   announce("Select the diagram to edit it. The Markdown remains unchanged until you save.");
-  const events = new EventSource("/events");
+  const events = new EventSource("./events");
   events.onmessage = () => {
     void refreshState().catch((error) => announce(error.message, "error"));
   };

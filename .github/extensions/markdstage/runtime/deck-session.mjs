@@ -123,6 +123,7 @@ export async function createDeckSession({
     url: "",
     version: 0,
     deckVersion: 0,
+    sourceMarkdown: "",
     markdown: "",
     slides: [],
     index: 0,
@@ -144,7 +145,7 @@ export async function createDeckSession({
   };
 
   session.load = async ({ preserveIndex = false } = {}) => {
-    const { slides } = await readDeckSlides(session.file);
+    const { markdown, slides } = await readDeckSlides(session.file);
     const selection = resolveDeckTheme({
       slides,
       explicitTheme: session.requestedTheme,
@@ -166,6 +167,7 @@ export async function createDeckSession({
     session.customThemeDir = custom.dir;
     session.customThemeMeta = custom.metadata;
     session.customThemeAssets = new Set(custom.assets);
+    session.sourceMarkdown = markdown;
     session.slides = ensureBackCover(slides.slice());
     session.index = clampIndex(preserveIndex ? session.index : 0, session.slides.length);
     session.markdown = session.slides[session.index] ?? "";

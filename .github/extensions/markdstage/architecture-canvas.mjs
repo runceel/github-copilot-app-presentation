@@ -22,20 +22,18 @@ import { parseArchitecture } from "./renderer/architecture.mjs";
 import {
   findArchitectureBlocks,
   importedArchitectureBlockIndex,
-  replaceArchitectureBlock,
 } from "./scripts/markdown-blocks.mjs";
 import {
   isMarkdownPath,
   MARKDOWN_MAX_BYTES,
 } from "./scripts/markdown-files.mjs";
-import { serializeMarkdownSave } from "./scripts/markdown-save-coordinator.mjs";
-import { atomicReplaceMarkdown } from "./scripts/atomic-markdown-replace.mjs";
 import {
   ARCHITECTURE_ASSET_MAX_BYTES,
   importArchitectureAsset,
   listArchitectureAssets,
 } from "./scripts/architecture-assets.mjs";
 import { resolveAssetFile } from "./scripts/asset-paths.mjs";
+import { saveArchitectureSource } from "./runtime/architecture-source.mjs";
 
 const MAX_DRAFT_BYTES = 256 * 1024;
 const THEMES = new Set(["dark", "light", "microsoft"]);
@@ -318,117 +316,41 @@ export function createArchitectureEditorManager({
       revision: revisionToSave,
       generation: generationToSave,
     } = request;
-    const result = await serializeMarkdownSave(sourceFile, async () => {
-      if (
-        inst.generation !== generationToSave ||
-        resolve(inst.sourceFile) !== resolve(sourceFile)
-      ) {
-        return {
-          ok: false,
-          error: "stale_generation",
-          message: "The editor target was reloaded. Refresh before saving.",
-        };
-      }
-      try {
-        parseArchitecture(sourceToSave);
-      } catch (error) {
-        return {
-          ok: false,
-          error: "invalid_architecture",
-          message: error?.message || "The diagram is invalid.",
-        };
-      }
-
-      let currentTarget;
-      try {
-        currentTarget = await resolveMarkdownTarget(inst.workspaceRoot, sourcePath);
-      } catch (_) {
-        return {
-          ok: false,
-          error: "source_changed",
-          message: "The source Markdown target changed outside the editor. Reload before saving.",
-        };
-      }
-      if (resolve(currentTarget.path) !== resolve(sourceFile)) {
-        return {
-          ok: false,
-          error: "source_changed",
-          message: "The source Markdown target changed outside the editor. Reload before saving.",
-        };
-      }
-
-      let markdown;
-      try {
-        markdown = await readFile(currentTarget.path, "utf8");
-      } catch (_) {
-        return {
-          ok: false,
-          error: "source_file_not_found",
-          message: "The source Markdown file no longer exists.",
-        };
-      }
-      if (markdown !== baseMarkdown) {
-        return {
-          ok: false,
-          error: "source_changed",
-          message: "The source Markdown changed outside the editor. Reload before saving.",
-        };
-      }
-
-      const next = replaceArchitectureBlock(markdown, blockIndex, sourceToSave);
-      if (next === null) {
-        return {
-          ok: false,
-          error: "block_not_found",
-          message: "The Architecture block no longer exists.",
-        };
-      }
-      try {
-        await atomicReplaceMarkdown({
-          path: currentTarget.path,
-          markdown: next,
-          expectedMarkdown: markdown,
-          mode: currentTarget.mode,
-          revalidate: async () => {
-            const verified = await resolveMarkdownTarget(inst.workspaceRoot, sourcePath);
-            if (resolve(verified.path) !== resolve(sourceFile)) {
-              const error = new Error("source_changed");
-              error.code = "SOURCE_CHANGED";
-              throw error;
-            }
-          },
-        });
-      } catch (error) {
-        if (error?.code === "SOURCE_CHANGED" || error instanceof CanvasError) {
-          return {
-            ok: false,
-            error: "source_changed",
-            message: "The source Markdown changed while it was being saved.",
-          };
-        }
-        return {
-          ok: false,
-          error: "source_write_failed",
-          message: error?.message || "The source Markdown could not be saved.",
-        };
-      }
-
-      inst.baseMarkdown = next;
-      inst.savedSource = sourceToSave;
-      inst.dirty = inst.draftSource !== inst.savedSource;
-      inst.version += 1;
-      broadcast(inst);
+    if (
+      inst.generation !== generationToSave ||
+      resolve(inst.sourceFile) !== resolve(sourceFile)
+    ) {
       return {
-        ok: true,
-        sourcePath,
-        blockIndex,
-        generation: generationToSave,
-        savedRevision: revisionToSave,
-        dirty: inst.dirty,
-        version: inst.version,
-        markdown: next,
+        ok: false,
+        error: "stale_generation",
+        message: "The editor target was reloaded. Refresh before saving.",
       };
+    }
+    const saved = await saveArchitectureSource({
+      workspaceRoot: inst.workspaceRoot,
+      sourcePath,
+      sourceFile,
+      blockIndex,
+      source: sourceToSave,
+      expectedMarkdown: baseMarkdown,
     });
+    if (!saved.ok) return saved;
+
+    inst.baseMarkdown = saved.markdown;
+    inst.savedSource = sourceToSave;
+    inst.dirty = inst.draftSource !== inst.savedSource;
+    inst.version += 1;
+    broadcast(inst);
+    const result = {
+      ok: true,
+      sourcePath: saved.sourcePath,
+      blockIndex,
+      generation: generationToSave,
+      savedRevision: revisionToSave,
+      dirty: inst.dirty,
+      version: inst.version,
+      markdown: saved.markdown,
+    };
     if (result.ok && typeof onMarkdownSaved === "function") {
       try {
         await onMarkdownSaved({

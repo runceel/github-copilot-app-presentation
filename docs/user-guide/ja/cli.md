@@ -36,7 +36,7 @@ markdstage skill install --target codex
 
 | コマンド | 説明 |
 | --- | --- |
-| `present` | ループバックでデッキを配信し、発表用ウィンドウを開きます。ページ送り、発表者ビュー、次スライドのプレビュー、スピーカーノート、一覧、カスタムテーマ、Mermaid、Architecture DSL、ローカルアセットに対応します。`--watch` は Markdown の保存時に再読み込みし、表示中のページを保ちます。保存が途中で壊れている場合は直前の正常なデッキを保持します。`--no-open` はブラウザーを起動せずに配信だけ行います。 |
+| `present` | ループバックでデッキを配信し、発表用ウィンドウを開きます。ページ送り、発表者ビュー、次スライドのプレビュー、スピーカーノート、一覧、カスタムテーマ、Mermaid、Architecture DSL、ローカルアセットに対応します。`--watch` は Markdown の保存時に再読み込みし、表示中のページと直前の正常なデッキを保持しながら Architecture 編集を有効にします。`--watch` がない場合、ソースは読み取り専用です。`--no-open` はブラウザーを起動せずに配信だけ行います。 |
 | `validate` | デッキ構造、Architecture DSL ブロック、テーマ、テーマのパスを検証します。 |
 | `inspect` | Canvas の `inspect_layout` と同じ 1280x720 のクリッピング診断を返します。`--slide <n>` で 1 ページだけ、`--all` で収まっているスライドも含め、`--fail-on-issues` で終了コード 5 を返します。 |
 | `capture` | 1280x720 の PNG を書き出します。`--pages` を指定しない場合はクリッピングが報告されたスライドだけを取得します。 |
@@ -61,6 +61,26 @@ markdstage capture --help
 3. `markdstage inspect slides.md` で 16:9 の PDF に収まらないスライドを見つけます。
 4. `markdstage capture slides.md` で該当スライドを PNG として確認します。
 5. `markdstage present slides.md --watch` で発表するか、`markdstage export slides.md` で出力します。
+
+## watch モードで Architecture を編集する
+
+`markdstage present slides.md --watch` はライブ編集用の環境です。ブラウザーは通常の表示モードで
+開始します。
+
+1. Architecture DSL を含むスライドで鉛筆ボタンを選びます。
+2. 要素をドラッグするか矢印キーで移動します。配置の変更は、対応する `architecture` フェンスへ
+   アトミックに保存されます。
+3. **Advanced edit** を選ぶと詳細デザイナーが開きます。対応する要素の追加、更新、複製、
+   親の変更、削除ができます。
+4. 詳細デザイナーの **Save** を選び、下書きを Markdown へ書き戻します。
+
+エディターの外でソースが変更された場合、上書きせず保存を拒否します。保存に成功すると、表示中の
+ページを保ったままデッキを再読み込みします。Markdown が一時的に不完全な状態で保存されても、
+直前の正常なデッキを表示し続けます。
+
+`--watch` のない `markdstage present slides.md` は編集ボタンを表示せず、ソースを変更できません。
+発表者、capture、inspect、export の出力にも編集 UI は含まれません。別の preview コマンドや
+edit オプションはありません。
 
 ## 終了コード
 

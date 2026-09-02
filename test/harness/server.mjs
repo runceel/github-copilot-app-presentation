@@ -295,10 +295,12 @@ export async function startHarness({
         theme: state.theme,
         mode: "deck",
         sourceBacked: state.sourceWriteback,
+        sourceModeAvailable: true,
         sourceMode: state.sourceMode,
         sourceWatchStatus: state.sourceWatchStatus,
         sourceWatchError: state.sourceWatchError,
         presenterRunning: state.presenterRunning,
+        architectureEditAvailable: true,
         architectureEdit: state.architectureEdit,
       });
       return;

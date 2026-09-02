@@ -439,6 +439,8 @@ Architecture diagrams can be moved directly over the rendered result. For decks
 imported through 📂, edits write back to the source `architecture` fence and
 survive re-import. Decks supplied directly through open / `load_deck` cannot be
 reversibly mapped to a source file, so they save only to canvas deck state.
+In the standalone CLI, `markdstage present slides.md --watch` enables the same
+source-backed editing workflow; `present` without `--watch` is read-only.
 
 **Placement editing is a stable part of Architecture DSL v1.**
 
@@ -458,6 +460,7 @@ Enter mode with:
 | Method | Purpose |
 | --- | --- |
 | Canvas action `edit_architecture` with `{ "enabled": true }` | Normal agent-controlled operation |
+| Pencil control during CLI `present --watch` | User-controlled live authoring; the browser starts with editing off |
 | Renderer URL `?architectureEdit=1` | Local debugging |
 
 `reset` disables editing. The query parameter also updates server state through
@@ -480,8 +483,10 @@ region announces results.
 
 #### Dedicated Architecture Editor
 
-`architecture-editor` is a separate canvas for comprehensive editing of an
-**existing** Markdown `architecture` block. It does not insert new blocks.
+`architecture-editor` is a dedicated surface for comprehensive editing of an
+**existing** Markdown `architecture` block. The Canvas Extension opens a
+separate canvas; CLI watch mode opens a browser window. It does not insert new
+blocks.
 
 - Add, delete, duplicate, reorder, and reparent nodes, groups, images, and
   connectors.
@@ -508,11 +513,11 @@ region announces results.
 - Changes remain in an in-memory draft until explicit **Save** or `save`.
 - External file changes produce a conflict. Call `reload` with
   `{ "discard": true }` to discard the draft explicitly.
-- Saving reloads any MarkdStage canvas showing the same Markdown while
-  preserving page and theme.
+- Saving reloads any MarkdStage canvas or watched CLI presentation showing the
+  same Markdown while preserving the current page and theme.
 
-Only source-backed decks imported through 📂 enable **Advanced editing**.
-Agents can open the editor directly:
+Source-backed decks imported through 📂 and CLI `present --watch` enable
+**Advanced editing**. Agents can open the editor canvas directly:
 
 ```json
 {
@@ -558,8 +563,8 @@ requires authoring it again.
 
 #### Presenter and print never include edit UI
 
-For `?present=1` and `?print=1`, edit UI is not constructed in the DOM. When
-mode is disabled, the server also rejects `POST /edit` with
+For presenter, preview, print, and capture output, edit UI is not constructed in
+the DOM. When mode is disabled, the server also rejects `POST /edit` with
 `409 edit_mode_disabled`. `npm run test:editing` locks both behaviors.
 
 #### Known editing tradeoff

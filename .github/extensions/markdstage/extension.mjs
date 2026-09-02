@@ -1170,12 +1170,15 @@ async function startServer(inst) {
           customThemeMeta: inst.customThemeMeta,
           mode: inst.mode,
           sourceBacked: inst.sourceWriteback,
+          sourceModeAvailable: true,
           sourceMode: inst.sourceMode,
           sourceWatchStatus: inst.sourceWatchStatus,
           sourceWatchError: inst.sourceWatchError,
           presenterRunning: isProcessRunning(inst.presenterProcess),
+          architectureEditAvailable: true,
           architectureEdit: Boolean(inst.architectureEdit),
           architectureDetailedEdit: architectureEditorManager.canOpenFromPresentation(inst),
+          architectureDetailedEditTarget: "canvas",
         }),
       );
       return;

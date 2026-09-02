@@ -19,7 +19,6 @@ const SKIP = new Set([
   "extension.mjs",
   "architecture-canvas.mjs",
   "copilot-extension.json",
-  "architecture-editor",
   "test",
   "windows",
 ]);
@@ -27,6 +26,7 @@ const SKIP = new Set([
 const ENTRIES = [
   "README.md",
   "THIRD-PARTY-NOTICES.md",
+  "architecture-editor",
   "deck-state.mjs",
   "markdown-deck.mjs",
   "markdstage-guide.mjs",

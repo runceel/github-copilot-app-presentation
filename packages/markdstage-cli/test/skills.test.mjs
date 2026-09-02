@@ -50,6 +50,14 @@ test("only the Copilot skill mentions the canvas adapter", async () => {
   assert.doesNotMatch(codex, /## Canvas adapter/);
 });
 
+test("generated skills explain watch-mode Architecture editing", async () => {
+  const skill = (await buildSkillFiles("codex")).get("SKILL.md");
+  assert.match(skill, /present --watch/);
+  assert.match(skill, /starts in viewing mode/);
+  assert.match(skill, /detailed designer/);
+  assert.match(skill, /without\s+`--watch`\s+is read-only/);
+});
+
 test("generation is deterministic", async () => {
   const first = await buildSkillFiles("codex");
   const second = await buildSkillFiles("codex");

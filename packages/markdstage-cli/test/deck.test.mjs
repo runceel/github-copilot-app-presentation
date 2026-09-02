@@ -141,3 +141,20 @@ test("watching reloads the deck and preserves the current slide", async () => {
     assert.ok(session.slides.length >= 3);
   });
 });
+
+test("a temporarily invalid watched file keeps the last valid deck", async () => {
+  await withWorkspace(async ({ dir, file }) => {
+    const session = await createDeckSession({ file, workspaceRoot: dir });
+    session.navigate(1);
+    const previousSlides = session.slides;
+    const previousMarkdown = session.sourceMarkdown;
+    const previousVersion = session.version;
+
+    await writeFile(file, "", "utf8");
+    await assert.rejects(session.load({ preserveIndex: true }), /has no slides/);
+    assert.equal(session.slides, previousSlides);
+    assert.equal(session.sourceMarkdown, previousMarkdown);
+    assert.equal(session.index, 1);
+    assert.equal(session.version, previousVersion);
+  });
+});

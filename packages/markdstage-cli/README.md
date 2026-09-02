@@ -36,7 +36,7 @@ markdstage skill install --target claude
 
 | Command | Description |
 | --- | --- |
-| `present` | Serves the deck on loopback and opens the MarkdStage presenter window: navigation, presenter view, next-slide preview, speaker notes, overview, custom themes, Mermaid, Architecture DSL, and local assets. `--watch` reloads on save while preserving the current slide and keeping the last valid deck when a save is broken. `--no-open` serves the deck only. |
+| `present` | Serves the deck on loopback and opens the MarkdStage presenter window: navigation, presenter view, next-slide preview, speaker notes, overview, custom themes, Mermaid, Architecture DSL, and local assets. `--watch` reloads on save while preserving the current slide, keeps the last valid deck when a save is broken, and enables Architecture editing. Without `--watch`, the source is read-only. `--no-open` serves the deck only. |
 | `validate` | Checks deck structure, Architecture DSL blocks, themes, and theme paths. |
 | `inspect` | Reports the same compact 1280x720 clipping diagnostics as the canvas `inspect_layout` action. `--slide <n>` limits it to one page, `--all` includes slides that fit, `--fail-on-issues` exits with code 5. |
 | `capture` | Writes 1280x720 PNG files. Without `--pages` only the slides reported as clipped are captured. |
@@ -47,6 +47,18 @@ markdstage skill install --target claude
 
 Global options: `--workspace <dir>`, `--theme <name>`, `--theme-file <path>`,
 `--json`, `--help`, `--version`.
+
+## Architecture editing
+
+Run `markdstage present slides.md --watch` for the live authoring workflow. The
+browser starts in viewing mode. Select the pencil control to move Architecture
+elements; those placement changes are saved atomically to the matching
+`architecture` fence. Select **Advanced edit** to add, update, duplicate,
+reparent, or delete elements in the detailed designer, then select **Save**.
+
+The server rejects a save if the Markdown changed outside the editor. Successful
+saves reload the watched deck without changing the current slide. Presenter,
+capture, inspect, and export views contain no editing UI.
 
 ```console
 markdstage help
