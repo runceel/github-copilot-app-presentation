@@ -102,6 +102,9 @@ let fixedPreviewMode = false;
 let lastMarkdown = "";
 // Editing UI attached to the rendered slide; destroyed on every rerender.
 let architectureEditors = [];
+// Serialize saves from every Architecture block so each request uses the deck
+// version returned by the previous save.
+let architectureSaveQueue = Promise.resolve();
 // `layoutTarget` is the slide currently on screen (cover and back cover
 // included); `autoSize` says whether it also takes part in the font auto-fit.
 let layoutTarget = null;
@@ -703,13 +706,15 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
     host.className = "architecture-edit-host";
     host.setAttribute("data-architecture-block", String(blockIndex));
     target.replaceWith(host);
+    const editorRenderToken = renderToken;
     const editor = attachArchitectureEditor(host, {
       source,
       documentRef: document,
       canOpenDetail: architectureDetailedEdit,
       onOpenDetail: () => openDetailedArchitectureEditor(slideIndex, blockIndex),
       // Return the save result to the editor; omitting it makes failures look successful.
-      onCommit: (next) => saveArchitectureBlock(slideIndex, blockIndex, next),
+      onCommit: (next) =>
+        saveArchitectureBlock(slideIndex, blockIndex, next, editorRenderToken),
     });
     if (!editor) {
       // Do not edit invalid DSL; fall back to the standard error display.
@@ -1233,7 +1238,23 @@ async function toggleArchitectureEditMode() {
  * Always return save success or failure to the caller. Swallowing it would make
  * an unsaved edit look successful, recreating the silent-ignore behavior fixed in Phase 5.
  */
-async function saveArchitectureBlock(index, block, source) {
+function saveArchitectureBlock(index, block, source, editorRenderToken) {
+  const pending = architectureSaveQueue
+    .catch(() => {})
+    .then(() => {
+      if (editorRenderToken !== renderToken) {
+        return {
+          ok: false,
+          message: "The displayed deck was replaced. Select the diagram again",
+        };
+      }
+      return saveArchitectureBlockNow(index, block, source);
+    });
+  architectureSaveQueue = pending;
+  return pending;
+}
+
+async function saveArchitectureBlockNow(index, block, source) {
   let res;
   try {
     res = await fetch("./edit", {

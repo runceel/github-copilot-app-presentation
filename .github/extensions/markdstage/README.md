@@ -963,7 +963,7 @@ fails with `invalid_input`; pass the complete `slides` array or call
 ```text
 .github/extensions/markdstage/
   extension.mjs             # Canvas declaration, loopback server, and actions
-  architecture-canvas.mjs   # Architecture Editor state, validation, save, conflicts
+  architecture-canvas.mjs   # Canvas adapter for the shared Architecture Editor
   architecture-editor/
     index.html               # Full diagram-editor canvas shell
     editor.css               # Workspace, tree, and inspector styles
@@ -984,6 +984,9 @@ fails with `invalid_input`; pass the complete `slides` array or call
     architecture-edit.mjs   # DOM-independent move/detach/Undo/Redo/serialization
     architecture-editor.mjs # Placement UI and Advanced editing entry point
     architecture-document.mjs # Full-editor command/session API
+  runtime/
+    architecture-editor-server.mjs # Shared detailed-editor state and routes
+    architecture-source.mjs # Atomic Architecture block persistence and conflicts
   schema/
     architecture-v1.schema.json # Architecture DSL v1 JSON Schema (draft 2020-12)
     README.md               # Schema use, versioning, and migration policy
