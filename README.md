@@ -149,6 +149,10 @@ npx @markdstage/markdstage inspect slides.md
 npx @markdstage/markdstage export slides.md --output slides.pdf
 ```
 
+`present --watch` starts in viewing mode and enables the pencil placement editor
+and detailed Architecture designer; saves update the matching Markdown fence
+atomically. `present` without `--watch` is read-only.
+
 `markdstage skill install --target codex` and `--target claude` write portable Agent Skills that
 are generated from the same guide topics as the canvas `markdstage_guide` tool.
 

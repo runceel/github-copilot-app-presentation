@@ -23,6 +23,7 @@ export async function withDeckServer(options, run) {
   const server = await startPresentationServer(session, {
     token,
     onLog: options.log,
+    editable: options.watch === true,
   });
   try {
     return await run(session, server);

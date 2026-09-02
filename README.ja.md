@@ -156,6 +156,10 @@ npx @markdstage/markdstage inspect slides.md
 npx @markdstage/markdstage export slides.md --output slides.pdf
 ```
 
+`present --watch` は表示モードで開始し、鉛筆の配置エディターと詳細な Architecture デザイナーを
+有効にします。保存時は対応する Markdown フェンスをアトミックに更新します。`--watch` のない
+`present` は読み取り専用です。
+
 `markdstage skill install --target codex` と `--target claude` は、Canvas の `markdstage_guide`
 ツールと同じガイドから生成した Agent Skills を書き出します。
 

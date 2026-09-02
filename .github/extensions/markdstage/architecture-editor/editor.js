@@ -5,8 +5,8 @@ import {
   THEME_TOKENS,
   parseArchitecture,
   renderArchitectureBlock,
-} from "/renderer/architecture.mjs";
-import { createArchitectureDocument } from "/renderer/architecture-document.mjs";
+} from "../renderer/architecture.mjs";
+import { createArchitectureDocument } from "../renderer/architecture-document.mjs";
 
 const COLORS = [...Object.keys(THEME_TOKENS), "black", "white", "transparent", "none"];
 const PORTS = ["auto", "top", "right", "bottom", "left"];
@@ -136,7 +136,7 @@ function queueDraft() {
   draftQueue = draftQueue
     .catch(() => {})
     .then(async () => {
-      const response = await fetch("/draft", {
+      const response = await fetch("./draft", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ source, revision, generation }),
@@ -518,7 +518,7 @@ function selectAsset(path) {
   assetPreviewPath.textContent = selectedAssetPath;
   if (selectedAssetPath) {
     const image = document.createElement("img");
-    image.src = `/${selectedAssetPath}`;
+    image.src = `./${selectedAssetPath}`;
     image.alt = "";
     assetPreviewImageHost.appendChild(image);
   }
@@ -547,7 +547,7 @@ function renderAssetLibrary() {
     option.setAttribute("aria-selected", asset.path === selectedAssetPath ? "true" : "false");
     option.title = asset.path;
     const image = document.createElement("img");
-    image.src = `/${asset.path}`;
+    image.src = `./${asset.path}`;
     image.alt = "";
     const label = document.createElement("span");
     label.textContent = asset.path;
@@ -566,7 +566,7 @@ async function loadAssetLibrary(preferredPath = "", request = assetLibraryReques
   setAssetDialogStatus("Loading images…");
   assetChooseButton.disabled = true;
   try {
-    const response = await fetch("/asset-library");
+    const response = await fetch("./asset-library");
     const result = await response.json().catch(() => ({}));
     if (request !== assetLibraryRequest || !assetDialog.open) return false;
     if (!response.ok || result.ok !== true || !Array.isArray(result.assets)) {
@@ -663,7 +663,7 @@ async function uploadAsset(file) {
   setAssetUploadPending(true);
   setAssetDialogStatus(`Importing ${file.name}…`);
   try {
-    const response = await fetch(`/asset-upload?name=${encodeURIComponent(file.name)}`, {
+    const response = await fetch(`./asset-upload?name=${encodeURIComponent(file.name)}`, {
       method: "POST",
       headers: { "Content-Type": file.type || "application/octet-stream" },
       body: file,
@@ -1414,7 +1414,7 @@ async function save() {
   announce("Saving to Markdown…");
   let response;
   try {
-    response = await fetch("/save", {
+    response = await fetch("./save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ generation, revision }),
@@ -1437,6 +1437,31 @@ async function save() {
       ? "Changes made while saving are still unsaved. Save again."
       : "Saved to the source Markdown.",
   );
+}
+
+async function reloadFromMarkdown() {
+  await draftQueue.catch(() => {});
+  if (dirty && !window.confirm("Discard unsaved changes and reload from Markdown?")) return;
+  announce("Reloading from Markdown…");
+  let response;
+  try {
+    response = await fetch("./reload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ discard: dirty }),
+    });
+  } catch (_) {
+    announce("Could not connect to the Markdown reload server.", "error");
+    return;
+  }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.ok !== true) {
+    announce(result.message || "Could not reload from Markdown.", "error");
+    return;
+  }
+  draftQueue = Promise.resolve();
+  await refreshState();
+  announce("Reloaded from the source Markdown.");
 }
 
 function setZoom(value) {
@@ -1520,6 +1545,8 @@ function invokeAction(action, context = {}) {
     fitZoom();
   } else if (action === "save") {
     void save();
+  } else if (action === "reload") {
+    void reloadFromMarkdown();
   }
 }
 
@@ -1690,7 +1717,7 @@ function wireControls() {
 }
 
 async function refreshState() {
-  const response = await fetch("/state", { cache: "no-store" });
+  const response = await fetch("./state", { cache: "no-store" });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const state = await response.json();
   if (!Number.isInteger(state.version) || state.version < serverVersion) return;
@@ -1732,7 +1759,7 @@ async function init() {
   await refreshState();
   fitZoom();
   announce("Select the diagram to edit it. The Markdown remains unchanged until you save.");
-  const events = new EventSource("/events");
+  const events = new EventSource("./events");
   events.onmessage = () => {
     void refreshState().catch((error) => announce(error.message, "error"));
   };

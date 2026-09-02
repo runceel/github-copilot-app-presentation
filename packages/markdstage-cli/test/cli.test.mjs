@@ -104,6 +104,14 @@ test("the help command prints global and per-command help", async () => {
   assert.equal(io2.stdout(), io3.stdout());
 });
 
+test("present help explains watch-mode Architecture editing", async () => {
+  const io = capture();
+  assert.equal(await run(["present", "--help"], io), EXIT_OK);
+  assert.match(io.stdout(), /--watch\s+Reload on save and enable Architecture editing/);
+  assert.match(io.stdout(), /Without --watch, presentation is read-only/);
+  assert.match(io.stdout(), /detailed designer/);
+});
+
 test("help is listed as a command", async () => {
   const io = capture();
   await run(["help"], io);

@@ -1,6 +1,6 @@
 // markdstage present — serve the deck on loopback and open it in a browser.
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
@@ -19,21 +19,38 @@ async function createWatcher(session, server, { onStatus }) {
   const { createMarkdownWatcher } = await import(
     pathToFileURL(sharedPath("scripts", "markdown-watcher.mjs")).href
   );
-  return createMarkdownWatcher({
+  const setWatchState = (status, error = "") => {
+    const changed = session.watchStatus !== status || session.watchError !== error;
+    session.watchStatus = status;
+    session.watchError = error;
+    if (changed) server.broadcast();
+  };
+  const watcher = createMarkdownWatcher({
     path: session.file,
     onChange: async () => {
       try {
+        if ((await readFile(session.file, "utf8")) === session.sourceMarkdown) {
+          setWatchState("watching");
+          return;
+        }
         // Keep the current slide, and keep the last valid deck when the file is
         // saved in a broken intermediate state.
         await session.load({ preserveIndex: true });
+        setWatchState("watching");
         server.broadcast();
         onStatus(`reloaded ${session.sourceName} (${session.slides.length} slides)`);
       } catch (error) {
+        setWatchState("error", error?.code || "source_reload_failed");
         onStatus(`reload failed, keeping the last valid deck: ${error?.message || error}`, true);
       }
     },
-    onError: (error) => onStatus(`watch error: ${error?.message || error}`, true),
+    onError: (error) => {
+      setWatchState("error", "watch_failed");
+      onStatus(`watch error: ${error?.message || error}`, true);
+    },
   });
+  setWatchState("watching");
+  return watcher;
 }
 
 export async function presentCommand(options, io) {
@@ -68,7 +85,9 @@ export async function presentCommand(options, io) {
     io.print(`  theme:     ${session.theme}`);
     io.print(`  workspace: ${resolve(session.workspaceRoot)}`);
     io.print(`  url:       ${server.url}`);
-    if (options.watch) io.print("  watching:  on (the deck reloads when the file is saved)");
+    if (options.watch) {
+      io.print("  watching:  on (live reload and Architecture editing are enabled)");
+    }
     io.print("Press Ctrl+C to stop.");
 
     await new Promise((done) => {

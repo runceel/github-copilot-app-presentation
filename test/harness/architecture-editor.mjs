@@ -115,6 +115,7 @@ export async function startArchitectureEditorHarness({
       Buffer.isBuffer(content) ? content : Buffer.from(content),
     ]),
   );
+  const base = "/architecture-editor-test";
 
   function broadcast() {
     for (const client of [...clients]) client.write(`data: ${version}\n\n`);
@@ -123,11 +124,17 @@ export async function startArchitectureEditorHarness({
   const server = createServer(async (req, res) => {
     const url = new URL(req.url, "http://127.0.0.1");
     const pathname = decodeURIComponent(url.pathname);
-    if (pathname === "/" || pathname === "/index.html") {
+    if (pathname !== base && !pathname.startsWith(`${base}/`)) {
+      res.statusCode = 404;
+      res.end("Not found");
+      return;
+    }
+    const route = pathname.slice(base.length) || "/";
+    if (route === "/" || route === "/index.html") {
       await sendFile(res, join(EXT_DIR, "architecture-editor", "index.html"));
       return;
     }
-    if (pathname === "/state") {
+    if (route === "/state") {
       const snapshot = {
         version,
         sourcePath,
@@ -143,7 +150,7 @@ export async function startArchitectureEditorHarness({
       sendJson(res, 200, snapshot);
       return;
     }
-    if (pathname === "/events") {
+    if (route === "/events") {
       res.statusCode = 200;
       res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
       res.setHeader("Cache-Control", "no-store");
@@ -152,7 +159,7 @@ export async function startArchitectureEditorHarness({
       req.on("close", () => clients.delete(res));
       return;
     }
-    if (pathname === "/asset-library") {
+    if (route === "/asset-library") {
       sendJson(res, 200, {
         ok: true,
         assets: [...assetFiles]
@@ -162,7 +169,7 @@ export async function startArchitectureEditorHarness({
       });
       return;
     }
-    if (pathname === "/asset-upload") {
+    if (route === "/asset-upload") {
       try {
         const content = await readBinaryBody(req);
         const { stem, extension } = normalizeArchitectureAssetName(
@@ -191,7 +198,7 @@ export async function startArchitectureEditorHarness({
       }
       return;
     }
-    if (pathname === "/draft") {
+    if (route === "/draft") {
       const body = await readBody(req);
       try {
         parseArchitecture(body.source);
@@ -230,7 +237,7 @@ export async function startArchitectureEditorHarness({
       sendJson(res, 200, { ok: true, dirty, revision: body.revision, version });
       return;
     }
-    if (pathname === "/save") {
+    if (route === "/save") {
       const body = await readBody(req);
       if (body.generation !== generation) {
         sendJson(res, 409, {
@@ -284,15 +291,36 @@ export async function startArchitectureEditorHarness({
       });
       return;
     }
-    if (pathname === "/editor/editor.js") {
+    if (route === "/reload") {
+      const body = await readBody(req);
+      if (dirty && body.discard !== true) {
+        sendJson(res, 409, {
+          ok: false,
+          error: "unsaved_changes",
+          message: "The editor has unsaved changes.",
+        });
+        return;
+      }
+      conflict = false;
+      baseMarkdown = markdown;
+      draftSource = savedSource;
+      draftRevision = 0;
+      generation += 1;
+      dirty = false;
+      version += 1;
+      broadcast();
+      sendJson(res, 200, { ok: true, version, generation, dirty });
+      return;
+    }
+    if (route === "/editor/editor.js") {
       await sendFile(res, join(EXT_DIR, "architecture-editor", "editor.js"));
       return;
     }
-    if (pathname === "/editor/editor.css") {
+    if (route === "/editor/editor.css") {
       await sendFile(res, join(EXT_DIR, "architecture-editor", "editor.css"));
       return;
     }
-    if (pathname === "/renderer/slides.css") {
+    if (route === "/renderer/slides.css") {
       await sendFile(res, join(EXT_DIR, "renderer", "slides.css"));
       return;
     }
@@ -301,20 +329,20 @@ export async function startArchitectureEditorHarness({
         "/renderer/architecture.mjs",
         "/renderer/architecture-edit.mjs",
         "/renderer/architecture-document.mjs",
-      ].includes(pathname)
+      ].includes(route)
     ) {
-      await sendFile(res, join(EXT_DIR, pathname.slice(1)));
+      await sendFile(res, join(EXT_DIR, route.slice(1)));
       return;
     }
-    if (pathname.startsWith("/assets/")) {
-      const content = assetFiles.get(pathname.slice(1));
+    if (route.startsWith("/assets/")) {
+      const content = assetFiles.get(route.slice(1));
       if (!content) {
         res.statusCode = 404;
         res.end("Not found");
         return;
       }
       res.statusCode = 200;
-      res.setHeader("Content-Type", MIME[extname(pathname).toLowerCase()]);
+      res.setHeader("Content-Type", MIME[extname(route).toLowerCase()]);
       res.end(content);
       return;
     }
@@ -325,7 +353,7 @@ export async function startArchitectureEditorHarness({
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   return {
-    url: `http://127.0.0.1:${address.port}`,
+    url: `http://127.0.0.1:${address.port}${base}/`,
     saves,
     get assets() {
       return new Map(assetFiles);

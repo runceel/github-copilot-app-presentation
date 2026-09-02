@@ -90,7 +90,9 @@ let lastMermaidTheme = null;
 // Editing mode is available only in normal view, not presenter or print mode.
 // Print mode returns early in init, so presenterMode is the effective branch here.
 let architectureEditMode = false;
+let architectureEditAvailable = false;
 let architectureDetailedEdit = false;
+let architectureDetailedEditTarget = "";
 let presenterMode = false;
 let previewMode = false;
 let previewOffset = 0;
@@ -100,6 +102,9 @@ let fixedPreviewMode = false;
 let lastMarkdown = "";
 // Editing UI attached to the rendered slide; destroyed on every rerender.
 let architectureEditors = [];
+// Serialize saves from every Architecture block so each request uses the deck
+// version returned by the previous save.
+let architectureSaveQueue = Promise.resolve();
 // `layoutTarget` is the slide currently on screen (cover and back cover
 // included); `autoSize` says whether it also takes part in the font auto-fit.
 let layoutTarget = null;
@@ -701,13 +706,15 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
     host.className = "architecture-edit-host";
     host.setAttribute("data-architecture-block", String(blockIndex));
     target.replaceWith(host);
+    const editorRenderToken = renderToken;
     const editor = attachArchitectureEditor(host, {
       source,
       documentRef: document,
       canOpenDetail: architectureDetailedEdit,
       onOpenDetail: () => openDetailedArchitectureEditor(slideIndex, blockIndex),
       // Return the save result to the editor; omitting it makes failures look successful.
-      onCommit: (next) => saveArchitectureBlock(slideIndex, blockIndex, next),
+      onCommit: (next) =>
+        saveArchitectureBlock(slideIndex, blockIndex, next, editorRenderToken),
     });
     if (!editor) {
       // Do not edit invalid DSL; fall back to the standard error display.
@@ -771,11 +778,11 @@ function renderSlide(markdown) {
   architectureEditors.forEach((editor) => editor.destroy());
   architectureEditors = [];
   applyCustomThemeCss(customThemeCss);
+  const token = ++renderToken;
   const slide = createSlide(markdown, deckTheme);
   document.title = slide.title;
   document.documentElement.setAttribute("data-theme", slide.theme);
 
-  const token = ++renderToken;
   document.body.classList.add("mermaid-loading");
   document.getElementById("stage").replaceChildren(slide.deck);
   if (layoutFrame) {
@@ -1066,11 +1073,16 @@ let importOpen = false;
 let importPending = false;
 let importFiles = [];
 let sourceBacked = false;
+let sourceModeAvailable = false;
 let sourceMode = "snapshot";
 let sourceWatchStatus = "inactive";
 let sourceWatchError = "";
 let presenterRequestPending = false;
 let presenterRunning = false;
+let presenterWindowAvailable = false;
+let presenterViewAvailable = false;
+let pdfExportAvailable = false;
+let markdownImportAvailable = false;
 let presenterViewOpen = false;
 let pdfExportPending = false;
 
@@ -1119,7 +1131,7 @@ async function fetchDeck() {
  * early in init and never reaches this code. Return true only when the state changes.
  */
 function setArchitectureEditMode(enabled) {
-  const next = Boolean(enabled) && !presenterMode;
+  const next = Boolean(enabled) && architectureEditAvailable && !presenterMode;
   if (next === architectureEditMode) return false;
   architectureEditMode = next;
   document.body.classList.toggle("architecture-edit-mode", next);
@@ -1130,7 +1142,7 @@ function setArchitectureEditMode(enabled) {
 function updateArchitectureEditButton(enabled = architectureEditMode) {
   const button = document.getElementById("navEdit");
   if (!button) return;
-  button.hidden = presenterMode;
+  button.hidden = presenterMode || !architectureEditAvailable;
   button.dataset.state = enabled && !presenterMode ? "active" : "";
   button.title = enabled ? "Exit shape editing mode" : "Shape editing mode";
   button.setAttribute("aria-label", button.title);
@@ -1149,7 +1161,7 @@ function updateSourceModeButton() {
   const button = document.getElementById("navSourceMode");
   const status = document.getElementById("sourceStatus");
   if (!button) return;
-  button.hidden = presenterMode || !sourceBacked;
+  button.hidden = presenterMode || !sourceBacked || !sourceModeAvailable;
   if (!sourceBacked) {
     button.dataset.state = "";
     if (status) status.textContent = "";
@@ -1197,7 +1209,7 @@ async function requestSourceMode(mode) {
 }
 
 async function toggleSourceMode() {
-  if (presenterMode || !sourceBacked) return;
+  if (presenterMode || !sourceBacked || !sourceModeAvailable) return;
   await requestSourceMode(sourceMode === "live" ? "snapshot" : "live");
 }
 
@@ -1218,7 +1230,7 @@ async function requestArchitectureEditMode(enabled) {
 }
 
 async function toggleArchitectureEditMode() {
-  if (presenterMode) return;
+  if (presenterMode || !architectureEditAvailable) return;
   await requestArchitectureEditMode(!architectureEditMode);
   await fetchState();
 }
@@ -1230,7 +1242,23 @@ async function toggleArchitectureEditMode() {
  * Always return save success or failure to the caller. Swallowing it would make
  * an unsaved edit look successful, recreating the silent-ignore behavior fixed in Phase 5.
  */
-async function saveArchitectureBlock(index, block, source) {
+function saveArchitectureBlock(index, block, source, editorRenderToken) {
+  const pending = architectureSaveQueue
+    .catch(() => {})
+    .then(() => {
+      if (editorRenderToken !== renderToken) {
+        return {
+          ok: false,
+          message: "The displayed deck was replaced. Select the diagram again",
+        };
+      }
+      return saveArchitectureBlockNow(index, block, source);
+    });
+  architectureSaveQueue = pending;
+  return pending;
+}
+
+async function saveArchitectureBlockNow(index, block, source) {
   let res;
   try {
     res = await fetch("./edit", {
@@ -1283,6 +1311,9 @@ async function saveArchitectureBlock(index, block, source) {
 }
 
 async function openDetailedArchitectureEditor(index, block) {
+  const pendingWindow =
+    architectureDetailedEditTarget === "window" ? window.open("", "_blank") : null;
+  if (pendingWindow) pendingWindow.opener = null;
   let response;
   try {
     response = await fetch("./architecture-editor/open", {
@@ -1291,10 +1322,22 @@ async function openDetailedArchitectureEditor(index, block) {
       body: JSON.stringify({ index, block }),
     });
   } catch (_) {
+    pendingWindow?.close();
     return { ok: false, message: "Could not connect to the server." };
   }
   const result = await response.json().catch(() => ({}));
-  if (response.ok && result.ok === true) return result;
+  if (response.ok && result.ok === true) {
+    if (typeof result.url === "string" && result.url) {
+      if (pendingWindow) pendingWindow.location.replace(result.url);
+      else if (!window.open(result.url, "_blank", "noopener")) {
+        return { ok: false, message: "Allow pop-ups to open the Architecture Editor." };
+      }
+    } else {
+      pendingWindow?.close();
+    }
+    return result;
+  }
+  pendingWindow?.close();
   if (result.error === "source_not_available") {
     return {
       ok: false,
@@ -1320,10 +1363,26 @@ async function fetchState() {
     data.customThemeMeta && typeof data.customThemeMeta === "object"
       ? data.customThemeMeta
       : null;
+  if (typeof data.presenterWindowAvailable === "boolean") {
+    presenterWindowAvailable = data.presenterWindowAvailable;
+  }
+  if (typeof data.presenterViewAvailable === "boolean") {
+    presenterViewAvailable = data.presenterViewAvailable;
+  }
+  if (typeof data.pdfExportAvailable === "boolean") {
+    pdfExportAvailable = data.pdfExportAvailable;
+  }
+  if (typeof data.markdownImportAvailable === "boolean") {
+    markdownImportAvailable = data.markdownImportAvailable;
+  }
   if (typeof data.presenterRunning === "boolean") {
     updatePresenterButton(data.presenterRunning);
   }
+  updateHostActionButtons();
   if (typeof data.sourceBacked === "boolean") sourceBacked = data.sourceBacked;
+  if (typeof data.sourceModeAvailable === "boolean") {
+    sourceModeAvailable = data.sourceModeAvailable;
+  }
   sourceMode = data.sourceMode === "live" ? "live" : "snapshot";
   sourceWatchStatus =
     data.sourceWatchStatus === "watching" || data.sourceWatchStatus === "error"
@@ -1331,6 +1390,14 @@ async function fetchState() {
       : "inactive";
   sourceWatchError = typeof data.sourceWatchError === "string" ? data.sourceWatchError : "";
   updateSourceModeButton();
+  const editAvailabilityChanged =
+    typeof data.architectureEditAvailable === "boolean" &&
+    data.architectureEditAvailable !== architectureEditAvailable;
+  if (typeof data.architectureEditAvailable === "boolean") {
+    architectureEditAvailable = data.architectureEditAvailable;
+  }
+  architectureDetailedEditTarget =
+    data.architectureDetailedEditTarget === "window" ? "window" : "canvas";
   const detailedEditChanged =
     typeof data.architectureDetailedEdit === "boolean" &&
     data.architectureDetailedEdit !== architectureDetailedEdit;
@@ -1338,7 +1405,15 @@ async function fetchState() {
     architectureDetailedEdit = data.architectureDetailedEdit;
   }
   // Editing-mode changes do not increment the version, so process them before the version guard.
+  let availabilityDisabledEditMode = false;
+  if (editAvailabilityChanged) {
+    if (!architectureEditAvailable) {
+      availabilityDisabledEditMode = setArchitectureEditMode(false);
+    }
+    updateArchitectureEditButton();
+  }
   if (
+    availabilityDisabledEditMode ||
     (typeof data.architectureEdit === "boolean" &&
       setArchitectureEditMode(data.architectureEdit)) ||
     (architectureEditMode && detailedEditChanged)
@@ -1391,7 +1466,7 @@ function goToIndex(i) {
 }
 
 async function setPresenterRunning(running) {
-  if (presenterRequestPending) return;
+  if (!presenterWindowAvailable || presenterRequestPending) return;
   presenterRequestPending = true;
   const button = document.getElementById("navPresent");
   const status = document.getElementById("presentStatus");
@@ -1445,6 +1520,21 @@ function togglePresenterWindow() {
   return setPresenterRunning(!presenterRunning);
 }
 
+function updateHostActionButtons() {
+  const present = document.getElementById("navPresent");
+  if (present) present.hidden = presenterMode || !presenterWindowAvailable;
+  const presenterView = document.getElementById("navPresenterView");
+  if (presenterView) presenterView.hidden = presenterMode || !presenterViewAvailable;
+  const presenterToggle = document.getElementById("presenterToggleButton");
+  if (presenterToggle) presenterToggle.hidden = !presenterWindowAvailable;
+  const exportButton = document.getElementById("navExport");
+  if (exportButton) exportButton.hidden = presenterMode || !pdfExportAvailable;
+  const importButton = document.getElementById("navImport");
+  if (importButton) importButton.hidden = presenterMode || !markdownImportAvailable;
+  if (!presenterViewAvailable && presenterViewOpen) closePresenterView();
+  if (!markdownImportAvailable && importOpen) closeImportPicker();
+}
+
 function updatePresenterButton(running, message = "") {
   presenterRunning = running;
   const button = document.getElementById("navPresent");
@@ -1462,7 +1552,7 @@ function updatePresenterButton(running, message = "") {
 }
 
 async function exportPdfFromCanvas() {
-  if (pdfExportPending) return;
+  if (!pdfExportAvailable || pdfExportPending) return;
   pdfExportPending = true;
   const button = document.getElementById("navExport");
   const status = document.getElementById("exportStatus");
@@ -1529,10 +1619,10 @@ function toggleFixedPreviewMode() {
 function updateNav() {
   const nav = document.getElementById("nav");
   if (!nav) return;
-  // Outside presenter view, show only the load button even when no deck exists,
-  // allowing Markdown import before any slide has been loaded.
+  // Outside presenter view, show only the load button when the host supports
+  // Markdown import before any slide has been loaded.
   const empty = navTotal <= 0;
-  nav.hidden = previewMode || (empty && presenterMode);
+  nav.hidden = previewMode || (empty && (presenterMode || !markdownImportAvailable));
   nav.classList.toggle("nav-empty", empty);
   const counter = document.getElementById("navCounter");
   if (counter) {
@@ -1549,7 +1639,7 @@ function updateNav() {
 }
 
 function openPresenterView() {
-  if (presenterMode || navTotal <= 0) return;
+  if (presenterMode || !presenterViewAvailable || navTotal <= 0) return;
   presenterViewOpen = true;
   document.body.classList.add("presenter-view-mode");
   const view = document.getElementById("presenterView");
@@ -1770,7 +1860,7 @@ async function importMarkdown(path) {
 }
 
 function openImportPicker() {
-  if (presenterMode) return;
+  if (presenterMode || !markdownImportAvailable) return;
   importOpen = true;
   const el = document.getElementById("importPicker");
   if (el) el.hidden = false;
