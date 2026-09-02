@@ -542,28 +542,31 @@ export async function startPresentationServer(
         return;
       }
       const key = `${session.file}\0${globalBlock}`;
-      let editor = architectureEditors.get(key);
+      let entry = architectureEditors.get(key);
+      const refreshExisting = Boolean(entry?.editor);
+      if (!entry) {
+        entry = { editor: null };
+        entry.promise = startArchitectureEditorServer({
+          extensionDirectory: EXT_DIR,
+          workspaceRoot: session.workspaceRoot,
+          sourcePath: session.sourceName,
+          blockIndex: globalBlock,
+          theme: session.theme,
+          logger: onLog,
+          onMarkdownSaved: async ({ sourcePath }) => {
+            if (resolve(session.workspaceRoot, sourcePath) !== resolve(session.file)) {
+              return;
+            }
+            await session.load({ preserveIndex: true });
+            broadcast(session);
+          },
+        });
+        architectureEditors.set(key, entry);
+      }
       try {
-        if (!editor) {
-          editor = await startArchitectureEditorServer({
-            extensionDirectory: EXT_DIR,
-            workspaceRoot: session.workspaceRoot,
-            sourcePath: session.sourceName,
-            blockIndex: globalBlock,
-            theme: session.theme,
-            logger: onLog,
-            onMarkdownSaved: async ({ sourcePath }) => {
-              if (
-                resolve(session.workspaceRoot, sourcePath) !== resolve(session.file)
-              ) {
-                return;
-              }
-              await session.load({ preserveIndex: true });
-              broadcast(session);
-            },
-          });
-          architectureEditors.set(key, editor);
-        } else if (!editor.dirty) {
+        const editor = entry.editor ?? (await entry.promise);
+        entry.editor = editor;
+        if (refreshExisting && !editor.dirty) {
           await editor.reload(
             {
               sourcePath: session.sourceName,
@@ -575,7 +578,11 @@ export async function startPresentationServer(
         } else {
           editor.setTheme(session.theme);
         }
+        json(res, 200, { ok: true, url: editor.url });
       } catch (error) {
+        if (!entry.editor && architectureEditors.get(key) === entry) {
+          architectureEditors.delete(key);
+        }
         json(res, error?.code === "block_not_found" ? 404 : 409, {
           ok: false,
           error: error?.code || "editor_open_failed",
@@ -583,7 +590,6 @@ export async function startPresentationServer(
         });
         return;
       }
-      json(res, 200, { ok: true, url: editor.url });
       return;
     }
 
@@ -705,8 +711,8 @@ export async function startPresentationServer(
     broadcast: () => broadcast(session),
     close: async () => {
       await Promise.all(
-        [...architectureEditors.values()].map((editor) =>
-          editor.close().catch(() => {}),
+        [...architectureEditors.values()].map(async (entry) =>
+          (entry.editor ?? (await entry.promise.catch(() => null)))?.close().catch(() => {}),
         ),
       );
       architectureEditors.clear();

@@ -518,7 +518,7 @@ function selectAsset(path) {
   assetPreviewPath.textContent = selectedAssetPath;
   if (selectedAssetPath) {
     const image = document.createElement("img");
-    image.src = `/${selectedAssetPath}`;
+    image.src = `./${selectedAssetPath}`;
     image.alt = "";
     assetPreviewImageHost.appendChild(image);
   }
@@ -547,7 +547,7 @@ function renderAssetLibrary() {
     option.setAttribute("aria-selected", asset.path === selectedAssetPath ? "true" : "false");
     option.title = asset.path;
     const image = document.createElement("img");
-    image.src = `/${asset.path}`;
+    image.src = `./${asset.path}`;
     image.alt = "";
     const label = document.createElement("span");
     label.textContent = asset.path;
@@ -1439,6 +1439,31 @@ async function save() {
   );
 }
 
+async function reloadFromMarkdown() {
+  await draftQueue.catch(() => {});
+  if (dirty && !window.confirm("Discard unsaved changes and reload from Markdown?")) return;
+  announce("Reloading from Markdown…");
+  let response;
+  try {
+    response = await fetch("./reload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ discard: dirty }),
+    });
+  } catch (_) {
+    announce("Could not connect to the Markdown reload server.", "error");
+    return;
+  }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result.ok !== true) {
+    announce(result.message || "Could not reload from Markdown.", "error");
+    return;
+  }
+  draftQueue = Promise.resolve();
+  await refreshState();
+  announce("Reloaded from the source Markdown.");
+}
+
 function setZoom(value) {
   zoom = Math.min(2.5, Math.max(0.3, value));
   renderSurface();
@@ -1520,6 +1545,8 @@ function invokeAction(action, context = {}) {
     fitZoom();
   } else if (action === "save") {
     void save();
+  } else if (action === "reload") {
+    void reloadFromMarkdown();
   }
 }
 

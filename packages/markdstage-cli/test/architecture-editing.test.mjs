@@ -216,6 +216,27 @@ test("watch mode opens the detailed editor and reloads its successful save", asy
   });
 });
 
+test("concurrent detailed-editor opens reuse one server", async () => {
+  await withWorkspace(async ({ dir, file }) => {
+    await withDeckServer({ file, workspace: dir, watch: true }, async (_session, server) => {
+      const responses = await Promise.all(
+        Array.from({ length: 4 }, () =>
+          post(server.url, "architecture-editor/open", {
+            index: 0,
+            block: 0,
+          }),
+        ),
+      );
+      assert.deepEqual(
+        responses.map((response) => response.status),
+        [200, 200, 200, 200],
+      );
+      const urls = await Promise.all(responses.map((response) => response.json().then((x) => x.url)));
+      assert.equal(new Set(urls).size, 1);
+    });
+  });
+});
+
 test("the detailed editor rejects a save after an external source change", async () => {
   await withWorkspace(async ({ dir, file }) => {
     await withDeckServer({ file, workspace: dir, watch: true }, async (_session, server) => {
@@ -241,6 +262,41 @@ test("the detailed editor rejects a save after an external source change", async
       assert.equal(saved.status, 409);
       assert.equal((await saved.json()).error, "source_changed");
       assert.equal(await readFile(file, "utf8"), external);
+
+      const protectedReload = await post(url, "reload", { discard: false });
+      assert.equal(protectedReload.status, 409);
+      assert.equal((await protectedReload.json()).error, "unsaved_changes");
+
+      const reloaded = await post(url, "reload", { discard: true });
+      assert.equal(reloaded.status, 200);
+      const reloadedState = await (await fetch(new URL("state", url))).json();
+      assert.equal(reloadedState.dirty, false);
+      assert.equal(reloadedState.source, FIRST);
+      assert.ok(reloadedState.generation > editorState.generation);
+
+      const recovered = architecture("first", "Recovered edit", 560);
+      assert.equal(
+        (
+          await post(url, "draft", {
+            source: recovered,
+            revision: 1,
+            generation: reloadedState.generation,
+          })
+        ).status,
+        200,
+      );
+      assert.equal(
+        (
+          await post(url, "save", {
+            revision: 1,
+            generation: reloadedState.generation,
+          })
+        ).status,
+        200,
+      );
+      const markdown = await readFile(file, "utf8");
+      assert.ok(markdown.includes(recovered));
+      assert.ok(markdown.includes("<!-- changed outside the editor -->"));
     });
   });
 });

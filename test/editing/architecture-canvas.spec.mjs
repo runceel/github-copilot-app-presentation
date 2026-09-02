@@ -243,6 +243,9 @@ test("the asset picker edits standalone images and node icons", async ({ page })
     await page.getByRole("button", { name: "Image", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Add image" });
     await expect(dialog).toBeVisible();
+    await expect
+      .poll(() => dialog.locator(".asset-option img").first().evaluate((image) => image.naturalWidth))
+      .toBeGreaterThan(0);
     await dialog.getByRole("option", { name: "assets/existing.svg" }).click();
     await dialog.getByRole("button", { name: "Select", exact: true }).click();
 
@@ -326,6 +329,17 @@ test("external-change conflicts remain visible without overwriting Markdown", as
     await expect(page.locator("#status")).toHaveAttribute("data-kind", "error");
     expect(harness.saves).toHaveLength(0);
     await expect(page.locator('[data-action="save"]')).toBeEnabled();
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await page.locator('[data-action="reload"]').click();
+    await expect(page.locator("#status")).toContainText("Reloaded");
+    await expect(page.locator('[data-ref="node"].tree-item')).toHaveCount(0);
+    await expect(page.locator('[data-action="save"]')).toBeDisabled();
+
+    await page.locator('[data-action="add-node"]').click();
+    await page.locator('[data-action="save"]').click();
+    await expect(page.locator("#status")).toContainText("Saved");
+    expect(harness.saves).toHaveLength(1);
   } finally {
     await harness.close();
   }

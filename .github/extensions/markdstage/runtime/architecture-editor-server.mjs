@@ -273,6 +273,18 @@ export async function startArchitectureEditorServer({
       return response;
     });
 
+  const reloadTarget = (input = {}, options = {}) =>
+    serializeOperation(() =>
+      loadTarget(
+        {
+          sourcePath: input.sourcePath ?? inst.sourcePath,
+          blockIndex: input.blockIndex ?? inst.blockIndex,
+          theme: input.theme ?? inst.theme,
+        },
+        options,
+      ),
+    );
+
   await loadTarget({ sourcePath, blockIndex, theme });
 
   const editorDir = join(extensionDirectory, "architecture-editor");
@@ -505,6 +517,55 @@ export async function startArchitectureEditorServer({
       sendJson(res, result.ok ? 200 : editorSaveStatus(result), result);
       return;
     }
+    if (route === "/reload") {
+      if (req.method !== "POST") {
+        res.setHeader("Allow", "POST");
+        sendJson(res, 405, { ok: false, error: "method_not_allowed" });
+        return;
+      }
+      if (!sameOrigin()) {
+        sendJson(res, 403, { ok: false, error: "origin_not_allowed" });
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req, 4096);
+      } catch (error) {
+        sendJson(res, error?.message === "payload_too_large" ? 413 : 400, {
+          ok: false,
+          error: error?.message || "bad_request",
+        });
+        return;
+      }
+      if ("discard" in body && typeof body.discard !== "boolean") {
+        sendJson(res, 400, { ok: false, error: "invalid_reload" });
+        return;
+      }
+      try {
+        await reloadTarget({}, { discard: body.discard === true });
+        sendJson(res, 200, {
+          ok: true,
+          version: inst.version,
+          generation: inst.generation,
+          dirty: inst.dirty,
+        });
+      } catch (error) {
+        const status =
+          error?.code === "unsaved_changes"
+            ? 409
+            : error?.code === "source_file_too_large"
+              ? 413
+              : error?.code === "source_file_not_found" || error?.code === "block_not_found"
+                ? 404
+                : 422;
+        sendJson(res, status, {
+          ok: false,
+          error: error?.code || "reload_failed",
+          message: error?.message || "The source Markdown could not be reloaded.",
+        });
+      }
+      return;
+    }
     if (route === "/editor/editor.js") {
       await sendFile(res, join(editorDir, "editor.js"));
       return;
@@ -576,16 +637,7 @@ export async function startArchitectureEditorServer({
       return saveInstance(snapshotSaveRequest());
     },
     reload(input = {}, options = {}) {
-      return serializeOperation(() =>
-        loadTarget(
-          {
-            sourcePath: input.sourcePath ?? inst.sourcePath,
-            blockIndex: input.blockIndex ?? inst.blockIndex,
-            theme: input.theme ?? inst.theme,
-          },
-          options,
-        ),
-      );
+      return reloadTarget(input, options);
     },
     async close() {
       if (closed) return;
