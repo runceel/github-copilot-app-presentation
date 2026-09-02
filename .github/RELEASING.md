@@ -1,14 +1,17 @@
 # Release process
 
-MarkdStage distributes a canvas Extension installable from GitHub Copilot, an optional Skill, and
-MarkdStage Desktop for Windows x64 and ARM64 from the same repository.
+MarkdStage distributes a canvas Extension installable from GitHub Copilot, an optional Skill, a
+standalone npm CLI, and MarkdStage Desktop for Windows x64 and ARM64 from the same repository.
 
 ## Versioning and compatibility
 
-1. Review the changes, compatibility, bundled open-source software, and test results.
-2. Create a new tag in `vMAJOR.MINOR.PATCH` format.
-3. Never move a published tag; publish fixes under a new tag.
-4. Keep `main` as the path to the latest version, and recommend a tag or commit SHA for reproducible installation.
+1. Use one product version for the Canvas Extension, Skill, npm CLI, and Desktop.
+2. Update `packages/markdstage-cli/package.json` to that version before releasing.
+3. Review the changes, compatibility, bundled open-source software, and test results.
+4. Create one tag in `vMAJOR.MINOR.PATCH` format. That tag identifies every release surface and
+   triggers npm publication.
+5. Never move a published tag or reuse an npm package version; publish fixes under a new tag.
+6. Keep `main` as the path to the latest version, and recommend a tag or commit SHA for reproducible installation.
 
 Migration from the former `presentation` canvas to MarkdStage is a breaking change. The canvas ID,
 Extension and Skill paths, guide tool, and Desktop artifact names change, so publish the first
@@ -72,6 +75,10 @@ prerequisite in the release notes.
 ```powershell
 npm ci
 npm test
+npm run skills:check
+cd packages\markdstage-cli
+npm pack --dry-run
+cd ..\..
 dotnet test apps\MarkdStage.Desktop\tests\MarkdStage.Core.Tests\MarkdStage.Core.Tests.csproj -c Release
 dotnet build apps\MarkdStage.Desktop\src\MarkdStage.App\MarkdStage.App.csproj -c Release -r win-x64 -p:Platform=x64
 apps\MarkdStage.Desktop\scripts\Publish.ps1 -Architecture x64
@@ -84,51 +91,26 @@ with the new canvas ID.
 
 ## MarkdStage CLI on npm
 
-The standalone CLI uses its own semantic version in
-`packages/markdstage-cli/package.json`. Publish it with a matching
-`cli-vMAJOR.MINOR.PATCH` tag; do not reuse the product release tag unless both version numbers
-intentionally match.
-
-Before tagging:
+The standalone CLI uses the same semantic version and release tag as the Canvas Extension, Skill,
+and Desktop. Commit the package version and any generated Skill updates to `main`, then create and
+push the shared product tag:
 
 ```powershell
-npm run test:cli
-npm run skills:check
-cd packages\markdstage-cli
-npm pack --dry-run
-```
-
-Commit the package version and generated Skill updates to `main`, then create and push the matching
-tag:
-
-```powershell
-git tag cli-v0.1.0
-git push origin cli-v0.1.0
+git tag v2.3.0
+git push origin v2.3.0
 ```
 
 `.github/workflows/npm-publish.yml` verifies that the tag matches the package version and that the
-tagged commit is reachable from `main`, then publishes the public scoped package with provenance.
-Never move a published CLI tag or reuse a package version.
-
-The first publish requires an npm granular access token with permission to create and publish
-`@markdstage/markdstage`, stored temporarily as the `NPM_TOKEN` GitHub Actions secret. After the first
-publish:
-
-1. Configure the package's npm Trusted Publisher for repository `runceel/markdstage` and workflow
-   `npm-publish.yml`.
-2. Verify one OIDC-authenticated publish, then revoke the bootstrap token on npm.
-3. Delete the `NPM_TOKEN` repository secret.
-4. Set npm publishing access to require two-factor authentication and disallow traditional tokens.
-
-Subsequent publishes authenticate through GitHub Actions OIDC and generate provenance without a
-long-lived npm token.
+tagged commit is reachable from `main`, then publishes `@markdstage/markdstage` with provenance.
+Publication authenticates through the configured npm Trusted Publisher and GitHub Actions OIDC; do
+not add a long-lived npm token.
 
 ## GitHub Release
 
 Include the following in the release notes:
 
 - Change summary and verified commit SHA
-- Target canvas, Skill, and Desktop versions
+- Shared Canvas Extension, Skill, npm CLI, and Desktop version
 - Breaking changes and migration table
 - Supported Windows architectures and the WebView2 Runtime prerequisite
 - SHA-256 for each ZIP
