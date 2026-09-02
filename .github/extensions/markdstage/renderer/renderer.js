@@ -2077,6 +2077,7 @@ let pdfExportAvailable = false;
 let pptxExportAvailable = false;
 let markdownImportAvailable = false;
 let presenterViewOpen = false;
+let presenterViewRequested = false;
 let pdfExportPending = false;
 let pptxExportPending = false;
 
@@ -2432,6 +2433,10 @@ async function fetchState() {
   navMode = data.mode === "adhoc" ? "adhoc" : "deck";
   renderSlide(typeof data.markdown === "string" ? data.markdown : "");
   updateNav();
+  if (presenterViewRequested) {
+    presenterViewRequested = false;
+    openPresenterView();
+  }
 }
 
 // --- navigation ------------------------------------------------------------
@@ -3151,6 +3156,7 @@ function init() {
   } catch (_) {}
 
   const params = new URLSearchParams(window.location.search);
+  presenterViewRequested = params.get("presenter") === "1";
   if (params.get("pptx") === "1") {
     initPptx(params).catch(reportPptxBootstrapFailure);
     return;

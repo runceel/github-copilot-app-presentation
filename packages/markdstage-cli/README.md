@@ -16,6 +16,7 @@ exported PDF, or hybrid editable PowerPoint deck.
 ## Install
 
 ```console
+npx @markdstage/markdstage presentation slides.md
 npx @markdstage/markdstage present slides.md
 npm install --global @markdstage/markdstage
 ```
@@ -23,6 +24,7 @@ npm install --global @markdstage/markdstage
 ## Commands
 
 ```console
+markdstage presentation slides.md
 markdstage present slides.md --watch
 markdstage validate slides.md --json
 markdstage inspect slides.md --json
@@ -36,6 +38,7 @@ markdstage skill install --target claude
 
 | Command | Description |
 | --- | --- |
+| `presentation` | Opens the presenter view with the current slide, next-slide preview, speaker notes, and navigation. Select **Start presentation** to open the synchronized audience-facing window; select **End presentation** to close it. `--watch` reloads on save, and `--no-open` serves the presenter URL without launching a browser. |
 | `present` | Serves the deck on loopback and opens the MarkdStage presenter window: navigation, presenter view, next-slide preview, speaker notes, overview, custom themes, Mermaid, Architecture DSL, and local assets. `--watch` reloads on save while preserving the current slide, keeps the last valid deck when a save is broken, and enables Architecture editing. Without `--watch`, the source is read-only. `--no-open` serves the deck only. |
 | `validate` | Checks deck structure, Architecture DSL blocks, themes, and theme paths. |
 | `inspect` | Reports the same compact 1280x720 clipping diagnostics as the canvas `inspect_layout` action. `--slide <n>` limits it to one page, `--all` includes slides that fit, `--fail-on-issues` exits with code 5. |

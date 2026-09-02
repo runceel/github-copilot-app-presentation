@@ -150,11 +150,15 @@ Windows x64 / ARM64 向けのポータブルビルドと SHA-256 チェックサ
 インストール済みの Microsoft Edge、Google Chrome、または Chromium が必要です。
 
 ```console
+npx @markdstage/markdstage presentation slides.md
 npx @markdstage/markdstage present slides.md --watch
 npx @markdstage/markdstage validate slides.md --json
 npx @markdstage/markdstage inspect slides.md
 npx @markdstage/markdstage export slides.md --output slides.pdf
 ```
+
+`presentation` は発表者用ダッシュボードを開きます。そこで **Start presentation** を選ぶと、
+同期された観客向けウィンドウが開きます。
 
 `present --watch` は表示モードで開始し、鉛筆の配置エディターと詳細な Architecture デザイナーを
 有効にします。保存時は対応する Markdown フェンスをアトミックに更新します。`--watch` のない

@@ -24,6 +24,7 @@ export async function withDeckServer(options, run) {
     token,
     onLog: options.log,
     editable: options.watch === true,
+    presenter: options.presenter,
   });
   try {
     return await run(session, server);

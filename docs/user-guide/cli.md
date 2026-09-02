@@ -17,6 +17,7 @@ PDF/PNG pipeline as the Canvas Extension, so a deck looks identical on every sur
 ## Install
 
 ```console
+npx @markdstage/markdstage presentation slides.md
 npx @markdstage/markdstage present slides.md
 npm install --global @markdstage/markdstage
 ```
@@ -24,6 +25,7 @@ npm install --global @markdstage/markdstage
 ## Commands
 
 ```console
+markdstage presentation slides.md
 markdstage present slides.md --watch
 markdstage validate slides.md --json
 markdstage inspect slides.md --json
@@ -36,6 +38,7 @@ markdstage skill install --target codex
 
 | Command | Description |
 | --- | --- |
+| `presentation` | Opens the presenter view with the current slide, next-slide preview, speaker notes, and navigation. Select **Start presentation** to open the synchronized audience-facing window; select **End presentation** to close it. `--watch` reloads on save, and `--no-open` serves the presenter URL without launching a browser. |
 | `present` | Serves the deck on loopback and opens the presenter window: navigation, presenter view, next-slide preview, speaker notes, overview, custom themes, Mermaid, Architecture DSL, and local assets. `--watch` reloads the deck when the Markdown file is saved, preserves the current slide, keeps the last valid deck if a save is incomplete, and enables Architecture editing. Without `--watch`, the source is read-only. `--no-open` serves the deck without launching a browser. |
 | `validate` | Checks deck structure, Architecture DSL blocks, themes, and theme paths. |
 | `inspect` | Reports the same compact 1280x720 clipping diagnostics as the canvas `inspect_layout` action. Use `--slide <n>` for one page, `--all` to include slides that fit, and `--fail-on-issues` to exit with code 5. |
@@ -60,7 +63,7 @@ markdstage capture --help
 2. `markdstage validate slides.md` — check structure, themes, and Architecture DSL.
 3. `markdstage inspect slides.md` — find slides that would be clipped in fixed 16:9 output.
 4. `markdstage capture slides.md` — review the clipped slides as PNG files.
-5. Present the deck, export PDF, or use `markdstage export slides.md --output slides.pptx`.
+5. Start `markdstage presentation slides.md`, export PDF, or use `markdstage export slides.md --output slides.pptx`.
 
 ## Architecture editing in watch mode
 

@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { run } from "../src/cli.mjs";
+import { withDeckServer } from "../src/deck.mjs";
 import { exportCommand } from "../src/commands/export.mjs";
 import { inspectCommand } from "../src/commands/inspect.mjs";
 import { EXIT_DECK, EXIT_ISSUES, EXIT_OK, EXIT_USAGE } from "../src/exit.mjs";
@@ -74,6 +75,7 @@ test("unknown commands and options fail with the usage exit code", async () => {
 
 test("every command documents itself", async () => {
   for (const command of [
+    "presentation",
     "present",
     "validate",
     "inspect",
@@ -111,6 +113,13 @@ test("present help explains watch-mode Architecture editing", async () => {
   assert.match(io.stdout(), /--watch\s+Reload on save and enable Architecture editing/);
   assert.match(io.stdout(), /Without --watch, presentation is read-only/);
   assert.match(io.stdout(), /detailed designer/);
+});
+
+test("presentation help explains the presenter and audience views", async () => {
+  const io = capture();
+  assert.equal(await run(["presentation", "--help"], io), EXIT_OK);
+  assert.match(io.stdout(), /Opens presenter view/);
+  assert.match(io.stdout(), /Start presentation.*audience window/);
 });
 
 test("help is listed as a command", async () => {
@@ -219,6 +228,57 @@ test("present --json writes only one machine-readable document", async () => {
     const report = JSON.parse(io.stdout());
     assert.equal(report.ok, true);
     assert.equal(report.total, 3);
+  });
+});
+
+test("presentation starts at the presenter view URL", async () => {
+  await withDeck(VALID_DECK, async ({ file }) => {
+    const io = capture();
+    io.until = Promise.resolve();
+    assert.equal(
+      await run(["presentation", file, "--no-open", "--json"], io),
+      EXIT_OK,
+    );
+    assert.equal(new URL(JSON.parse(io.stdout()).url).searchParams.get("presenter"), "1");
+  });
+});
+
+test("presentation server exposes audience-view controls", async () => {
+  await withDeck(VALID_DECK, async ({ file }) => {
+    let running = false;
+    const calls = [];
+    const presenter = {
+      isRunning: () => running,
+      open: async () => {
+        calls.push("open");
+        running = true;
+        return { alreadyRunning: false };
+      },
+      close: async () => {
+        calls.push("close");
+        running = false;
+        return { stopped: true };
+      },
+    };
+    await withDeckServer({ file, presenter }, async (_session, server) => {
+      const state = await fetch(new URL("state", server.url)).then((response) => response.json());
+      assert.equal(state.presenterViewAvailable, true);
+      assert.equal(state.presenterWindowAvailable, true);
+
+      const origin = new URL(server.url).origin;
+      const opened = await fetch(new URL("present", server.url), {
+        method: "POST",
+        headers: { Origin: origin },
+      }).then((response) => response.json());
+      assert.equal(opened.ok, true);
+
+      const closed = await fetch(new URL("present", server.url), {
+        method: "DELETE",
+        headers: { Origin: origin },
+      }).then((response) => response.json());
+      assert.equal(closed.ok, true);
+      assert.deepEqual(calls, ["open", "close"]);
+    });
   });
 });
 
