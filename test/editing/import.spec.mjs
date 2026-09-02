@@ -1,4 +1,4 @@
-// Browser regression tests for Markdown import through the canvas 📂 button.
+// Browser regression tests for Markdown import through More controls.
 //
 // Verify four points:
 //   1. The button opens a list of workspace Markdown files
@@ -17,6 +17,7 @@ import { expect, test } from "@playwright/test";
 
 import { REPO_ROOT, startHarness } from "../harness/server.mjs";
 import { splitFixtureDeck } from "../harness/deck.mjs";
+import { clickMoreControl, openMoreControls } from "../utils/nav.mjs";
 import { waitForSlideReady } from "../utils/ready.mjs";
 import { findArchitectureBlocks } from "../../.github/extensions/markdstage/scripts/markdown-blocks.mjs";
 
@@ -36,7 +37,7 @@ test.describe("Markdown import", () => {
   test("opens the list from the button and uses the selected Markdown as the deck", async ({ page }) => {
     const harness = await openCanvas(page);
     try {
-      await page.locator("#navImport").click();
+      await clickMoreControl(page, "#navImport");
       await expect(page.locator("#importPicker")).toBeVisible();
       await expect(page.locator("#importModeSnapshot")).toBeChecked();
 
@@ -66,7 +67,7 @@ test.describe("Markdown import", () => {
   test("filters the list and closes it with Escape", async ({ page }) => {
     const harness = await openCanvas(page);
     try {
-      await page.locator("#navImport").click();
+      await clickMoreControl(page, "#navImport");
       const items = page.locator("#importList .overview-link");
       await expect.poll(() => items.count()).toBeGreaterThan(1);
 
@@ -85,7 +86,7 @@ test.describe("Markdown import", () => {
   }) => {
     const harness = await openCanvas(page);
     try {
-      await page.locator("#navImport").click();
+      await clickMoreControl(page, "#navImport");
       const item = page
         .locator("#importList")
         .getByRole("button", { name: "asset-scope/deck.md", exact: true });
@@ -115,6 +116,7 @@ test.describe("Markdown import", () => {
   test("hides the import button in presenter mode", async ({ page }) => {
     const harness = await openCanvas(page, "?present=1");
     try {
+      await openMoreControls(page);
       await expect(page.locator("#navImport")).toBeHidden();
     } finally {
       await harness.close();
@@ -130,11 +132,12 @@ test.describe("Markdown import", () => {
     try {
       await page.goto(harness.url, { waitUntil: "load" });
       await waitForSlideReady(page);
-      await expect(page.locator("#navSourceMode")).toBeHidden();
-      await page.locator("#navImport").click();
+      await expect(page.locator("#navSourceMode")).toHaveAttribute("hidden", "");
+      await clickMoreControl(page, "#navImport");
       await page.locator('input[name="importMode"][value="live"]').check();
       await page.locator("#importList .overview-link", { hasText: "live.md" }).click();
       await expect.poll(() => harness.sourceMode).toBe("live");
+      await openMoreControls(page);
       await expect(page.locator("#navSourceMode")).toBeVisible();
       await expect(page.locator("#navSourceMode")).toHaveAttribute("data-state", "active");
 
@@ -156,7 +159,7 @@ test.describe("Markdown import", () => {
       await expect.poll(() => harness.sourceWatchStatus).toBe("watching");
       await expect(page.locator(".deck")).toContainText("Recovered");
 
-      await page.locator("#navSourceMode").click();
+      await clickMoreControl(page, "#navSourceMode");
       await expect.poll(() => harness.sourceMode).toBe("snapshot");
       await expect(page.locator("#navSourceMode")).not.toHaveAttribute("data-state", "active");
       await writeFile(sourcePath, recovered.replace("Recovered", "Must stay hidden"), "utf8");
@@ -177,14 +180,14 @@ test.describe("Markdown import", () => {
     try {
       await page.goto(harness.url, { waitUntil: "load" });
       await waitForSlideReady(page);
-      await page.locator("#navImport").click();
+      await clickMoreControl(page, "#navImport");
       await page.locator("#importList .overview-link", { hasText: "switch.md" }).click();
       await expect(page.locator(".deck")).toContainText("Snapshot");
       await writeFile(sourcePath, "# Latest\n", "utf8");
       await page.waitForTimeout(300);
       await expect(page.locator(".deck")).toContainText("Snapshot");
 
-      await page.locator("#navSourceMode").click();
+      await clickMoreControl(page, "#navSourceMode");
       await expect.poll(() => harness.sourceMode).toBe("live");
       await expect(page.locator(".deck")).toContainText("Latest");
     } finally {
@@ -200,13 +203,13 @@ test.describe("Markdown import", () => {
     try {
       await page.goto(harness.url, { waitUntil: "load" });
       await waitForSlideReady(page);
-      await page.locator("#navImport").click();
+      await clickMoreControl(page, "#navImport");
       await page.locator("#importList .overview-link", { hasText: "empty.md" }).click();
       await waitForSlideReady(page);
       await expect(page.locator(".architecture-diagram")).toHaveCount(1);
       await expect(page.locator(".architecture-error")).toHaveCount(0);
 
-      await page.locator("#navEdit").click();
+      await clickMoreControl(page, "#navEdit");
       await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(1);
     } finally {
       await harness.close();
@@ -224,11 +227,11 @@ test.describe("Markdown import", () => {
     try {
       await page.goto(harness.url, { waitUntil: "load" });
       await waitForSlideReady(page);
-      await page.locator("#navImport").click();
+      await clickMoreControl(page, "#navImport");
       await page.locator("#importList .overview-link", { hasText: "editable.md" }).click();
       await waitForSlideReady(page);
 
-      await page.locator("#navEdit").click();
+      await clickMoreControl(page, "#navEdit");
       await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(1);
       await page.locator('[data-architecture-id="client"]').focus();
       await page.keyboard.press("ArrowDown");
@@ -242,9 +245,9 @@ test.describe("Markdown import", () => {
       const savedDsl = JSON.parse(findArchitectureBlocks(saved)[0].body);
       expect(savedDsl.elements.find((element) => element.id === "client").y).toBe(400);
 
-      await page.locator("#navEdit").click();
+      await clickMoreControl(page, "#navEdit");
       await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(0);
-      await page.locator("#navEdit").click();
+      await clickMoreControl(page, "#navEdit");
       await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(1);
       const reopenedY = await page
         .locator('[data-architecture-id="client"]')
@@ -266,10 +269,10 @@ test.describe("Markdown import", () => {
     try {
       await page.goto(harness.url, { waitUntil: "load" });
       await waitForSlideReady(page);
-      await page.locator("#navImport").click();
+      await clickMoreControl(page, "#navImport");
       await page.locator("#importList .overview-link", { hasText: "editable.md" }).click();
       await waitForSlideReady(page);
-      await page.locator("#navEdit").click();
+      await clickMoreControl(page, "#navEdit");
       await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(1);
 
       const external = EDITABLE_SOURCE.replace('"y": 380', '"y": 777');

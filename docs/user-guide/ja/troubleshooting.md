@@ -54,9 +54,9 @@ Microsoft Edge WebView2 Runtime をインストールするか修復してから
 
 ## PDF でスライドが見切れる
 
-Canvas で **16:9** を選び、警告から該当ページを確かめます。内容を減らすか、
-スライドを分けてください。`layout: center` は配置を変えるだけで使える領域は増えないので、
-見切れの対策にはなりません。
+Canvas で **More controls > Output preview** を選び、警告から該当ページを確かめます。
+内容を減らすか、スライドを分けてください。`layout: center` は配置を変えるだけで使える領域は
+増えないので、見切れの対策にはなりません。
 
 ## Mermaid や Architecture でエラーが出る
 
@@ -67,7 +67,7 @@ Canvas で **16:9** を選び、警告から該当ページを確かめます。
 
 ## Architecture の変更が保存できない
 
-- Advanced editing を使うには、**📂** で読み込んだ Markdown が必要です。
+- Advanced editing を使うには、**More controls > Open Markdown** で読み込んだ Markdown が必要です。
 - 元ファイルに `architecture` ブロックが必要です。
 - 元ファイルが外部で書き換えられた場合は、上書きせずに読み込み直します。
 - レイアウトに従って配置されている子要素を手で動かす前に、親グループのレイアウトを解除します。

@@ -35,7 +35,7 @@ Markdown, ready for the stage.
 どちらの方法でも開けます。
 
 - GitHub Copilot に「`docs/user-guide/examples/quick-start.md` を使ってこのデッキをプレゼンテーションしてください」と依頼します。
-- MarkdStage Canvas を開き、**📂 Load Markdown** からファイルを選びます。
+- MarkdStage Canvas を開き、**More controls > Open Markdown** からファイルを選びます。
 
 デッキ全体がすぐに開きます。**◀**、**▶**、矢印キー、**☰** でスライドを送れます。
 
@@ -55,8 +55,8 @@ Markdown, ready for the stage.
 
 ## 4. プレゼンテーションを開始する
 
-- **Canvas Extension:** **⛶** で外部の投影用ウィンドウを開くか、**Presenter view** で
-  現在のスライド、次のスライド、ノートをまとめて表示します。
+- **Canvas Extension:** **More controls > External window** で外部の投影用ウィンドウを開くか、
+  **More controls > Presenter view** で現在のスライド、次のスライド、ノートをまとめて表示します。
 - **Desktop:** **Start presentation** を選ぶと、操作が同期する投影用ウィンドウが開きます。
 - 投影用ウィンドウで `F11` を押すと全画面表示になり、`Esc` で元に戻ります。
 
@@ -64,8 +64,8 @@ Markdown, ready for the stage.
 
 PDF エクスポートは Canvas Extension だけの機能です。
 
-1. **16:9** を選び、クリッピング警告があれば直します。
-2. プリンターアイコンを選びます。
+1. **More controls > Output preview** を選び、クリッピング警告があれば直します。
+2. **More controls > Export PDF** を選びます。
 3. ワークスペースに出力された 16:9 PDF を確認します。
 
 MarkdStage Desktop に PDF エクスポートはありません。

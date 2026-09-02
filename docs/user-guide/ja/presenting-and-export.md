@@ -34,7 +34,8 @@ Canvas の発表者ビュー、または Desktop のメインウィンドウを�
 
 ## 投影用ウィンドウを開く
 
-- **Canvas:** **⛶**、または発表者ビューの **Start presentation** を選びます。
+- **Canvas:** **More controls > External window**、または発表者ビューの
+  **Start presentation** を選びます。
 - **Desktop:** **Start presentation** を選びます。
 
 開いたウィンドウを投影用ディスプレイへ移します。`F11` で全画面にし、
@@ -42,8 +43,8 @@ Canvas の発表者ビュー、または Desktop のメインウィンドウを�
 
 ## 固定 16:9 出力を確認する
 
-Canvas Extension で **16:9** を選びます。PDF 出力と同じ 1280x720 のタイポグラフィ、
-余白、内容量の制限でスライドをレターボックス表示します。
+Canvas Extension で **More controls > Output preview** を選びます。PDF 出力と同じ
+1280x720 のタイポグラフィ、余白、内容量の制限でスライドをレターボックス表示します。
 
 内容が固定ページに収まらない場合は、クリッピング警告が出ます。
 
@@ -57,8 +58,8 @@ Canvas Extension で **16:9** を選びます。PDF 出力と同じ 1280x720 の
 ## PDF を書き出す
 
 1. デッキを開いた後に元ファイルを変更した場合は、読み込み直します。
-2. **16:9** を選び、クリッピング警告を解消します。
-3. プリンターアイコンを選びます。
+2. **More controls > Output preview** を選び、クリッピング警告を解消します。
+3. **More controls > Export PDF** を選びます。
 4. ワークスペースにできた PDF を開き、全ページを確認します。
 
 Markdown からデッキを読み込んだ場合、PDF のファイル名は元ファイル名をもとに決まります。
@@ -70,8 +71,9 @@ Markdown からデッキを読み込んだ場合、PDF のファイル名は元�
 ## 編集可能な PowerPoint を書き出す
 
 1. デッキを開いた後に元ファイルを変更した場合は、読み込み直します。
-2. **16:9** を選び、クリッピング警告を解消します。
-3. **P** を選ぶか、`markdstage export slides.md --output slides.pptx` を実行します。
+2. **More controls > Output preview** を選び、クリッピング警告を解消します。
+3. **More controls > Export PowerPoint** を選ぶか、
+   `markdstage export slides.md --output slides.pptx` を実行します。
 4. 生成されたプレゼンテーションを開き、全スライドを確認します。
 
 見出し、段落、リスト、リンク、単純な表、対応画像、Architecture DSL の要素は

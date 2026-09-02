@@ -28,7 +28,8 @@ Ask Copilot to present a workspace-relative Markdown path:
 Present this deck using docs/user-guide/examples/quick-start.md.
 ```
 
-You can also select **📂** or press `I` to load Markdown without using AI.
+You can also select **More controls > Open Markdown** or press `I` to load Markdown without using
+AI.
 
 ![The Markdown import picker with automatic refresh selected](images/canvas-import.png)
 
@@ -61,15 +62,14 @@ prompt examples. For a complete prompt-to-PDF exercise, follow the
 | --- | --- |
 | **◀ / ▶** | Move to the previous or next slide |
 | **Page counter** | Show the current page and total pages |
-| **✎** | Enter or leave Architecture placement editing |
-| **⛶** | Open a synchronized external audience window |
-| **Presenter icon** | Open presenter view with current slide, next slide, and notes |
-| **16:9** | Preview the fixed PDF/PowerPoint layout and display clipping warnings |
-| **Printer** | Export the complete deck as a 16:9 PDF |
-| **P** | Export a hybrid editable 16:9 PowerPoint deck |
-| **📂** | Load a Markdown file from the workspace |
-| **Refresh** | Switch a source-backed deck between snapshot and automatic refresh |
 | **☰** | Open the slide list |
+| **⋯** | Open More controls for presentation, view/edit, and file actions |
+
+More controls contains:
+
+- **Present:** External window and Presenter view
+- **View & edit:** Shape editing and Output preview
+- **File:** Open Markdown, Automatic refresh, Export PDF, and Export PowerPoint
 
 Hover over a control to see its tooltip and keyboard hint.
 
@@ -98,17 +98,17 @@ audience slide or in the exported PDF.
 
 ## Open the audience window
 
-Select **⛶** to open a movable, resizable 1280x720 audience window. Move it to the presentation
-display and press `F11` for fullscreen. The canvas, presenter view, and audience window remain on the
-same slide.
+Select **More controls > External window** to open a movable, resizable 1280x720 audience window.
+Move it to the presentation display and press `F11` for fullscreen. The canvas, presenter view, and
+audience window remain on the same slide.
 
 Closing the canvas also closes the audience window.
 
 ## Validate and export
 
-Use **16:9** before export. It renders the same fixed 1280x720 layout used by PDF output and warns
-when content is clipped. See [Presenting and export](presenting-and-export.md) for the complete
-workflow.
+Use **More controls > Output preview** before export. It renders the same fixed 1280x720 layout
+used by PDF output and warns when content is clipped. See
+[Presenting and export](presenting-and-export.md) for the complete workflow.
 
 ## Canvas-only features
 

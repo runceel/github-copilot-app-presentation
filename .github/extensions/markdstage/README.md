@@ -27,8 +27,8 @@ Canvas iframe (renderer/)
   | highlights language-tagged code fences with highlight.js
   | converts ```mermaid blocks with mermaid.run
   | converts validated ```architecture JSON DSL into a safe SVG DOM
-  | provides ◀ ▶, ✎, 16:9 PDF preview, margin clicks, arrow keys, and the ☰ slide list
-  | opens a synchronized external window with ⛶
+  | keeps ◀ page ▶, ☰, and ⋯ visible in a compact control bar
+  | groups editing, presentation, preview, import, refresh, and export under ⋯
   v
 The themed slide is displayed and updates automatically
 ```
@@ -75,26 +75,30 @@ The themed slide is displayed and updates automatically
 - Put **speaker notes** in top-level HTML comments on each slide. Presenter view
   renders notes as Markdown and follows navigation. Notes are absent from
   regular slides, the external presenter, and PDF output.
-- The **canvas renderer** owns navigation controls, ✎ editing, the slide list,
-  and current position. ✎ toggles the same placement mode as
-  `edit_architecture`. For Markdown loaded with 📂, **Advanced editing** opens
+- The **canvas renderer** owns the compact navigation controls, shape editing,
+  the slide list, and current position. **More controls > Shape editing**
+  toggles the same placement mode as `edit_architecture`. For Markdown loaded
+  with **More controls > Open Markdown**, **Advanced editing** opens
   the dedicated `architecture-editor` canvas. The agent only opens the deck and
   does not run an `ask_user` loop. Margin clicks are installed only in normal
   canvas and presenter modes, never print mode. `goto_slide` remains available
   for an explicit page request from chat.
-- **PDF Export is available from the printer icon.** When `sourceName` is passed
+- **PDF Export is available from More controls > Export PDF.** When
+  `sourceName` is passed
   to open / `load_deck`, the printer saves `<source-name>.pdf` in the workspace.
   It does not load or watch that file. AI may call `export_pdf` with another
   `outputPath`. Hidden print mode renders every page, then headless Edge/Chrome
   produces a 16:9 PDF with backgrounds, images, highlighted code, and Mermaid.
-- **Hybrid editable PowerPoint export is available from the P control.** It
+- **Hybrid editable PowerPoint export is available from More controls > Export
+  PowerPoint.** It
   preserves supported text, lists, links, tables, raster images, and Architecture
   DSL objects as native PowerPoint content. Architecture nodes, groups, and
   connector-label pills are visible AutoShapes with integrated text; icons use a
   transparent foreground picture layer. Mermaid and unsupported styling stay
   visible as background artwork and are listed in the export report. AI may call
   `export_pptx` with another workspace-confined `.pptx` path.
-- Use the **16:9 control** to letterbox the current slide inside the canvas with
+- Use **More controls > Output preview** to letterbox the current slide inside
+  the canvas with
   the same fixed 1280×720 typography, spacing, diagram limits, and clipping used
   by PDF output. This preview is local to the canvas and does not change deck
   state. A visible and accessible warning identifies content that would be
@@ -109,7 +113,8 @@ The themed slide is displayed and updates automatically
   element hints. Call `capture_slides` only when visual inspection is needed;
   PNGs are fixed 1280×720 files and the action returns paths instead of inline
   image data.
-- Open the **external presenter** with ⛶ or `open_presenter`. Edge / Chrome /
+- Open the **external presenter** with **More controls > External window** or
+  `open_presenter`. Edge / Chrome /
   Chromium starts in a dedicated temporary profile as a movable, resizable
   1280×720 app-mode window. It shares `/state`, `/navigate`, and SSE with the
   canvas, so keyboard and Surface Pen position remain synchronized. Move it to
@@ -124,12 +129,13 @@ The themed slide is displayed and updates automatically
 - Add language names such as `csharp`, `json`, or `diff` to code fences for
   highlight.js syntax highlighting.
 
-## Markdown import (📂)
+## Markdown import
 
-Users can load Markdown directly from the canvas without AI. Press 📂 or `I` to
-open a filtered list of workspace `*.md` / `*.markdown` files. Selecting one
-loads it, splits it into slides, and replaces the deck. Import also works from
-the initial waiting view. The control is not shown in presenter or print mode.
+Users can load Markdown directly from the canvas without AI. Select **More
+controls > Open Markdown** or press `I` to open a filtered list of workspace
+`*.md` / `*.markdown` files. Selecting one loads it, splits it into slides, and
+replaces the deck. Import also works from the initial waiting view. The control
+is not shown in presenter or print mode.
 The workspace root is the Git repository root when available, otherwise the
 folder opened for the current session.
 
@@ -728,7 +734,7 @@ should determine placement without writing every coordinate.
 ### Placement editing
 
 Architecture diagrams can be moved directly over the rendered result. For decks
-imported through 📂, edits write back to the source `architecture` fence and
+imported through **More controls > Open Markdown**, edits write back to the source `architecture` fence and
 survive re-import. Decks supplied directly through open / `load_deck` cannot be
 reversibly mapped to a source file, so they save only to canvas deck state.
 In the standalone CLI, `markdstage present slides.md --watch` enables the same
@@ -808,7 +814,7 @@ blocks.
 - Saving reloads any MarkdStage canvas or watched CLI presentation showing the
   same Markdown while preserving the current page and theme.
 
-Source-backed decks imported through 📂 and CLI `present --watch` enable
+Source-backed decks imported through **More controls > Open Markdown** and CLI `present --watch` enable
 **Advanced editing**. Agents can open the editor canvas directly:
 
 ```json
@@ -907,7 +913,8 @@ special layout and are never auto-enlarged.
 | Long press | `Win+F18` | Previous slide |
 
 `Win+F19` double press and pen connection/removal/docking do not launch
-MarkdStage. Start the presenter through ⛶ or explicit `open_presenter`.
+MarkdStage. Start the presenter through **More controls > External window** or
+explicit `open_presenter`.
 
 The Windows setting that lets apps override shortcut-button behavior may remain
 enabled. This implementation listens directly for Windows pen shortcuts rather
@@ -956,14 +963,14 @@ fails with `invalid_input`; pass the complete `slides` array or call
 | `GET /export-data` | Return the token-bound deck snapshot to print, inspection, capture, or PowerPoint mode. |
 | `POST /export-status` | Let headless output modes report rendering status and fixed-layout diagnostics. |
 | `POST /navigate` | Accept absolute `{ index }` or relative `{ delta }`, update position, and notify all clients through SSE. |
-| `POST /present` | Start the presenter from ⛶; accepts same-origin POST only. |
-| `POST /export` | Start source-named PDF export from the printer icon; accepts same-origin POST only. |
-| `POST /export-pptx` | Start source-named hybrid PowerPoint export from the P control; accepts same-origin POST only. |
+| `POST /present` | Start the presenter from **More controls > External window**; accepts same-origin POST only. |
+| `POST /export` | Start source-named PDF export from **More controls > Export PDF**; accepts same-origin POST only. |
+| `POST /export-pptx` | Start source-named hybrid PowerPoint export from **More controls > Export PowerPoint**; accepts same-origin POST only. |
 | `POST /edit` | Write an edited fence with `{ index, block, source }`; returns `409 edit_mode_disabled` when editing is off. |
 | `POST /edit-mode` | Set `{ enabled }`, including for `?architectureEdit=1`; same-origin POST only. |
 | `POST /architecture-editor/open` | Convert source-backed slide/block indexes to a file-wide block index and open Architecture Editor. |
 | `GET /events` | SSE nudge for low-latency `version` changes. |
-| `GET /markdown-files` | Return bounded workspace-relative `*.md` / `*.markdown` paths for 📂, excluding `.git`, `node_modules`, and dot-prefixed entries. |
+| `GET /markdown-files` | Return bounded workspace-relative `*.md` / `*.markdown` paths for **Open Markdown**, excluding `.git`, `node_modules`, and dot-prefixed entries. |
 | `POST /import` | Load and split `{ path, sourceMode?: "snapshot" | "live" }`; reject paths outside workspace, wrong extensions, and oversized files. Same-origin POST only. |
 | `POST /source-mode` | Switch a source-backed deck with `{ mode: "snapshot" | "live" }`; entering live mode loads the latest source. |
 
@@ -978,7 +985,7 @@ fails with `invalid_input`; pass the complete `slides` array or call
     editor.css               # Workspace, tree, and inspector styles
     editor.js                # Diagram commands, draft, and explicit-save UI
   copilot-extension.json     # Manifest for Gist sharing
-  markdown-deck.mjs         # Raw Markdown splitting for 📂 import
+  markdown-deck.mjs         # Raw Markdown splitting for canvas import
   scripts/
     markdown-blocks.mjs     # Scan and replace architecture fences
     markdown-files.mjs      # Scan workspace Markdown

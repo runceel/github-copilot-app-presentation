@@ -66,12 +66,12 @@ total: 6
 Build an array containing every fragment and pass it to `open_canvas`. The
 first slide appears as soon as the canvas opens; canvas controls handle the rest.
 
-### AI-generated decks versus 📂 import
+### AI-generated decks versus canvas import
 
-The extension also lets users import workspace Markdown directly with the
-canvas 📂 button. This deterministic split does not involve AI.
+The extension also lets users import workspace Markdown directly with
+**More controls > Open Markdown**. This deterministic split does not involve AI.
 
-- **Use 📂 import** when the source already uses slide syntax: pages separated
+- **Use Open Markdown** when the source already uses slide syntax: pages separated
   by `---` after a blank line, with any required front matter. Per-page Slidev
   front matter is supported, and initial file front matter is inherited while
   `layout: title` applies only to slide one. At import time, users choose
@@ -83,7 +83,7 @@ canvas 📂 button. This deterministic split does not involve AI.
   unsuitable, or when the requested theme and layout must be applied.
 
 When a user asks AI to present a file, follow this skill and generate the deck.
-The 📂 button is a separate user workflow, not an AI shortcut.
+Open Markdown is a separate user workflow, not an AI shortcut.
 
 ## CLI-assisted authoring workflow
 
@@ -169,7 +169,7 @@ Start by opening the complete deck through `open_canvas` with
 `canvasId: "MarkdStage"`. Pass `slides` and optional `index`, `theme`, and
 `sourceName` in `input`. `sourceName` must be the source Markdown's
 workspace-relative path; it anchors adjacent `assets/`, Markdown-relative
-`theme-file` lookup, and the canvas printer's `<source-name>.pdf` output. It
+`theme-file` lookup, and the canvas Export PDF control's `<source-name>.pdf` output. It
 does not read or watch that file. To refresh after editing Markdown, regenerate
 and pass the complete `slides` array or call `load_deck`.
 
@@ -183,7 +183,7 @@ and pass the complete `slides` array or call `load_deck`.
 | `close_presenter` | Close the external presenter window. |
 | `inspect_layout` | Check the registered in-memory PDF-equivalent fixed 1280×720 output snapshot before export, including any `show_slide` override. It never reads the source file on disk. It returns only clipped pages by default, with overflow dimensions and bounded element hints. Prefer one whole-deck call; serialize targeted calls because output jobs are exclusive. Prefer this action over image analysis. |
 | `capture_slides` | Create 1280×720 PNG files only when visual inspection is required. Pass zero-based `indexes`, or omit them to capture only pages found by `inspect_layout`. Optional `outputDirectory` is workspace-relative. The result contains file paths rather than inline image data. |
-| `export_pdf` | Export the current deck as a 16:9 PDF. Optional `outputPath` is a workspace-relative `.pdf` path; default is `markdstage.pdf`. Optional `theme` applies only to PDF. The canvas printer derives a name from `sourceName`. |
+| `export_pdf` | Export the current deck as a 16:9 PDF. Optional `outputPath` is a workspace-relative `.pdf` path; default is `markdstage.pdf`. Optional `theme` applies only to PDF. The canvas Export PDF control derives a name from `sourceName`. |
 | `edit_architecture` | Toggle the lightweight Architecture placement mode for node dragging, keyboard movement, layout detachment, Undo, and Redo. Each operation is saved immediately under the stable placement contract. |
 | `reset` | Clear slide and deck state and return to the waiting view. |
 
@@ -197,12 +197,13 @@ reload the complete deck if its source Markdown changed.
 
 ### Full Architecture editing
 
-Keep `✎` / `edit_architecture` for position adjustments. Use the separate
+Keep **More controls > Shape editing** / `edit_architecture` for position
+adjustments. Use the separate
 `architecture-editor` canvas to add or delete nodes, groups, images, or
 connectors and to edit sizing, parentage, layout, style, ports, and routing.
 
-- Users open it from **Advanced editing** inside `✎` after importing Markdown
-  through 📂.
+- Users open it from **Advanced editing** inside **Shape editing** after
+  importing Markdown through **More controls > Open Markdown**.
 - Agents open canvas ID `"architecture-editor"` with
   `input: { sourcePath, blockIndex, theme? }`. `sourcePath` is
   workspace-relative and `blockIndex` is zero-based across the Markdown file.
@@ -425,7 +426,7 @@ one-slide input such as `{ "slides": ["# Test"] }`.
 ### 5. Leave navigation to the user
 
 - **◀ / ▶**: previous / next.
-- **⛶**: open a synchronized 1280×720 external presenter. Move it to the
+- **More controls > External window**: open a synchronized 1280×720 external presenter. Move it to the
   desired monitor and use `F11` on Windows if needed.
 - **Keyboard**: `Right`, `PageDown`, or Space for next; `Left` or `PageUp` for
   previous; Home/End for first/last; `O` or Escape toggles the slide list.

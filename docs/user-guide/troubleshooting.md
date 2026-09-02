@@ -54,8 +54,9 @@ The picker does not allow paths outside the workspace.
 
 ## A slide clips in PDF
 
-Select **16:9** in Canvas and use the warning to find the affected page. Shorten or split the
-content. `layout: center` changes alignment, not available space, and is not a clipping fix.
+Select **More controls > Output preview** in Canvas and use the warning to find the affected page.
+Shorten or split the content. `layout: center` changes alignment, not available space, and is not a
+clipping fix.
 
 ## Mermaid or Architecture shows an error
 
@@ -66,7 +67,7 @@ content. `layout: center` changes alignment, not available space, and is not a c
 
 ## Architecture changes cannot be saved
 
-- Advanced editing requires Markdown imported through **📂**.
+- Advanced editing requires Markdown imported through **More controls > Open Markdown**.
 - The source must already contain an `architecture` block.
 - If the source changed externally, reload it instead of overwriting the newer file.
 - Layout-managed children must be released from their group layout before manual movement.

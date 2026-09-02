@@ -34,7 +34,8 @@ Open presenter view in Canvas or use the Desktop main window. Confirm:
 
 ## Open the audience window
 
-- **Canvas:** Select **⛶**, or select **Start presentation** in presenter view.
+- **Canvas:** Select **More controls > External window**, or select **Start presentation** in
+  presenter view.
 - **Desktop:** Select **Start presentation**.
 
 Move the new window to the audience display. Press `F11` for fullscreen and `Esc` to leave
@@ -42,8 +43,8 @@ fullscreen. Navigation from the presenter and audience surfaces remains synchron
 
 ## Check fixed 16:9 output
 
-In the Canvas Extension, select **16:9**. The slide is letterboxed with the exact 1280x720
-typography, spacing, and content limits used by PDF output.
+In the Canvas Extension, select **More controls > Output preview**. The slide is letterboxed with
+the exact 1280x720 typography, spacing, and content limits used by PDF output.
 
 If content exceeds the fixed page, MarkdStage shows a clipping warning:
 
@@ -57,8 +58,8 @@ You can also ask Copilot to inspect the deck's PDF layout and identify pages tha
 ## Export PDF
 
 1. Reload the source if it changed after the deck opened.
-2. Select **16:9** and resolve clipping warnings.
-3. Select the printer icon.
+2. Select **More controls > Output preview** and resolve clipping warnings.
+3. Select **More controls > Export PDF**.
 4. Open the generated PDF from the workspace and review every page.
 
 When the deck was loaded from Markdown, the Canvas Extension derives the PDF name from the source
@@ -70,8 +71,9 @@ Speaker notes and Architecture editing controls are excluded.
 ## Export editable PowerPoint
 
 1. Reload the source if it changed after the deck opened.
-2. Select **16:9** and resolve clipping warnings.
-3. Select **P**, or run `markdstage export slides.md --output slides.pptx`.
+2. Select **More controls > Output preview** and resolve clipping warnings.
+3. Select **More controls > Export PowerPoint**, or run
+   `markdstage export slides.md --output slides.pptx`.
 4. Open the generated presentation and review every slide.
 
 Headings, paragraphs, lists, links, simple tables, supported images, and Architecture DSL objects

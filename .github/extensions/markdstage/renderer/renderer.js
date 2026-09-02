@@ -98,6 +98,7 @@ let previewMode = false;
 let previewOffset = 0;
 let navigationEnabled = true;
 let fixedPreviewMode = false;
+let moreControlsOpen = false;
 // Markdown for the most recently rendered slide, retained for editing-mode rerenders.
 let lastMarkdown = "";
 // Editing UI attached to the rendered slide; destroyed on every rerender.
@@ -427,12 +428,14 @@ function updateFixedPreviewWarning() {
       warning.textContent = "";
     }
     if (button) button.dataset.state = fixedPreviewMode ? "active" : "";
+    syncMoreControls();
     return;
   }
 
   const diagnostic = collectSlideLayout(layoutTarget, navIndex);
   document.body.classList.toggle("fixed-preview-overflow", diagnostic.pdfClipped);
   if (button) button.dataset.state = diagnostic.pdfClipped ? "error" : "active";
+  syncMoreControls();
   if (!warning) return;
   if (!diagnostic.pdfClipped) {
     warning.hidden = true;
@@ -2141,6 +2144,7 @@ function updateArchitectureEditButton(enabled = architectureEditMode) {
   button.dataset.state = enabled && !presenterMode ? "active" : "";
   button.title = enabled ? "Exit shape editing mode" : "Shape editing mode";
   button.setAttribute("aria-label", button.title);
+  syncMoreControls();
 }
 
 function sourceWatchErrorMessage(code) {
@@ -2160,6 +2164,7 @@ function updateSourceModeButton() {
   if (!sourceBacked) {
     button.dataset.state = "";
     if (status) status.textContent = "";
+    syncMoreControls();
     return;
   }
   if (sourceMode === "live" && sourceWatchStatus === "error") {
@@ -2168,6 +2173,7 @@ function updateSourceModeButton() {
     button.title = `${message}. Click to pin the display to the loaded snapshot`;
     button.setAttribute("aria-label", button.title);
     if (status) status.textContent = message;
+    syncMoreControls();
     return;
   }
   const live = sourceMode === "live";
@@ -2181,6 +2187,7 @@ function updateSourceModeButton() {
       ? "Slides refresh automatically when Markdown is saved"
       : "Markdown retains the display from the loaded snapshot";
   }
+  syncMoreControls();
 }
 
 async function requestSourceMode(mode) {
@@ -2508,6 +2515,7 @@ async function setPresenterRunning(running) {
       button.dataset.state = "error";
       button.title = message;
     }
+    syncMoreControls();
   } finally {
     presenterRequestPending = false;
     if (button) button.disabled = false;
@@ -2520,6 +2528,64 @@ function openPresenterWindow() {
 
 function togglePresenterWindow() {
   return setPresenterRunning(!presenterRunning);
+}
+
+function visibleMoreControlButtons() {
+  const panel = document.getElementById("navMorePanel");
+  if (!panel) return [];
+  return [...panel.querySelectorAll(".nav-more-item")].filter((button) => !button.hidden);
+}
+
+function setMoreControlsOpen(enabled, { focusFirst = false, restoreFocus = false } = {}) {
+  const nav = document.getElementById("nav");
+  const trigger = document.getElementById("navMore");
+  const panel = document.getElementById("navMorePanel");
+  if (!nav || !trigger || !panel) return;
+
+  const next = Boolean(enabled) && !nav.classList.contains("nav-empty") && !trigger.hidden;
+  moreControlsOpen = next;
+  trigger.setAttribute("aria-expanded", next ? "true" : "false");
+  panel.hidden = nav.classList.contains("nav-empty") ? !markdownImportAvailable : !next;
+
+  if (next && focusFirst) {
+    requestAnimationFrame(() => visibleMoreControlButtons()[0]?.focus());
+  } else if (!next && restoreFocus) {
+    trigger.focus();
+  }
+}
+
+function toggleMoreControls() {
+  setMoreControlsOpen(!moreControlsOpen, { focusFirst: !moreControlsOpen });
+}
+
+function syncMoreControls() {
+  const nav = document.getElementById("nav");
+  const trigger = document.getElementById("navMore");
+  const panel = document.getElementById("navMorePanel");
+  if (!nav || !trigger || !panel) return;
+
+  panel.querySelectorAll(".nav-more-group").forEach((group) => {
+    group.hidden = ![...group.querySelectorAll(".nav-more-item")].some(
+      (button) => !button.hidden,
+    );
+  });
+
+  const buttons = visibleMoreControlButtons();
+  const hasError = buttons.some((button) => button.dataset.state === "error");
+  const hasActive = buttons.some((button) => button.dataset.state === "active");
+  trigger.dataset.state = hasError ? "error" : hasActive ? "active" : "";
+  trigger.title = hasError
+    ? "More controls (attention required)"
+    : hasActive
+      ? "More controls (an option is active)"
+      : "More controls";
+  trigger.setAttribute("aria-label", trigger.title);
+
+  const empty = nav.classList.contains("nav-empty");
+  trigger.hidden = empty || buttons.length === 0;
+  if (trigger.hidden) moreControlsOpen = false;
+  trigger.setAttribute("aria-expanded", moreControlsOpen ? "true" : "false");
+  panel.hidden = empty ? !markdownImportAvailable : !moreControlsOpen;
 }
 
 function updateHostActionButtons() {
@@ -2537,6 +2603,7 @@ function updateHostActionButtons() {
   if (importButton) importButton.hidden = presenterMode || !markdownImportAvailable;
   if (!presenterViewAvailable && presenterViewOpen) closePresenterView();
   if (!markdownImportAvailable && importOpen) closeImportPicker();
+  syncMoreControls();
 }
 
 function updatePresenterButton(running, message = "") {
@@ -2553,6 +2620,7 @@ function updatePresenterButton(running, message = "") {
     toggle.textContent = running ? "End presentation" : "Start presentation";
     toggle.dataset.state = running ? "active" : "";
   }
+  syncMoreControls();
 }
 
 async function exportPdfFromCanvas() {
@@ -2582,6 +2650,7 @@ async function exportPdfFromCanvas() {
       button.dataset.state = "active";
       button.title = message;
     }
+    syncMoreControls();
   } catch (error) {
     const message = error?.message || "Could not save the PDF.";
     console.error("PDF export failed", error);
@@ -2590,6 +2659,7 @@ async function exportPdfFromCanvas() {
       button.dataset.state = "error";
       button.title = message;
     }
+    syncMoreControls();
   } finally {
     pdfExportPending = false;
     if (button) button.disabled = false;
@@ -2626,6 +2696,7 @@ async function exportPptxFromCanvas() {
       button.dataset.state = "active";
       button.title = message;
     }
+    syncMoreControls();
   } catch (error) {
     const message = error?.message || "Could not save the PowerPoint presentation.";
     console.error("PowerPoint export failed", error);
@@ -2634,6 +2705,7 @@ async function exportPptxFromCanvas() {
       button.dataset.state = "error";
       button.title = message;
     }
+    syncMoreControls();
   } finally {
     pptxExportPending = false;
     if (button) button.disabled = false;
@@ -2653,6 +2725,7 @@ function setFixedPreviewMode(enabled) {
       ? "Return to responsive canvas layout"
       : "Preview PDF layout at 16:9";
   }
+  syncMoreControls();
   if (fixedPreviewMode) {
     updateFixedPreviewScale();
   } else {
@@ -2687,6 +2760,7 @@ function updateNav() {
   if (next) next.disabled = navMode === "deck" && navIndex >= navTotal - 1;
   highlightOverview();
   updatePresenterView();
+  syncMoreControls();
 }
 
 function openPresenterView() {
@@ -2711,7 +2785,7 @@ function closePresenterView() {
   document.body.classList.remove("presenter-view-mode");
   const view = document.getElementById("presenterView");
   if (view) view.hidden = true;
-  document.getElementById("navPresenterView")?.focus();
+  document.getElementById("navMore")?.focus();
 }
 
 function updatePresenterView() {
@@ -3035,10 +3109,11 @@ function wirePreviewKeyboardNavigation() {
 }
 
 function wireControls() {
-  const bind = (id, fn) => {
+  const bind = (id, fn, { closeMore = false } = {}) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener("click", () => {
+      if (closeMore) setMoreControlsOpen(false);
       fn();
       // Drop focus so a follow-up Space/Enter doesn't re-trigger the button on
       // top of the global keyboard handler.
@@ -3047,15 +3122,16 @@ function wireControls() {
   };
   bind("navPrev", goPrev);
   bind("navNext", goNext);
-  bind("navEdit", toggleArchitectureEditMode);
-  bind("navPresent", openPresenterWindow);
-  bind("navPresenterView", openPresenterView);
-  bind("navFixedPreview", toggleFixedPreviewMode);
-  bind("navExport", exportPdfFromCanvas);
-  bind("navExportPptx", exportPptxFromCanvas);
-  bind("navImport", toggleImportPicker);
-  bind("navSourceMode", toggleSourceMode);
   bind("navList", toggleOverview);
+  bind("navMore", toggleMoreControls);
+  bind("navEdit", toggleArchitectureEditMode, { closeMore: true });
+  bind("navPresent", openPresenterWindow, { closeMore: true });
+  bind("navPresenterView", openPresenterView, { closeMore: true });
+  bind("navFixedPreview", toggleFixedPreviewMode, { closeMore: true });
+  bind("navExport", exportPdfFromCanvas, { closeMore: true });
+  bind("navExportPptx", exportPptxFromCanvas, { closeMore: true });
+  bind("navImport", toggleImportPicker, { closeMore: true });
+  bind("navSourceMode", toggleSourceMode, { closeMore: true });
   bind("overviewClose", closeOverview);
   bind("importClose", closeImportPicker);
   bind("presenterPrevButton", goPrev);
@@ -3083,6 +3159,14 @@ function wireControls() {
     });
   }
 
+  document.addEventListener("pointerdown", (e) => {
+    if (!moreControlsOpen) return;
+    const tools = document.getElementById("navTools");
+    const panel = document.getElementById("navMorePanel");
+    if (tools?.contains(e.target) || panel?.contains(e.target)) return;
+    setMoreControlsOpen(false);
+  });
+
   wirePointerNavigation();
 
   // The iframe must be focused to receive key events; grab focus up front and
@@ -3105,16 +3189,23 @@ function wireControls() {
       e.preventDefault();
       return;
     }
+    if (e.key === "Escape" && moreControlsOpen) {
+      setMoreControlsOpen(false, { restoreFocus: true });
+      e.preventDefault();
+      return;
+    }
     if (handleSlideNavigationKey(e)) return;
     if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
     switch (e.key) {
       case "o":
       case "O":
+        setMoreControlsOpen(false);
         toggleOverview();
         e.preventDefault();
         break;
       case "i":
       case "I":
+        setMoreControlsOpen(false);
         toggleImportPicker();
         e.preventDefault();
         break;

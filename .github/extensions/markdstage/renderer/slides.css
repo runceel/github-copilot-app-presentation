@@ -389,6 +389,8 @@ footer .page{color:var(--accent-strong);font-weight:600;background:var(--accent-
      opacity:.45;transition:opacity .2s ease;}
 .nav:hover,.nav:focus-within{opacity:1;}
 @media (prefers-reduced-motion:reduce){.nav{transition:none;}}
+.nav-main{display:flex;align-items:center;gap:.4em;}
+.nav-tools{position:relative;display:flex;align-items:center;}
 .nav-btn{display:inline-flex;align-items:center;justify-content:center;
      min-width:2em;height:2em;padding:0 .55em;
      font-size:clamp(13px,1.9vh,17px);line-height:1;cursor:pointer;
@@ -400,10 +402,37 @@ footer .page{color:var(--accent-strong);font-weight:600;background:var(--accent-
 .nav-btn:disabled{opacity:.32;cursor:default;}
 .nav-btn[data-state="active"]{color:var(--accent-strong);background:var(--accent-soft);}
 .nav-btn[data-state="error"]{color:#d13438;}
-.nav-fixed-preview{min-width:3.25em;font-size:clamp(11px,1.55vh,14px);font-weight:700;}
+.nav-more-toggle{position:relative;}
+.nav-more-toggle[data-state]::after{content:"";position:absolute;right:.22em;top:.22em;
+     width:.38em;height:.38em;border-radius:50%;background:transparent;}
+.nav-more-toggle[data-state="active"]::after{background:var(--accent-strong);}
+.nav-more-toggle[data-state="error"]::after{background:#d13438;}
 .nav-counter{min-width:4.2em;text-align:center;font-variant-numeric:tabular-nums;
      font-weight:600;color:var(--accent-strong);font-size:clamp(12px,1.7vh,16px);
      padding:0 .3em;user-select:none;}
+.nav-more-panel[hidden],.nav-more-group[hidden]{display:none;}
+.nav-more-panel{position:absolute;left:50%;bottom:calc(100% + .65em);transform:translateX(-50%);
+     width:min(20em,calc(100vw - 24px));max-height:min(70vh,32em);overflow:auto;
+     display:grid;gap:.7em;padding:.7em;border:1px solid var(--border);border-radius:12px;
+     color:var(--fg);background:color-mix(in srgb,var(--surface) 96%,transparent);
+     box-shadow:0 12px 34px rgba(0,0,0,.3);}
+.nav-more-group{display:grid;gap:.18em;}
+.nav-more-title{padding:.2em .65em;color:var(--muted);font-size:.72em;font-weight:750;
+     letter-spacing:.06em;text-transform:uppercase;}
+.nav-more-item{display:grid;grid-template-columns:2.8em minmax(0,1fr);align-items:center;
+     width:100%;min-height:2.55em;padding:.42em .65em;border:1px solid transparent;
+     border-radius:8px;color:var(--fg);background:transparent;font:inherit;text-align:left;
+     cursor:pointer;}
+.nav-more-item[hidden]{display:none;}
+.nav-more-item:hover:not(:disabled){background:var(--accent-soft);color:var(--accent-strong);}
+.nav-more-item:focus-visible{outline:2px solid var(--accent);outline-offset:1px;}
+.nav-more-item:disabled{opacity:.4;cursor:default;}
+.nav-more-item[data-state="active"]{color:var(--accent-strong);background:var(--accent-soft);}
+.nav-more-item[data-state="error"]{color:#d13438;}
+.nav-more-icon{display:inline-flex;align-items:center;justify-content:center;min-width:2.2em;
+     font-size:.95em;font-weight:700;}
+.nav-more-icon.nav-fixed-preview{font-size:.72em;}
+.nav-more-label{min-width:0;font-size:.88em;font-weight:600;line-height:1.25;}
 .layout-warning{position:fixed;top:14px;right:14px;z-index:55;
      max-width:min(420px,calc(100vw - 28px));padding:.55em .8em;border-radius:8px;
      color:#fff;background:#a4262c;border:1px solid #f1aeb5;
@@ -418,14 +447,20 @@ body.presenter-mode #navImport{display:none;}
 body.presenter-mode #navSourceMode{display:none;}
 body.preview-mode .nav,body.preview-mode .overview{display:none!important;}
 /* When no deck is loaded, leave only the load button as the available action. */
-.nav.nav-empty > :not(#navImport){display:none;}
+.nav.nav-empty .nav-main,.nav.nav-empty #navMore{display:none;}
+.nav.nav-empty .nav-more-panel{position:static;display:block;width:auto;max-height:none;
+     overflow:visible;padding:0;border:0;border-radius:0;transform:none;background:transparent;
+     box-shadow:none;}
+.nav.nav-empty .nav-more-group,.nav.nav-empty .nav-more-title,
+.nav.nav-empty .nav-more-item{display:none;}
+.nav.nav-empty .nav-more-group[data-nav-group="file"]{display:block;}
+.nav.nav-empty #navImport{display:inline-flex;gap:.55em;width:auto;min-width:2.5em;height:2.5em;
+     padding:0 1em;}
 body.markdstage-empty .nav{
        opacity:1;padding:.42em;border-color:#3b4562;background:#151b2f;
        box-shadow:0 10px 30px rgba(0,0,0,.36);}
 body.markdstage-empty #navImport{
-       width:auto;min-width:2.5em;height:2.5em;padding:0 1em;
        border-color:#ffb547;background:#ffb547;color:#0b1020;font-weight:750;}
-body.markdstage-empty #navImport::after{content:"  Open Markdown";}
 body.markdstage-empty #navImport:hover{background:#ffd77a;color:#0b1020;}
 
 /* ===== Presenter view ===== */

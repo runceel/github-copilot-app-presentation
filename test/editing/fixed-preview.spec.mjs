@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { startHarness } from "../harness/server.mjs";
+import { clickMoreControl } from "../utils/nav.mjs";
 import { waitForSlideReady } from "../utils/ready.mjs";
 
 const SLIDES = [
@@ -30,7 +31,7 @@ test("16:9 preview uses the fixed PDF surface and keeps navigation active", asyn
 
     const button = page.locator("#navFixedPreview");
     await expect(button).toHaveAttribute("aria-pressed", "false");
-    await button.click();
+    await clickMoreControl(page, "#navFixedPreview");
     await settleFrames(page);
 
     await expect(page.locator("body")).toHaveClass(/fixed-preview-mode/);
@@ -55,7 +56,7 @@ test("16:9 preview uses the fixed PDF surface and keeps navigation active", asyn
     await expect.poll(() => harness.index).toBe(1);
     await expect(page.locator("body")).toHaveClass(/fixed-preview-mode/);
 
-    await button.click();
+    await clickMoreControl(page, "#navFixedPreview");
     await settleFrames(page);
     await expect(page.locator("body")).not.toHaveClass(/fixed-preview-mode/);
     await expect(button).toHaveAttribute("aria-pressed", "false");
@@ -76,7 +77,7 @@ test("16:9 preview on a square display keeps the theme background covering the t
   try {
     await page.goto(`${harness.url}/`, { waitUntil: "load" });
     await waitForSlideReady(page);
-    await page.locator("#navFixedPreview").click();
+    await clickMoreControl(page, "#navFixedPreview");
     await settleFrames(page);
 
     const dimensions = await page.locator("#stage > .deck").evaluate((deck) => {
@@ -99,7 +100,7 @@ test("16:9 preview ignores one pixel but warns when PDF clipping exceeds the tol
   try {
     await page.goto(`${harness.url}/`, { waitUntil: "load" });
     await waitForSlideReady(page);
-    await page.locator("#navFixedPreview").click();
+    await clickMoreControl(page, "#navFixedPreview");
     await settleFrames(page);
 
     await page.locator(".body").evaluate((body) => {
@@ -123,6 +124,7 @@ test("16:9 preview ignores one pixel but warns when PDF clipping exceeds the tol
     await expect(page.locator("#layoutWarning")).toBeVisible();
     await expect(page.locator("#layoutWarning")).toContainText("PDF layout clips page 1");
     await expect(page.locator("#navFixedPreview")).toHaveAttribute("data-state", "error");
+    await expect(page.locator("#navMore")).toHaveAttribute("data-state", "error");
   } finally {
     await harness.close();
   }

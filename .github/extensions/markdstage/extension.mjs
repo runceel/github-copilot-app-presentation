@@ -2077,7 +2077,7 @@ const session = await joinSession({
       id: "MarkdStage",
       displayName: "MarkdStage",
       description:
-        "Markdown, ready for the stage. A MarkdStage canvas that displays themed Markdown slides. Pass slides/index/theme to open the deck immediately; omit input only to refocus an existing instance. Any non-empty open input must include slides. sourceName is metadata and never reads or watches Markdown. Use the 16:9 control for output preview, inspect_layout for compact clipping diagnostics, capture_slides for selected 1280x720 PNGs, open_presenter for an external presentation window, export_pdf for final PDF output, and export_pptx for hybrid editable PowerPoint output. Navigate within the canvas with ◀ ▶, arrow keys, the slide list, or a Surface Pen on supported Windows systems.",
+        "Markdown, ready for the stage. A MarkdStage canvas that displays themed Markdown slides. Pass slides/index/theme to open the deck immediately; omit input only to refocus an existing instance. Any non-empty open input must include slides. sourceName is metadata and never reads or watches Markdown. Use More controls for output preview, editing, presentation, import, refresh, and export; inspect_layout provides compact clipping diagnostics, capture_slides creates selected 1280x720 PNGs, open_presenter opens an external presentation window, export_pdf produces final PDF output, and export_pptx produces hybrid editable PowerPoint output. Navigate within the canvas with ◀ ▶, arrow keys, the slide list, or a Surface Pen on supported Windows systems.",
       inputSchema: {
         type: "object",
         description:
