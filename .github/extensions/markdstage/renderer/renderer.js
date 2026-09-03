@@ -940,6 +940,60 @@ function textContentBounds(element, deck) {
   };
 }
 
+function textInsetsFor(element) {
+  const style = getComputedStyle(element);
+  const metric = (padding, border) => {
+    const paddingValue = Number.parseFloat(style[padding]);
+    const borderValue = Number.parseFloat(style[border]);
+    return roundedMetric(
+      Math.max(0, Number.isFinite(paddingValue) ? paddingValue : 0) +
+        Math.max(0, Number.isFinite(borderValue) ? borderValue : 0),
+    );
+  };
+  const insets = {
+    left: metric("paddingLeft", "borderLeftWidth"),
+    top: metric("paddingTop", "borderTopWidth"),
+    right: metric("paddingRight", "borderRightWidth"),
+    bottom: metric("paddingBottom", "borderBottomWidth"),
+  };
+  return Object.values(insets).some((value) => value > 0) ? insets : null;
+}
+
+function singleLineTextLayout(element, deck, bounds, textInsets, alignment) {
+  const content = textContentBounds(element, deck);
+  const fontSize = Number.parseFloat(getComputedStyle(element).fontSize);
+  const widthBuffer = Math.max(2, (Number.isFinite(fontSize) ? fontSize : 0) * 0.5);
+  const fittedInsets = textInsets ? { ...textInsets } : null;
+  const requiredWidth = () =>
+    content.width +
+    (fittedInsets?.left || 0) +
+    (fittedInsets?.right || 0) +
+    widthBuffer;
+  const resolvedAlignment =
+    alignment || pptxAlignment(getComputedStyle(element).textAlign);
+  // Keep the leading CSS inset, but release a trailing inset when browser and
+  // PowerPoint font metrics would otherwise force a visually single line to wrap.
+  if (fittedInsets && requiredWidth() > bounds.width) {
+    if (resolvedAlignment === "right") fittedInsets.left = 0;
+    if (resolvedAlignment === "left") fittedInsets.right = 0;
+  }
+  const extraWidth = Math.max(0, requiredWidth() - bounds.width);
+  const offset =
+    resolvedAlignment === "right"
+      ? extraWidth
+      : resolvedAlignment === "center"
+        ? extraWidth / 2
+        : 0;
+  return {
+    bounds: {
+      ...bounds,
+      x: roundedMetric(bounds.x - offset),
+      width: roundedMetric(bounds.width + extraWidth),
+    },
+    textInsets: fittedInsets,
+  };
+}
+
 function rasterImageSupported(image) {
   const source = image.currentSrc || image.getAttribute("src") || "";
   if (["cover", "none"].includes(getComputedStyle(image).objectFit)) return false;
@@ -1028,12 +1082,22 @@ function paragraphFor(element, options = {}) {
 function renderedTextLineCount(element) {
   const range = document.createRange();
   range.selectNodeContents(element);
-  const tops = [];
+  const lines = [];
   for (const rect of range.getClientRects()) {
     if (rect.width <= 0 || rect.height <= 0) continue;
-    if (!tops.some((top) => Math.abs(top - rect.top) < 1)) tops.push(rect.top);
+    const line = lines.find(
+      (candidate) =>
+        rect.top < candidate.bottom - 1 &&
+        rect.bottom > candidate.top + 1,
+    );
+    if (line) {
+      line.top = Math.min(line.top, rect.top);
+      line.bottom = Math.max(line.bottom, rect.bottom);
+    } else {
+      lines.push({ top: rect.top, bottom: rect.bottom });
+    }
   }
-  return Math.max(1, tops.length);
+  return Math.max(1, lines.length);
 }
 
 function unsupportedEffects(element) {
@@ -1587,17 +1651,29 @@ async function collectPptxSlide(slide, index) {
         : undefined,
     });
     if (!paragraph.runs.some((run) => run.text.trim())) continue;
-    const disableTextWrap =
-      element.classList.contains("kicker") ||
-      (element.matches("h1, h2, .slide-title") && renderedTextLineCount(element) === 1);
+    const disableTextWrap = renderedTextLineCount(element) === 1;
+    const textInsets = textInsetsFor(element);
+    const baseBounds = element.classList.contains("kicker")
+      ? textContentBounds(element, deck)
+      : relativeBounds(element, deck);
+    const singleLineLayout = disableTextWrap
+      ? singleLineTextLayout(
+          element,
+          deck,
+          baseBounds,
+          textInsets,
+          element.classList.contains("kicker") ? "left" : undefined,
+        )
+      : null;
+    const bounds = singleLineLayout?.bounds || baseBounds;
+    const fittedTextInsets = singleLineLayout?.textInsets || textInsets;
     elements.push({
       type: "text",
       path: elementPath(element, deck),
-      ...(element.classList.contains("kicker")
-        ? textContentBounds(element, deck)
-        : relativeBounds(element, deck)),
+      ...bounds,
       paragraphs: [paragraph],
       opacity: Number(getComputedStyle(element).opacity) || 1,
+      ...(fittedTextInsets ? { textInsets: fittedTextInsets } : {}),
       ...(disableTextWrap ? { textWrap: "none" } : {}),
     });
     element.setAttribute("data-pptx-native", "text");

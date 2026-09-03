@@ -69,6 +69,8 @@ function samplePackage() {
             y: 30,
             width: 600,
             height: 90,
+            textInsets: { left: 5, top: 3, right: 7, bottom: 4 },
+            textWrap: "none",
             paragraphs: [
               {
                 alignment: "center",
@@ -282,6 +284,10 @@ test("emits native text, hyperlinks, tables, images, shapes, and connector segme
   assert.match(
     slide,
     /<a:off x="76200" y="285750"\/><a:ext cx="6019800" cy="857250"\/>[\s\S]*?<a:pPr algn="ctr" lvl="1" marL="304800" indent="-304800"><a:buChar char="•"\/>/,
+  );
+  assert.match(
+    slide,
+    /<a:bodyPr wrap="none" lIns="47625" tIns="28575" rIns="66675" bIns="38100"\/>/,
   );
   assert.match(slide, /<a:hlinkClick r:id="rId\d+"\/>/);
   assert.match(rels, /Target="https:\/\/example\.com\/\?a=1&amp;b=2" TargetMode="External"/);

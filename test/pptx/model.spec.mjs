@@ -211,6 +211,81 @@ test("collects a serializable hybrid model for every layout and theme", async ({
   }
 });
 
+test("preserves decorated text insets and one-line footer wrapping", async ({ page }) => {
+  const harness = await startHarness({
+    slides: [
+      `---
+theme: microsoft
+deck: KAZUKI OTA
+page: 3
+total: 8
+---
+## Spacing
+
+> 技術を「知っている」から、**現場で使える**へ`,
+    ],
+  });
+  try {
+    const model = await openPptx(page, harness);
+    const textOf = (element) =>
+      element.paragraphs.flatMap((paragraph) => paragraph.runs).map((run) => run.text).join("");
+    const textElements = model.slides[0].elements.filter((element) => element.type === "text");
+    const blockquote = textElements.find((element) => textOf(element).includes("現場で使える"));
+    const footer = textElements.find((element) => textOf(element) === "KAZUKI OTA");
+    const pageNumber = textElements.find((element) => textOf(element) === "3 / 8");
+    const metrics = await page.evaluate(() => {
+      const deck = document.querySelector("#stage > .deck");
+      const deckRect = deck.getBoundingClientRect();
+      const measure = (element) => {
+        const style = getComputedStyle(element);
+        const inset = (padding, border) =>
+          Number.parseFloat(style[padding]) + Number.parseFloat(style[border]);
+        const rect = element.getBoundingClientRect();
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return {
+          x: rect.left - deckRect.left,
+          width: rect.width,
+          textWidth: range.getBoundingClientRect().width,
+          fontSize: Number.parseFloat(style.fontSize),
+          insets: {
+            left: inset("paddingLeft", "borderLeftWidth"),
+            top: inset("paddingTop", "borderTopWidth"),
+            right: inset("paddingRight", "borderRightWidth"),
+            bottom: inset("paddingBottom", "borderBottomWidth"),
+          },
+        };
+      };
+      return {
+        blockquote: measure(deck.querySelector("blockquote")),
+        footer: measure(deck.querySelector("footer > span:first-child")),
+        pageNumber: measure(deck.querySelector("footer > .page")),
+      };
+    });
+
+    expect(blockquote).toBeTruthy();
+    expect(footer).toBeTruthy();
+    expect(pageNumber).toBeTruthy();
+    expect(blockquote.x).toBeCloseTo(metrics.blockquote.x, 1);
+    expect(blockquote.textInsets.left).toBeCloseTo(metrics.blockquote.insets.left, 1);
+    expect(blockquote.textInsets.right).toBe(0);
+    expect(pageNumber.x).toBeCloseTo(metrics.pageNumber.x, 1);
+    expect(pageNumber.textInsets.left).toBeCloseTo(metrics.pageNumber.insets.left, 1);
+    expect(pageNumber.textInsets.right).toBe(0);
+    expect(
+      pageNumber.width - pageNumber.textInsets.left - pageNumber.textInsets.right,
+    ).toBeGreaterThanOrEqual(
+      metrics.pageNumber.textWidth + metrics.pageNumber.fontSize * 0.5 - 0.1,
+    );
+    expect(footer.width).toBeGreaterThan(metrics.footer.width);
+    expect(blockquote.textWrap).toBe("none");
+    expect(footer.textWrap).toBe("none");
+    expect(pageNumber.textWrap).toBe("none");
+  } finally {
+    await harness.close();
+  }
+});
+
 test("applies custom theme variables and metadata assets", async ({ page }) => {
   const harness = await startHarness({
     slides: [
