@@ -409,7 +409,7 @@ function paragraphXml(paragraph, path, relationships, leftMarginPx = 0) {
       runXml(run, `${path}.runs[${index}]`, relationships),
     )
     .join("");
-  return `<a:p><a:pPr algn="${align}" lvl="${level}"${indentationAttributes}>${bullet}</a:pPr>${runs}<a:endParaRPr lang="en-US"><a:ea typeface="${JAPANESE_FONT_FACE}"/></a:endParaRPr></a:p>`;
+  return `<a:p><a:pPr algn="${align}" lvl="${level}"${indentationAttributes}>${bullet}</a:pPr>${runs}<a:endParaRPr lang="en-US" noProof="1"><a:ea typeface="${JAPANESE_FONT_FACE}"/></a:endParaRPr></a:p>`;
 }
 
 function runXml(run, path, relationships) {
@@ -420,6 +420,7 @@ function runXml(run, path, relationships) {
   const size = fontSizeOf(run, path);
   const attributes = [
     'lang="en-US"',
+    'noProof="1"',
     `sz="${size}"`,
     run.bold ? 'b="1"' : "",
     run.italic ? 'i="1"' : "",

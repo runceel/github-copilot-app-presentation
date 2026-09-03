@@ -340,9 +340,10 @@ test("uses Yu Gothic for Japanese theme fonts and native text", () => {
     slide,
     /<a:latin typeface="Segoe UI"\/><a:ea typeface="Yu Gothic"\/>[\s\S]*?<a:t>日本語の編集可能テキスト<\/a:t>/,
   );
+  assert.match(slide, /<a:rPr[^>]*lang="en-US"[^>]*noProof="1"/);
   assert.match(
     slide,
-    /<a:endParaRPr lang="en-US"><a:ea typeface="Yu Gothic"\/><\/a:endParaRPr>/,
+    /<a:endParaRPr lang="en-US" noProof="1"><a:ea typeface="Yu Gothic"\/><\/a:endParaRPr>/,
   );
 });
 

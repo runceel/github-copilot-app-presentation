@@ -193,6 +193,7 @@ test("collects a serializable hybrid model for every layout and theme", async ({
     });
     expect(kicker.x).toBeCloseTo(kickerBounds.textX, 1);
     expect(kicker.x).toBeGreaterThan(kickerBounds.elementX);
+    expect(kicker.textWrap).toBe("none");
     for (const slide of model.slides) {
       expect(slide.width).toBe(1280);
       expect(slide.height).toBe(720);
