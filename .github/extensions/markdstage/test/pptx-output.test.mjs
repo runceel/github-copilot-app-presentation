@@ -11,7 +11,7 @@ const PNG = Buffer.from([
   0, 0, 0, 1, 0, 0, 0, 1,
 ]);
 
-function model(elements) {
+function model(elements, notes) {
   return {
     version: 1,
     width: 1280,
@@ -24,6 +24,7 @@ function model(elements) {
         title: "Test",
         width: 1280,
         height: 720,
+        ...(notes ? { notes } : {}),
         elements,
         fallbacks: [],
       },
@@ -31,32 +32,35 @@ function model(elements) {
   };
 }
 
-test("prepares fallback artwork and deduplicated native images", async () => {
+test("prepares fallback artwork, notes, and deduplicated native images", async () => {
   let requests = 0;
   const prepared = await preparePptxPackageModel(
     { url: "http://127.0.0.1:4321/token/" },
-    model([
-      {
-        type: "image",
-        src: "./assets/photo.png",
-        x: 100,
-        y: 100,
-        width: 400,
-        height: 200,
-        fit: "contain",
-        naturalWidth: 100,
-        naturalHeight: 100,
-      },
-      {
-        type: "image",
-        src: "./assets/photo.png",
-        x: 10,
-        y: 10,
-        width: 50,
-        height: 50,
-        fit: "fill",
-      },
-    ]),
+    model(
+      [
+        {
+          type: "image",
+          src: "./assets/photo.png",
+          x: 100,
+          y: 100,
+          width: 400,
+          height: 200,
+          fit: "contain",
+          naturalWidth: 100,
+          naturalHeight: 100,
+        },
+        {
+          type: "image",
+          src: "./assets/photo.png",
+          x: 10,
+          y: 10,
+          width: 50,
+          height: 50,
+          fit: "fill",
+        },
+      ],
+      "Explain the editable image.",
+    ),
     [PNG],
     async () => {
       requests += 1;
@@ -67,6 +71,7 @@ test("prepares fallback artwork and deduplicated native images", async () => {
   assert.equal(requests, 1);
   assert.equal(prepared.assets.length, 2);
   assert.equal(prepared.slides[0].backgroundAssetId, "markdstage-background-1");
+  assert.equal(prepared.slides[0].notes, "Explain the editable image.");
   assert.equal(prepared.slides[0].elements[0].assetId, "markdstage-image-1");
   assert.equal(prepared.slides[0].elements[1].assetId, "markdstage-image-1");
   assert.deepEqual(
@@ -88,6 +93,14 @@ test("rejects mismatched artwork and non-workspace image URLs", async () => {
       [],
     ),
     /does not match the slide count/,
+  );
+  await assert.rejects(
+    preparePptxPackageModel(
+      { url: "http://127.0.0.1:4321/token/" },
+      model([], 42),
+      [PNG],
+    ),
+    /invalid speaker notes/,
   );
   await assert.rejects(
     preparePptxPackageModel(

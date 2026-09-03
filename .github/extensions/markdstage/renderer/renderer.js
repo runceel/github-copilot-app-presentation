@@ -7,6 +7,8 @@ import {
 } from "./theme.mjs";
 import {
   extractSpeakerNotes,
+  speakerNotesToPlainText,
+  splitSpeakerNotes,
   stripSpeakerNotes,
 } from "./speaker-notes.mjs";
 import { splitImportPath } from "./import-path.mjs";
@@ -604,7 +606,8 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
   const md = placeholder ? PLACEHOLDER : markdown;
   const { meta, body: rawBody } = splitFrontMatter(md);
   const directive = extractSlideSizeDirective(rawBody);
-  const body = stripSpeakerNotes(directive.body);
+  const speakerNotes = splitSpeakerNotes(directive.body);
+  const body = speakerNotes.markdown;
 
   const layout = (meta.layout || "").toLowerCase();
   const titleSlide = layout === "title";
@@ -771,6 +774,7 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
     sectionSlide,
     centerSlide,
     backcoverSlide,
+    speakerNotes: speakerNotes.notes,
     title: meta.title || meta.deck || "Slide",
   };
 }
@@ -1749,6 +1753,7 @@ async function collectPptxSlide(slide, index) {
           ? "backcover"
           : "standard";
   const visibleTitle = deck.querySelector("h1, h2")?.textContent?.trim();
+  const notes = speakerNotesToPlainText(slide.speakerNotes, window.marked, document);
   return {
     index,
     layout,
@@ -1756,6 +1761,7 @@ async function collectPptxSlide(slide, index) {
     title: visibleTitle || slide.title,
     width: OUTPUT_WIDTH,
     height: OUTPUT_HEIGHT,
+    ...(notes ? { notes } : {}),
     elements,
     fallbacks,
   };

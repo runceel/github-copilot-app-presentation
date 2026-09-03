@@ -17,6 +17,7 @@ const NS_R =
 const NS_REL =
   "http://schemas.openxmlformats.org/package/2006/relationships";
 const JAPANESE_FONT_FACE = "Yu Gothic";
+const HUNDREDTH_POINTS_PER_PIXEL = 75;
 
 const REL = {
   officeDocument: `${NS_R}/officeDocument`,
@@ -28,6 +29,8 @@ const REL = {
   theme: `${NS_R}/theme`,
   image: `${NS_R}/image`,
   hyperlink: `${NS_R}/hyperlink`,
+  notesSlide: `${NS_R}/notesSlide`,
+  notesMaster: `${NS_R}/notesMaster`,
 };
 
 const CONTENT_TYPES = {
@@ -50,8 +53,21 @@ function fail(message) {
   throw new TypeError(`Invalid PowerPoint model: ${message}`);
 }
 
+function isXmlCodePoint(codePoint) {
+  return (
+    codePoint === 0x9 ||
+    codePoint === 0xa ||
+    codePoint === 0xd ||
+    (codePoint >= 0x20 && codePoint <= 0xd7ff) ||
+    (codePoint >= 0xe000 && codePoint <= 0xfffd) ||
+    (codePoint >= 0x10000 && codePoint <= 0x10ffff)
+  );
+}
+
 function xmlEscape(value) {
-  return String(value)
+  return [...String(value)]
+    .map((character) => (isXmlCodePoint(character.codePointAt(0)) ? character : "\uFFFD"))
+    .join("")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -334,7 +350,26 @@ function normalizeText(value, path) {
   return value;
 }
 
-function paragraphXml(paragraph, path, relationships) {
+function bulletTextOffsetPx(paragraph, path) {
+  if (
+    !paragraph ||
+    typeof paragraph !== "object" ||
+    Array.isArray(paragraph) ||
+    !paragraph.bullet ||
+    !Array.isArray(paragraph.runs) ||
+    paragraph.runs.length === 0
+  ) {
+    return 0;
+  }
+  const largestRunSize = Math.max(
+    ...paragraph.runs.map((run, index) =>
+      fontSizeOf(run, `${path}.runs[${index}]`),
+    ),
+  );
+  return largestRunSize / HUNDREDTH_POINTS_PER_PIXEL;
+}
+
+function paragraphXml(paragraph, path, relationships, leftMarginPx = 0) {
   if (!paragraph || typeof paragraph !== "object" || Array.isArray(paragraph)) {
     fail(`${path} must be an object`);
   }
@@ -360,12 +395,21 @@ function paragraphXml(paragraph, path, relationships) {
         : paragraph.bullet.character || "•";
     bullet = `<a:buChar char="${xmlEscape(character)}"/>`;
   }
+  const bulletOffsetPx = bulletTextOffsetPx(paragraph, path);
+  const paragraphMarginPx = Math.max(leftMarginPx, bulletOffsetPx);
+  const indentation = [
+    paragraphMarginPx > 0 ? `marL="${emu(paragraphMarginPx)}"` : "",
+    bulletOffsetPx > 0 ? `indent="-${emu(bulletOffsetPx)}"` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const indentationAttributes = indentation ? ` ${indentation}` : "";
   const runs = paragraph.runs
     .map((run, index) =>
       runXml(run, `${path}.runs[${index}]`, relationships),
     )
     .join("");
-  return `<a:p><a:pPr algn="${align}" lvl="${level}">${bullet}</a:pPr>${runs}<a:endParaRPr lang="en-US"><a:ea typeface="${JAPANESE_FONT_FACE}"/></a:endParaRPr></a:p>`;
+  return `<a:p><a:pPr algn="${align}" lvl="${level}"${indentationAttributes}>${bullet}</a:pPr>${runs}<a:endParaRPr lang="en-US"><a:ea typeface="${JAPANESE_FONT_FACE}"/></a:endParaRPr></a:p>`;
 }
 
 function runXml(run, path, relationships) {
@@ -448,11 +492,17 @@ function textBodyXml(
   tag = "p:txBody",
   bodyOptions = {},
   bodyPath = path,
+  leftMarginPx = 0,
 ) {
   const text = normalizeText(value, path);
   const paragraphs = text.paragraphs
     .map((paragraph, index) =>
-      paragraphXml(paragraph, `${path}.paragraphs[${index}]`, relationships),
+      paragraphXml(
+        paragraph,
+        `${path}.paragraphs[${index}]`,
+        relationships,
+        leftMarginPx,
+      ),
     )
     .join("");
   return `<${tag}>${textBodyPropertiesXml(bodyOptions, bodyPath)}<a:lstStyle/>${paragraphs}</${tag}>`;
@@ -465,12 +515,35 @@ function shapeBase(id, name, bounds, properties, text = "") {
 function textShapeXml(element, path, id, relationships) {
   const bounds = boundsOf(element, path);
   const text = { paragraphs: element.paragraphs };
+  const paragraphs = Array.isArray(text.paragraphs) ? text.paragraphs : [];
+  const bulletInsetPx = Math.max(
+    0,
+    ...paragraphs.map((paragraph, index) =>
+      bulletTextOffsetPx(paragraph, `${path}.paragraphs[${index}]`),
+    ),
+  );
+  const adjustedBounds =
+    bulletInsetPx > 0
+      ? {
+          ...bounds,
+          x: bounds.x - bulletInsetPx,
+          width: bounds.width + bulletInsetPx,
+        }
+      : bounds;
   return shapeBase(
     id,
     `Text ${id}`,
-    bounds,
+    adjustedBounds,
     '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln>',
-    textBodyXml(text, `${path}`, relationships, "p:txBody", element),
+    textBodyXml(
+      text,
+      `${path}`,
+      relationships,
+      "p:txBody",
+      element,
+      path,
+      bulletInsetPx,
+    ),
   );
 }
 
@@ -665,7 +738,7 @@ function connectorXml(element, path, nextId, relationships) {
   return shapes.join("");
 }
 
-function relationshipRegistry() {
+function relationshipRegistry(notesSlideNumber = null) {
   const entries = [
     {
       id: "rId1",
@@ -674,6 +747,14 @@ function relationshipRegistry() {
       external: false,
     },
   ];
+  if (notesSlideNumber !== null) {
+    entries.push({
+      id: `rId${entries.length + 1}`,
+      type: REL.notesSlide,
+      target: `../notesSlides/notesSlide${notesSlideNumber}.xml`,
+      external: false,
+    });
+  }
   const images = new Map();
   const hyperlinks = new Map();
   const add = (type, target, external) => {
@@ -707,13 +788,13 @@ function baseShapeTree() {
   return '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>';
 }
 
-function buildSlide(slide, slideIndex, assets) {
+function buildSlide(slide, slideIndex, assets, notesSlideNumber = null) {
   const path = `slides[${slideIndex}]`;
   if (!slide || typeof slide !== "object" || Array.isArray(slide)) {
     fail(`${path} must be an object`);
   }
   if (!Array.isArray(slide.elements)) fail(`${path}.elements must be an array`);
-  const relationships = relationshipRegistry();
+  const relationships = relationshipRegistry(notesSlideNumber);
   let shapeId = 2;
   const nextId = () => shapeId++;
   const shapes = [];
@@ -787,7 +868,7 @@ function relationshipsXml(entries) {
     .join("")}</Relationships>`;
 }
 
-function contentTypesXml(slideCount, assets) {
+function contentTypesXml(slideCount, assets, notesCount) {
   const imageTypes = new Map();
   for (const asset of assets.values()) {
     imageTypes.set(asset.extension, asset.contentType);
@@ -803,19 +884,36 @@ function contentTypesXml(slideCount, assets) {
     (_, index) =>
       `<Override PartName="/ppt/slides/slide${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>`,
   ).join("");
-  return `${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${defaults}<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/><Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>${slides}</Types>`;
+  const notes = Array.from(
+    { length: notesCount },
+    (_, index) =>
+      `<Override PartName="/ppt/notesSlides/notesSlide${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesSlide+xml"/>`,
+  ).join("");
+  const notesMaster =
+    notesCount > 0
+      ? '<Override PartName="/ppt/notesMasters/notesMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.notesMaster+xml"/>'
+      : "";
+  const notesTheme =
+    notesCount > 0
+      ? '<Override PartName="/ppt/theme/theme2.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>'
+      : "";
+  return `${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${defaults}<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/><Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>${notesTheme}${slides}${notesMaster}${notes}</Types>`;
 }
 
-function presentationXml(slideCount) {
+function presentationXml(slideCount, notesCount) {
   const slides = Array.from(
     { length: slideCount },
     (_, index) =>
       `<p:sldId id="${256 + index}" r:id="rId${index + 2}"/>`,
   ).join("");
-  return `${XML}<p:presentation xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}"><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst><p:sldIdLst>${slides}</p:sldIdLst><p:sldSz cx="${PPTX_DIMENSIONS.widthEmu}" cy="${PPTX_DIMENSIONS.heightEmu}" type="screen16x9"/><p:notesSz cx="6858000" cy="9144000"/><p:defaultTextStyle/></p:presentation>`;
+  const notesMaster =
+    notesCount > 0
+      ? `<p:notesMasterIdLst><p:notesMasterId r:id="rId${slideCount + 2}"/></p:notesMasterIdLst>`
+      : "";
+  return `${XML}<p:presentation xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}"><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>${notesMaster}<p:sldIdLst>${slides}</p:sldIdLst><p:sldSz cx="${PPTX_DIMENSIONS.widthEmu}" cy="${PPTX_DIMENSIONS.heightEmu}" type="screen16x9"/><p:notesSz cx="6858000" cy="9144000"/><p:defaultTextStyle/></p:presentation>`;
 }
 
-function presentationRelsXml(slideCount) {
+function presentationRelsXml(slideCount, notesCount) {
   const entries = [
     {
       id: "rId1",
@@ -828,6 +926,13 @@ function presentationRelsXml(slideCount) {
       target: `slides/slide${index + 1}.xml`,
     })),
   ];
+  if (notesCount > 0) {
+    entries.push({
+      id: `rId${slideCount + 2}`,
+      type: REL.notesMaster,
+      target: "notesMasters/notesMaster1.xml",
+    });
+  }
   return relationshipsXml(entries);
 }
 
@@ -835,8 +940,8 @@ function coreXml(title) {
   return `${XML}<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:dcmitype="http://purl.org/dc/dcmitype/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${xmlEscape(title)}</dc:title><dc:creator>MarkdStage</dc:creator><cp:lastModifiedBy>MarkdStage</cp:lastModifiedBy></cp:coreProperties>`;
 }
 
-function appXml(slideCount) {
-  return `${XML}<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>MarkdStage</Application><PresentationFormat>On-screen Show (16:9)</PresentationFormat><Slides>${slideCount}</Slides><Notes>0</Notes><HiddenSlides>0</HiddenSlides><MMClips>0</MMClips><ScaleCrop>false</ScaleCrop><Company/><LinksUpToDate>false</LinksUpToDate><SharedDoc>false</SharedDoc><HyperlinksChanged>false</HyperlinksChanged><AppVersion>1.0</AppVersion></Properties>`;
+function appXml(slideCount, notesCount) {
+  return `${XML}<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>MarkdStage</Application><PresentationFormat>On-screen Show (16:9)</PresentationFormat><Slides>${slideCount}</Slides><Notes>${notesCount}</Notes><HiddenSlides>0</HiddenSlides><MMClips>0</MMClips><ScaleCrop>false</ScaleCrop><Company/><LinksUpToDate>false</LinksUpToDate><SharedDoc>false</SharedDoc><HyperlinksChanged>false</HyperlinksChanged><AppVersion>1.0</AppVersion></Properties>`;
 }
 
 function themeXml() {
@@ -849,6 +954,97 @@ function slideMasterXml() {
 
 function slideLayoutXml() {
   return `${XML}<p:sldLayout xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}" type="blank" preserve="1"><p:cSld name="Blank"><p:spTree>${baseShapeTree()}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`;
+}
+
+function notesPlaceholderXml({ id, name, type, idx, x, y, cx, cy, paragraphs = "" }) {
+  return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${xmlEscape(name)}"/><p:cNvSpPr txBox="1"/><p:nvPr><p:ph type="${type}" idx="${idx}"/></p:nvPr></p:nvSpPr><p:spPr><a:xfrm><a:off x="${x}" y="${y}"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:noFill/><a:ln><a:noFill/></a:ln></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/>${paragraphs || "<a:p/>"}</p:txBody></p:sp>`;
+}
+
+function notesParagraphsXml(notes) {
+  return notes
+    .split("\n")
+    .map((line) => {
+      if (!line) {
+        return `<a:p><a:endParaRPr lang="en-US"><a:ea typeface="${JAPANESE_FONT_FACE}"/></a:endParaRPr></a:p>`;
+      }
+      const preserve = /^\s|\s$|\s{2}/.test(line) ? ' xml:space="preserve"' : "";
+      return `<a:p><a:r><a:rPr lang="en-US" dirty="0"><a:ea typeface="${JAPANESE_FONT_FACE}"/></a:rPr><a:t${preserve}>${xmlEscape(line)}</a:t></a:r><a:endParaRPr lang="en-US"><a:ea typeface="${JAPANESE_FONT_FACE}"/></a:endParaRPr></a:p>`;
+    })
+    .join("");
+}
+
+function notesMasterXml() {
+  const slideImage = notesPlaceholderXml({
+    id: 2,
+    name: "Slide Image Placeholder 1",
+    type: "sldImg",
+    idx: 1,
+    x: 1143000,
+    y: 685800,
+    cx: 4572000,
+    cy: 3429000,
+  });
+  const body = notesPlaceholderXml({
+    id: 3,
+    name: "Notes Placeholder 2",
+    type: "body",
+    idx: 2,
+    x: 685800,
+    y: 4343400,
+    cx: 5486400,
+    cy: 4114800,
+  });
+  return `${XML}<p:notesMaster xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}"><p:cSld name="Notes Master"><p:spTree>${baseShapeTree()}${slideImage}${body}</p:spTree></p:cSld><p:clrMap accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" bg1="lt1" bg2="lt2" folHlink="folHlink" hlink="hlink" tx1="dk1" tx2="dk2"/><p:notesStyle><a:lvl1pPr marL="0" algn="l"><a:defRPr sz="1200"><a:latin typeface="Aptos"/><a:ea typeface="${JAPANESE_FONT_FACE}"/></a:defRPr></a:lvl1pPr></p:notesStyle></p:notesMaster>`;
+}
+
+function notesSlideXml(notes) {
+  const slideImage = notesPlaceholderXml({
+    id: 2,
+    name: "Slide Image Placeholder 1",
+    type: "sldImg",
+    idx: 1,
+    x: 1143000,
+    y: 685800,
+    cx: 4572000,
+    cy: 3429000,
+  });
+  const body = notesPlaceholderXml({
+    id: 3,
+    name: "Notes Placeholder 2",
+    type: "body",
+    idx: 2,
+    x: 685800,
+    y: 4343400,
+    cx: 5486400,
+    cy: 4114800,
+    paragraphs: notesParagraphsXml(notes),
+  });
+  return `${XML}<p:notes xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}"><p:cSld><p:spTree>${baseShapeTree()}${slideImage}${body}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>`;
+}
+
+function notesSlideRelsXml(slideIndex) {
+  return relationshipsXml([
+    {
+      id: "rId1",
+      type: REL.notesMaster,
+      target: "../notesMasters/notesMaster1.xml",
+    },
+    {
+      id: "rId2",
+      type: REL.slide,
+      target: `../slides/slide${slideIndex + 1}.xml`,
+    },
+  ]);
+}
+
+function normalizedNotes(slide, slideIndex) {
+  const path = `slides[${slideIndex}]`;
+  if (!slide || typeof slide !== "object" || Array.isArray(slide)) {
+    fail(`${path} must be an object`);
+  }
+  if (slide.notes === undefined || slide.notes === null || slide.notes === "") return "";
+  if (typeof slide.notes !== "string") fail(`${path}.notes must be a string`);
+  return slide.notes.replace(/\r\n?/g, "\n").trim();
 }
 
 function crc32(data) {
@@ -995,11 +1191,25 @@ export function buildPptxPackage({ title = "Presentation", slides, assets = [] }
   }
   if (slides.length > 0x7ffffeff) fail("slides contains too many items");
   const normalizedAssets = normalizeAssets(assets);
-  const builtSlides = slides.map((slide, index) =>
-    buildSlide(slide, index, normalizedAssets),
-  );
+  const notesSlides = [];
+  const builtSlides = slides.map((slide, index) => {
+    const notes = normalizedNotes(slide, index);
+    const notesSlideNumber = notes ? notesSlides.length + 1 : null;
+    const built = buildSlide(slide, index, normalizedAssets, notesSlideNumber);
+    if (notes) {
+      notesSlides.push({
+        notes,
+        slideIndex: index,
+        number: notesSlideNumber,
+      });
+    }
+    return built;
+  });
   const entries = [
-    { name: "[Content_Types].xml", data: contentTypesXml(slides.length, normalizedAssets) },
+    {
+      name: "[Content_Types].xml",
+      data: contentTypesXml(slides.length, normalizedAssets, notesSlides.length),
+    },
     {
       name: "_rels/.rels",
       data: relationshipsXml([
@@ -1009,11 +1219,14 @@ export function buildPptxPackage({ title = "Presentation", slides, assets = [] }
       ]),
     },
     { name: "docProps/core.xml", data: coreXml(title) },
-    { name: "docProps/app.xml", data: appXml(slides.length) },
-    { name: "ppt/presentation.xml", data: presentationXml(slides.length) },
+    { name: "docProps/app.xml", data: appXml(slides.length, notesSlides.length) },
+    {
+      name: "ppt/presentation.xml",
+      data: presentationXml(slides.length, notesSlides.length),
+    },
     {
       name: "ppt/_rels/presentation.xml.rels",
-      data: presentationRelsXml(slides.length),
+      data: presentationRelsXml(slides.length, notesSlides.length),
     },
     { name: "ppt/theme/theme1.xml", data: themeXml() },
     { name: "ppt/slideMasters/slideMaster1.xml", data: slideMasterXml() },
@@ -1039,11 +1252,33 @@ export function buildPptxPackage({ title = "Presentation", slides, assets = [] }
         },
       ]),
     },
+    ...(notesSlides.length
+      ? [
+          { name: "ppt/theme/theme2.xml", data: themeXml() },
+          { name: "ppt/notesMasters/notesMaster1.xml", data: notesMasterXml() },
+          {
+            name: "ppt/notesMasters/_rels/notesMaster1.xml.rels",
+            data: relationshipsXml([
+              { id: "rId1", type: REL.theme, target: "../theme/theme2.xml" },
+            ]),
+          },
+        ]
+      : []),
     ...builtSlides.flatMap((slide, index) => [
       { name: `ppt/slides/slide${index + 1}.xml`, data: slide.xml },
       {
         name: `ppt/slides/_rels/slide${index + 1}.xml.rels`,
         data: slide.rels,
+      },
+    ]),
+    ...notesSlides.flatMap((notesSlide) => [
+      {
+        name: `ppt/notesSlides/notesSlide${notesSlide.number}.xml`,
+        data: notesSlideXml(notesSlide.notes),
+      },
+      {
+        name: `ppt/notesSlides/_rels/notesSlide${notesSlide.number}.xml.rels`,
+        data: notesSlideRelsXml(notesSlide.slideIndex),
       },
     ]),
     ...[...normalizedAssets.values()].map((asset) => ({
@@ -1068,6 +1303,9 @@ export function inspectPptxPackage(buffer) {
       const number = (name) => Number(/\d+/.exec(name)[0]);
       return number(left) - number(right);
     });
+  const notesNames = [...files.keys()].filter((name) =>
+    /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(name),
+  );
   const core = files.get("docProps/core.xml")?.data.toString("utf8") || "";
   const title = /<dc:title>([\s\S]*?)<\/dc:title>/.exec(core);
   return {
@@ -1079,6 +1317,7 @@ export function inspectPptxPackage(buffer) {
       crc32: entry.crc32,
     })),
     slideCount: slideNames.length,
+    notesCount: notesNames.length,
     mediaCount: [...files.keys()].filter((name) => name.startsWith("ppt/media/"))
       .length,
     dimensions: {

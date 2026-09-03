@@ -69,8 +69,9 @@ The themed slide is displayed and updates automatically
   `auto` measures standard slides without code, tables, images, or Mermaid and
   enlarges only when ample space remains.
 - Put **speaker notes** in top-level HTML comments on each slide. Presenter view
-  renders notes as Markdown and follows navigation. Notes are absent from
-  regular slides, the external presenter, and PDF output.
+  renders notes as Markdown and follows navigation. PowerPoint export includes
+  readable plain-text notes. Notes are absent from regular slides, the external
+  presenter, and PDF output.
 - The **canvas renderer** owns the compact navigation controls, shape editing,
   the slide list, and current position. **More controls > Shape editing**
   toggles the same placement mode as `edit_architecture`. For Markdown loaded
@@ -91,8 +92,10 @@ The themed slide is displayed and updates automatically
   DSL objects as native PowerPoint content. Architecture nodes, groups, and
   connector-label pills are visible AutoShapes with integrated text; icons use a
   transparent foreground picture layer. Mermaid and unsupported styling stay
-  visible as background artwork and are listed in the export report. AI may call
-  `export_pptx` with another workspace-confined `.pptx` path.
+  visible as background artwork and are listed in the export report. Speaker
+  notes are converted from Markdown to readable plain text in the corresponding
+  PowerPoint notes pane. AI may call `export_pptx` with another
+  workspace-confined `.pptx` path.
 - Use **More controls > Output preview** to letterbox the current slide inside
   the canvas with
   the same fixed 1280×720 typography, spacing, diagram limits, and clipping used

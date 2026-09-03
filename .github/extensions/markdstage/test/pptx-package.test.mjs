@@ -61,6 +61,7 @@ function samplePackage() {
     slides: [
       {
         backgroundAssetId: "background",
+        notes: 'Discuss <results> & "日本語".\n\n  - Open the report.',
         elements: [
           {
             type: "text",
@@ -159,6 +160,7 @@ test("writes a valid stored ZIP with the required editable PowerPoint parts", ()
     {
       valid: summary.valid,
       slideCount: summary.slideCount,
+      notesCount: summary.notesCount,
       mediaCount: summary.mediaCount,
       dimensions: summary.dimensions,
       title: summary.title,
@@ -166,6 +168,7 @@ test("writes a valid stored ZIP with the required editable PowerPoint parts", ()
     {
       valid: true,
       slideCount: 2,
+      notesCount: 1,
       mediaCount: 2,
       dimensions: { widthEmu: 12192000, heightEmu: 6858000 },
       title: 'Roadmap & "Next"',
@@ -190,6 +193,11 @@ test("writes a valid stored ZIP with the required editable PowerPoint parts", ()
     "ppt/slideMasters/_rels/slideMaster1.xml.rels",
     "ppt/slideLayouts/slideLayout1.xml",
     "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
+    "ppt/theme/theme2.xml",
+    "ppt/notesMasters/notesMaster1.xml",
+    "ppt/notesMasters/_rels/notesMaster1.xml.rels",
+    "ppt/notesSlides/notesSlide1.xml",
+    "ppt/notesSlides/_rels/notesSlide1.xml.rels",
     "ppt/slides/slide1.xml",
     "ppt/slides/_rels/slide1.xml.rels",
     "ppt/slides/slide2.xml",
@@ -207,12 +215,74 @@ test("writes a valid stored ZIP with the required editable PowerPoint parts", ()
   );
 });
 
+test("writes speaker notes with the required PowerPoint relationships", () => {
+  const files = readStoredZip(samplePackage());
+  const contentTypes = xml(files, "[Content_Types].xml");
+  const presentation = xml(files, "ppt/presentation.xml");
+  const presentationRels = xml(files, "ppt/_rels/presentation.xml.rels");
+  const slide1Rels = xml(files, "ppt/slides/_rels/slide1.xml.rels");
+  const slide2Rels = xml(files, "ppt/slides/_rels/slide2.xml.rels");
+  const notes = xml(files, "ppt/notesSlides/notesSlide1.xml");
+  const notesRels = xml(files, "ppt/notesSlides/_rels/notesSlide1.xml.rels");
+  const notesMasterRels = xml(files, "ppt/notesMasters/_rels/notesMaster1.xml.rels");
+  const app = xml(files, "docProps/app.xml");
+
+  assert.match(contentTypes, /presentationml\.notesMaster\+xml/);
+  assert.match(contentTypes, /presentationml\.notesSlide\+xml/);
+  assert.match(contentTypes, /PartName="\/ppt\/theme\/theme2\.xml"/);
+  assert.match(presentation, /<p:notesMasterIdLst>/);
+  assert.match(presentationRels, /Type="[^"]*\/notesMaster"/);
+  assert.match(slide1Rels, /Type="[^"]*\/notesSlide"/);
+  assert.doesNotMatch(slide2Rels, /Type="[^"]*\/notesSlide"/);
+  assert.match(notesRels, /Type="[^"]*\/notesMaster"/);
+  assert.match(notesRels, /Target="\.\.\/slides\/slide1\.xml"/);
+  assert.match(notesMasterRels, /Target="\.\.\/theme\/theme2\.xml"/);
+  assert.match(notes, /<p:ph type="body" idx="2"\/>/);
+  assert.match(notes, /Discuss &lt;results&gt; &amp; &quot;日本語&quot;\./);
+  assert.match(notes, /<a:t xml:space="preserve">  - Open the report\.<\/a:t>/);
+  assert.match(app, /<Notes>1<\/Notes>/);
+});
+
+test("omits PowerPoint notes parts when every slide has empty notes", () => {
+  const buffer = buildPptxPackage({
+    slides: [{ elements: [] }, { notes: " \r\n ", elements: [] }],
+  });
+  const files = readStoredZip(buffer);
+  const summary = inspectPptxPackage(buffer);
+
+  assert.equal(summary.notesCount, 0);
+  assert.equal(
+    [...files.keys()].some(
+      (name) => name.startsWith("ppt/notesSlides/") || name.startsWith("ppt/notesMasters/"),
+    ),
+    false,
+  );
+  assert.equal(files.has("ppt/theme/theme2.xml"), false);
+  assert.doesNotMatch(xml(files, "ppt/presentation.xml"), /notesMasterIdLst/);
+  assert.doesNotMatch(xml(files, "ppt/_rels/presentation.xml.rels"), /notesMaster/);
+  assert.match(xml(files, "docProps/app.xml"), /<Notes>0<\/Notes>/);
+});
+
+test("replaces XML-prohibited characters in speaker notes", () => {
+  const files = readStoredZip(
+    buildPptxPackage({
+      slides: [{ notes: "Before\u0000after", elements: [] }],
+    }),
+  );
+
+  assert.match(xml(files, "ppt/notesSlides/notesSlide1.xml"), /Before�after/);
+});
+
 test("emits native text, hyperlinks, tables, images, shapes, and connector segments", () => {
   const files = readStoredZip(samplePackage());
   const slide = xml(files, "ppt/slides/slide1.xml");
   const rels = xml(files, "ppt/slides/_rels/slide1.xml.rels");
   assert.match(slide, /<a:t>Editable &amp; linked<\/a:t>/);
   assert.match(slide, /<a:rPr[^>]*sz="2400"[^>]*b="1"[^>]*i="1"[^>]*u="sng"/);
+  assert.match(
+    slide,
+    /<a:off x="76200" y="285750"\/><a:ext cx="6019800" cy="857250"\/>[\s\S]*?<a:pPr algn="ctr" lvl="1" marL="304800" indent="-304800"><a:buChar char="•"\/>/,
+  );
   assert.match(slide, /<a:hlinkClick r:id="rId\d+"\/>/);
   assert.match(rels, /Target="https:\/\/example\.com\/\?a=1&amp;b=2" TargetMode="External"/);
   assert.match(slide, /<a:tbl>/);
@@ -349,7 +419,10 @@ test("keeps rich text and visible styling together in a configured AutoShape", (
     shape,
     /<a:bodyPr wrap="square" lIns="9525" tIns="19050" rIns="33338" bIns="38100" anchor="ctr"\/>/,
   );
-  assert.match(shape, /<a:pPr algn="ctr" lvl="1"><a:buChar char="•"\/>/);
+  assert.match(
+    shape,
+    /<a:pPr algn="ctr" lvl="1" marL="228600" indent="-228600"><a:buChar char="•"\/>/,
+  );
   assert.match(shape, /<a:rPr[^>]*b="1"/);
   assert.match(
     shape,
@@ -411,6 +484,7 @@ test("rejects invalid slide and element models explicitly", () => {
     {},
     { slides: [] },
     { slides: [{}] },
+    { slides: [{ notes: 42, elements: [] }] },
     {
       slides: [
         {

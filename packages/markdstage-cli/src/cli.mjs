@@ -149,6 +149,7 @@ function usage(command) {
       "Usage: markdstage export <file.md> [--output slides.pdf|slides.pptx]",
       "",
       "Produces the same 16:9 PDF or hybrid editable PowerPoint as the MarkdStage canvas.",
+      "PowerPoint output includes speaker-note Markdown as readable plain text notes.",
       "The output extension selects the format; omitting --output keeps PDF as the default.",
     ],
     guide: [
