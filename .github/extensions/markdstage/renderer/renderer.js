@@ -1587,6 +1587,9 @@ async function collectPptxSlide(slide, index) {
         : undefined,
     });
     if (!paragraph.runs.some((run) => run.text.trim())) continue;
+    const disableTextWrap =
+      element.classList.contains("kicker") ||
+      (element.matches("h1, h2, .slide-title") && renderedTextLineCount(element) === 1);
     elements.push({
       type: "text",
       path: elementPath(element, deck),
@@ -1595,9 +1598,7 @@ async function collectPptxSlide(slide, index) {
         : relativeBounds(element, deck)),
       paragraphs: [paragraph],
       opacity: Number(getComputedStyle(element).opacity) || 1,
-      ...(element.matches("h1, h2, .slide-title") && renderedTextLineCount(element) === 1
-        ? { textWrap: "none" }
-        : {}),
+      ...(disableTextWrap ? { textWrap: "none" } : {}),
     });
     element.setAttribute("data-pptx-native", "text");
   }
