@@ -399,11 +399,12 @@ jobs:
           assets=$(gh release view "$GITHUB_REF_NAME" \
             --repo "$GITHUB_REPOSITORY" \
             --json assets --jq '.assets[].name')
+          version=$(node -p "require('./packages/markdstage-cli/package.json').version")
           for required in \
             "markdstage-${GITHUB_REF_NAME}.zip" \
             "markdstage-${GITHUB_REF_NAME}.zip.sha256" \
-            markdstage-markdstage-*.tgz \
-            markdstage-markdstage-*.tgz.sha256 \
+            "markdstage-markdstage-${version}.tgz" \
+            "markdstage-markdstage-${version}.tgz.sha256" \
             MarkdStage-win-x64.zip \
             MarkdStage-win-x64.zip.sha256 \
             MarkdStage-win-arm64.zip \
