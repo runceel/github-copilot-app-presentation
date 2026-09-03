@@ -8,17 +8,7 @@ Architecture diagrams, validate the fixed output layout, and export a PDF.
 
 ## Install the extension
 
-When this repository is opened as a project, the extension under
-`.github/extensions/markdstage/` loads at project scope.
-
-To install it at user scope in another repository, choose a trusted release tag and ask Copilot:
-
-> Install MarkdStage at user scope from the following GitHub repository folder.
->
-> `https://github.com/runceel/markdstage/tree/<release-tag>/.github/extensions/markdstage`
-
-Review local extension code before installing it. A release tag or commit SHA provides a
-reproducible installation.
+See the [installation guide](installation.md) for project-scope and user-scope installation.
 
 ## Open a deck
 

@@ -9,28 +9,10 @@ MarkdStage CLI は、ターミナルから Markdown デッキの発表、検証�
 CLI は Canvas Extension と同じ Markdown パーサー、レンダラー、テーマ処理、Architecture DSL
 検証、PDF／PNG 出力を利用します。どの環境でも見た目は同じです。
 
-## 必要なもの
-
-- Node.js 24 以降
-- インストール済みの Microsoft Edge、Google Chrome、または Chromium。MarkdStage がブラウザーを
-  ダウンロードすることはありません。
-
 ## インストール
 
-```console
-npx @markdstage/markdstage presentation slides.md
-npx @markdstage/markdstage present slides.md
-npm install --global @markdstage/markdstage
-```
-
-オフラインでインストールする場合は、[GitHub Release](https://github.com/runceel/markdstage/releases)
-からバージョン付きの `markdstage-markdstage-<version>.tgz` と `.sha256` チェックサムをダウンロードし、
-チェックサムを確認してからローカルの tarball をインストールします。
-
-```powershell
-Get-FileHash .\markdstage-markdstage-<version>.tgz -Algorithm SHA256
-npm install --global .\markdstage-markdstage-<version>.tgz
-```
+必要なもの、オンラインインストール、オフラインの tarball インストールは
+[インストールガイド](installation.md)を参照してください。
 
 ## コマンド
 

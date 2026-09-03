@@ -24,18 +24,20 @@ speaker notes, and the built-in dark, light, and Microsoft themes.
 
 ## Start here
 
-1. Follow the [quick start](quick-start.md) to open your first deck.
-2. Learn how to [create slides with GitHub Copilot](ai-assisted-authoring.md).
-3. Complete the [GitHub Copilot hands-on](copilot-hands-on.md).
-4. Learn the [Markdown authoring format](markdown-authoring.md).
-5. Review [themes and layouts](themes-and-layouts.md).
-6. Add [diagrams and media](diagrams-and-media.md).
-7. Prepare the [presentation and PDF output](presenting-and-export.md).
+1. [Install MarkdStage](installation.md) for Canvas Extension, CLI, or Desktop.
+2. Follow the [quick start](quick-start.md) to open your first deck.
+3. Learn how to [create slides with GitHub Copilot](ai-assisted-authoring.md).
+4. Complete the [GitHub Copilot hands-on](copilot-hands-on.md).
+5. Learn the [Markdown authoring format](markdown-authoring.md).
+6. Review [themes and layouts](themes-and-layouts.md).
+7. Add [diagrams and media](diagrams-and-media.md).
+8. Prepare the [presentation and PDF output](presenting-and-export.md).
 
 ## Feature guide
 
 | Topic | Guide |
 | --- | --- |
+| Install the Canvas Extension, CLI, or Desktop app | [Installation](installation.md) |
 | AI-assisted creation, schemas, diagnostics, and targeted visual review | [Create slides with GitHub Copilot](ai-assisted-authoring.md) |
 | Recorded prompt-to-PDF exercise with generated artifacts | [GitHub Copilot hands-on](copilot-hands-on.md) |
 | Canvas toolbar, import, live refresh, slide list, and presenter view | [Canvas Extension](canvas-extension.md) |
