@@ -173,6 +173,9 @@ export async function preparePptxPackageModel(
     if (!sourceSlide || !Array.isArray(sourceSlide.elements)) {
       throw new Error(`PowerPoint slide ${slideIndex + 1} has an invalid element list.`);
     }
+    if (sourceSlide.notes !== undefined && typeof sourceSlide.notes !== "string") {
+      throw new Error(`PowerPoint slide ${slideIndex + 1} has invalid speaker notes.`);
+    }
     const elements = [];
     for (const sourceElement of sourceSlide.elements) {
       if (sourceElement?.type !== "image") {
@@ -210,6 +213,7 @@ export async function preparePptxPackageModel(
     }
     slides.push({
       backgroundAssetId: `markdstage-background-${slideIndex + 1}`,
+      ...(sourceSlide.notes ? { notes: sourceSlide.notes } : {}),
       elements,
     });
   }
@@ -594,9 +598,13 @@ export async function exportPptx(
         ...packageModel,
       });
       const packageSummary = inspectPackage(buffer);
+      const expectedNotes = model.slides.filter(
+        (slide) => typeof slide.notes === "string" && slide.notes.trim(),
+      ).length;
       if (
         !packageSummary.valid ||
         packageSummary.slideCount !== snapshot.slides.length ||
+        packageSummary.notesCount !== expectedNotes ||
         packageSummary.dimensions.widthEmu !== PPTX_DIMENSIONS.widthEmu ||
         packageSummary.dimensions.heightEmu !== PPTX_DIMENSIONS.heightEmu
       ) {

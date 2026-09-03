@@ -257,8 +257,9 @@ quotes, tables, links, images, `mermaid`, `architecture`, and emoji. Write raw
 Markdown; do not generate HTML or pre-escape it.
 
 Put Slidev / Marp-style speaker notes in a top-level HTML comment at the end of
-the slide. Notes support Markdown and appear only in the canvas and MarkdStage
-Desktop presenter view, not on standard slides, the external presenter, or PDF.
+the slide. Notes support Markdown in the canvas and MarkdStage Desktop presenter
+view, and PowerPoint export includes them as readable plain text notes. They do
+not appear on standard slides, the external presenter, or PDF.
 
 ```markdown
 ## Demo

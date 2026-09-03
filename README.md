@@ -190,7 +190,8 @@ layout: title
 
 The leading front matter supplies shared deck settings. Per-slide front matter can override values
 such as `layout`, `size`, and `theme`. Put speaker notes in a top-level HTML comment on each slide;
-they appear only in presenter view.
+they appear in presenter view and are exported as readable plain text in the corresponding
+PowerPoint notes pane. They remain absent from regular slides, the audience window, and PDF output.
 
 ## Repository structure
 

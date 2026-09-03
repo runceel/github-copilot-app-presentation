@@ -20,6 +20,18 @@ title: Native content
 
 Paragraph with **bold**, *emphasis*, and [a link](https://example.com/docs).
 
+<!--
+Explain **why** this content stays editable.
+
+- Open [the docs](https://example.com/docs).
+
+Fran&ccedil;ais &eacute;lan &copy; 2026.
+
+\`\`\`html
+&lt;div&gt; &amp; &#35;
+\`\`\`
+-->
+
 <p style="transform: rotate(2deg)">Rotated fallback</p>
 
 <p>Nested <span style="display: inline-block; transform: rotate(-2deg)">effect fallback</span></p>
@@ -148,6 +160,17 @@ test("collects a serializable hybrid model for every layout and theme", async ({
       "Section",
       "Finish",
     ]);
+    expect(model.slides[1].notes).toBe(
+      [
+        "Explain why this content stays editable.",
+        "",
+        "• Open the docs (https://example.com/docs).",
+        "",
+        "Français élan © 2026.",
+        "",
+        "&lt;div&gt; &amp; &#35;",
+      ].join("\n"),
+    );
     const kicker = model.slides[0].elements.find(
       (element) =>
         element.type === "text" &&
@@ -258,6 +281,7 @@ test("collects native text, nested lists, links, tables, and raster images", asy
     );
     expect(allRuns.some((run) => run.text.includes("Rotated fallback"))).toBe(false);
     expect(allRuns.some((run) => run.text.includes("effect fallback"))).toBe(false);
+    expect(allRuns.some((run) => run.text.includes("Explain why"))).toBe(false);
     expect(lists.map((paragraph) => paragraph.level)).toContain(1);
     expect(lists.every((paragraph) => paragraph.bullet.character === "•")).toBe(true);
     expect(table.rows).toHaveLength(2);
