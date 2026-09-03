@@ -23,6 +23,15 @@ npx @markdstage/markdstage present slides.md
 npm install --global @markdstage/markdstage
 ```
 
+オフラインでインストールする場合は、[GitHub Release](https://github.com/runceel/markdstage/releases)
+からバージョン付きの `markdstage-markdstage-<version>.tgz` と `.sha256` チェックサムをダウンロードし、
+チェックサムを確認してからローカルの tarball をインストールします。
+
+```powershell
+Get-FileHash .\markdstage-markdstage-<version>.tgz -Algorithm SHA256
+npm install --global .\markdstage-markdstage-<version>.tgz
+```
+
 ## コマンド
 
 ```console

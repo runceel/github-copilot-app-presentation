@@ -22,6 +22,15 @@ npx @markdstage/markdstage present slides.md
 npm install --global @markdstage/markdstage
 ```
 
+For offline installation, download the versioned `markdstage-markdstage-<version>.tgz` asset and its
+`.sha256` checksum from the [GitHub Release](https://github.com/runceel/markdstage/releases), verify
+the checksum, then install the tarball locally:
+
+```powershell
+Get-FileHash .\markdstage-markdstage-<version>.tgz -Algorithm SHA256
+npm install --global .\markdstage-markdstage-<version>.tgz
+```
+
 ## Commands
 
 ```console

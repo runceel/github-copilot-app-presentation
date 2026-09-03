@@ -21,6 +21,13 @@ npx @markdstage/markdstage present slides.md
 npm install --global @markdstage/markdstage
 ```
 
+For offline installation, download the versioned `.tgz` asset from the
+[GitHub Release](https://github.com/runceel/markdstage/releases) and install it locally:
+
+```console
+npm install --global .\markdstage-markdstage-<version>.tgz
+```
+
 ## Commands
 
 ```console
