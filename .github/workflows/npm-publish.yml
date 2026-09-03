@@ -222,6 +222,26 @@ jobs:
         working-directory: packages/markdstage-cli
         run: npm pack --dry-run
 
+      - name: Create CLI release tarball
+        shell: bash
+        working-directory: packages/markdstage-cli
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          mkdir -p "$GITHUB_WORKSPACE/release-assets"
+          npm pack --pack-destination "$GITHUB_WORKSPACE/release-assets"
+          cd "$GITHUB_WORKSPACE/release-assets"
+          sha256sum "markdstage-markdstage-${version}.tgz" \
+            > "markdstage-markdstage-${version}.tgz.sha256"
+
+      - name: Upload CLI artifacts
+        uses: actions/upload-artifact@v5
+        with:
+          name: markdstage-cli-release
+          path: release-assets/*
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Publish package
         shell: bash
         working-directory: packages/markdstage-cli
@@ -280,7 +300,9 @@ jobs:
           set -euo pipefail
           cd release-assets
           sed -i 's/\r$//' MarkdStage-win-x64.zip.sha256 MarkdStage-win-arm64.zip.sha256
+          sed -i 's/\r$//' markdstage-markdstage-*.tgz.sha256
           sha256sum -c "markdstage-${GITHUB_REF_NAME}.zip.sha256"
+          sha256sum -c markdstage-markdstage-*.tgz.sha256
           sha256sum -c MarkdStage-win-x64.zip.sha256
           sha256sum -c MarkdStage-win-arm64.zip.sha256
 
@@ -292,6 +314,7 @@ jobs:
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
           extension_sha=$(awk '{print $1}' "release-assets/markdstage-${GITHUB_REF_NAME}.zip.sha256")
+          cli_sha=$(awk '{print $1}' release-assets/markdstage-markdstage-*.tgz.sha256)
           x64_sha=$(awk '{print $1}' release-assets/MarkdStage-win-x64.zip.sha256)
           arm64_sha=$(awk '{print $1}' release-assets/MarkdStage-win-arm64.zip.sha256)
           gh api --method POST "repos/${GITHUB_REPOSITORY}/releases/generate-notes" \
@@ -324,6 +347,7 @@ jobs:
           | File | SHA-256 |
           | --- | --- |
           | \`markdstage-${GITHUB_REF_NAME}.zip\` | \`${extension_sha}\` |
+          | \`markdstage-markdstage-${version}.tgz\` | \`${cli_sha}\` |
           | \`MarkdStage-win-x64.zip\` | \`${x64_sha}\` |
           | \`MarkdStage-win-arm64.zip\` | \`${arm64_sha}\` |
 
@@ -343,6 +367,8 @@ jobs:
           assets=(
             "release-assets/markdstage-${GITHUB_REF_NAME}.zip"
             "release-assets/markdstage-${GITHUB_REF_NAME}.zip.sha256"
+            release-assets/markdstage-markdstage-*.tgz
+            release-assets/markdstage-markdstage-*.tgz.sha256
             "release-assets/MarkdStage-win-x64.zip"
             "release-assets/MarkdStage-win-x64.zip.sha256"
             "release-assets/MarkdStage-win-arm64.zip"
@@ -376,6 +402,8 @@ jobs:
           for required in \
             "markdstage-${GITHUB_REF_NAME}.zip" \
             "markdstage-${GITHUB_REF_NAME}.zip.sha256" \
+            markdstage-markdstage-*.tgz \
+            markdstage-markdstage-*.tgz.sha256 \
             MarkdStage-win-x64.zip \
             MarkdStage-win-x64.zip.sha256 \
             MarkdStage-win-arm64.zip \

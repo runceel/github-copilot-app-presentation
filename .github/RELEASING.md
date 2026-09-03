@@ -63,6 +63,8 @@ apps\MarkdStage.Desktop\scripts\Publish.ps1 -Architecture arm64
 
 Attach the following files to the release:
 
+- `markdstage-markdstage-<version>.tgz`
+- `markdstage-markdstage-<version>.tgz.sha256`
 - `MarkdStage-win-x64.zip`
 - `MarkdStage-win-x64.zip.sha256`
 - `MarkdStage-win-arm64.zip`
@@ -123,7 +125,8 @@ The tag starts `.github/workflows/npm-publish.yml`. The workflow:
 3. Builds and checksums the Extension ZIP.
 4. Tests and publishes the x64 and ARM64 Desktop ZIPs.
 5. Publishes `@markdstage/markdstage` with npm provenance.
-6. Generates release notes, creates the GitHub Release, uploads every asset, and verifies the
+6. Packs and checksums the CLI tarball for offline installation.
+7. Generates release notes, creates the GitHub Release, uploads every asset, and verifies the
    published URLs.
 
 The workflow is safe to rerun: existing npm versions are verified instead of republished, and
@@ -144,6 +147,6 @@ The workflow creates the GitHub Release and includes:
 
 After the workflow succeeds:
 
-1. Confirm the GitHub Release is marked latest and contains all six files.
+1. Confirm the GitHub Release is marked latest and contains all eight files.
 2. Confirm npm shows the matching `@markdstage/markdstage` version and provenance.
 3. Install the version-pinned Extension folder and verify the user-scoped Extension when applicable.
