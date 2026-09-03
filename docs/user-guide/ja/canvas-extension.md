@@ -8,18 +8,8 @@ Markdown の修正を Copilot に頼んだり、ファイルを直接読み込�
 
 ## Extension をインストールする
 
-このリポジトリをプロジェクトとして開くと、`.github/extensions/markdstage/` の Extension が
-プロジェクトスコープで読み込まれます。
-
-別のリポジトリへユーザースコープでインストールする場合は、信頼できるリリースタグを選び、
-Copilot に次のように依頼します。
-
-> 次の GitHub リポジトリフォルダーから MarkdStage をユーザースコープへインストールしてください。
->
-> `https://github.com/runceel/markdstage/tree/<release-tag>/.github/extensions/markdstage`
-
-インストールする前にローカルの Extension コードを確認してください。リリースタグかコミット SHA を指定すれば、
-毎回同じ内容をインストールできます。
+プロジェクトスコープとユーザースコープのインストール方法は
+[インストールガイド](installation.md)を参照してください。
 
 ## デッキを開く
 

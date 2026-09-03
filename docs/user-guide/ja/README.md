@@ -24,18 +24,20 @@ GitHub Copilot Canvas Extension でもスタンドアロンの Windows Desktop �
 
 ## はじめに
 
-1. [クイックスタート](quick-start.md)に沿って最初のデッキを開きます。
-2. [GitHub Copilot とスライドを作成する方法](ai-assisted-authoring.md)を読みます。
-3. [GitHub Copilot ハンズオン](copilot-hands-on.md)を実際に試します。
-4. [Markdown の書き方](markdown-authoring.md)を覚えます。
-5. [テーマとレイアウト](themes-and-layouts.md)を確認します。
-6. [図とメディア](diagrams-and-media.md)を追加します。
-7. [プレゼンテーションと PDF 出力](presenting-and-export.md)に備えます。
+1. [MarkdStage のインストール](installation.md)で Canvas Extension、CLI、Desktop の方法を確認します。
+2. [クイックスタート](quick-start.md)に沿って最初のデッキを開きます。
+3. [GitHub Copilot とスライドを作成する方法](ai-assisted-authoring.md)を読みます。
+4. [GitHub Copilot ハンズオン](copilot-hands-on.md)を実際に試します。
+5. [Markdown の書き方](markdown-authoring.md)を覚えます。
+6. [テーマとレイアウト](themes-and-layouts.md)を確認します。
+7. [図とメディア](diagrams-and-media.md)を追加します。
+8. [プレゼンテーションと PDF 出力](presenting-and-export.md)に備えます。
 
 ## 機能ガイド
 
 | トピック | ガイド |
 | --- | --- |
+| Canvas Extension、CLI、Desktop のインストール | [インストール](installation.md) |
 | AI を使った作成、スキーマ、診断、必要なページだけの目視確認 | [GitHub Copilot とスライドを作成する](ai-assisted-authoring.md) |
 | プロンプトから PDF までの流れを、実際の出力を見ながらたどる演習 | [GitHub Copilot ハンズオン](copilot-hands-on.md) |
 | Canvas のツールバー、読み込み、自動更新、スライド一覧、発表者ビュー | [Canvas Extension](canvas-extension.md) |

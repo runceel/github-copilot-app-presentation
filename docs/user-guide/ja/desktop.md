@@ -8,13 +8,8 @@ Canvas Extension と同じレンダラーで描画し、Windows のファイル�
 
 ## インストールして起動する
 
-1. [最新リリース](https://github.com/runceel/markdstage/releases/latest)から
-   x64 または ARM64 のポータブル ZIP をダウンロードします。
-2. フォルダーごと展開します。
-3. `MarkdStageApp.exe` を実行します。
-
-Microsoft Edge WebView2 Runtime が必要です。.NET と Windows App SDK のコンポーネントは
-ポータブルパッケージに同梱しています。
+ポータブルパッケージのダウンロードと必要なものは
+[インストールガイド](installation.md)を参照してください。
 
 ## Markdown ファイルを開く
 

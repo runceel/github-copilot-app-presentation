@@ -7,13 +7,7 @@ Canvas Extension and opens `.md` and `.markdown` files through the Windows file 
 
 ## Install and start
 
-1. Download the x64 or ARM64 portable ZIP from the
-   [latest release](https://github.com/runceel/markdstage/releases/latest).
-2. Extract the complete folder.
-3. Run `MarkdStageApp.exe`.
-
-Microsoft Edge WebView2 Runtime must be installed. The portable package already includes the
-required .NET and Windows App SDK components.
+See the [installation guide](installation.md) for the portable package download and prerequisites.
 
 ## Open a Markdown file
 

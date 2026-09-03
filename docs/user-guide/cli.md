@@ -9,27 +9,10 @@ jobs, and remote shells.
 The CLI uses the same Markdown parser, renderer, theme handling, Architecture DSL validation, and
 PDF/PNG pipeline as the Canvas Extension, so a deck looks identical on every surface.
 
-## Requirements
+## Installation
 
-- Node.js 24 or later.
-- An installed Microsoft Edge, Google Chrome, or Chromium. MarkdStage never downloads a browser.
-
-## Install
-
-```console
-npx @markdstage/markdstage presentation slides.md
-npx @markdstage/markdstage present slides.md
-npm install --global @markdstage/markdstage
-```
-
-For offline installation, download the versioned `markdstage-markdstage-<version>.tgz` asset and its
-`.sha256` checksum from the [GitHub Release](https://github.com/runceel/markdstage/releases), verify
-the checksum, then install the tarball locally:
-
-```powershell
-Get-FileHash .\markdstage-markdstage-<version>.tgz -Algorithm SHA256
-npm install --global .\markdstage-markdstage-<version>.tgz
-```
+See the [installation guide](installation.md) for requirements, online installation, and offline
+tarball installation.
 
 ## Commands
 
