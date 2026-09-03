@@ -14,8 +14,84 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Changes
+    runs-on: ubuntu-24.04
+    outputs:
+      docs: ${{ steps.classify.outputs.docs }}
+      test: ${{ steps.classify.outputs.test }}
+      cli: ${{ steps.classify.outputs.cli }}
+      desktop: ${{ steps.classify.outputs.desktop }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+
+      - name: Test path classification
+        run: npm run test:ci
+
+      - name: Classify changed paths
+        id: classify
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            node scripts/ci-paths.mjs --all
+            exit 0
+          fi
+
+          changed="$RUNNER_TEMP/changed-files.txt"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            git diff --name-only --no-renames --diff-filter=ACDMRTUXB \
+              "$BASE_SHA" "$HEAD_SHA" > "$changed"
+          elif [ -n "$BEFORE_SHA" ] &&
+               [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] &&
+               git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            git diff --name-only --no-renames --diff-filter=ACDMRTUXB \
+              "$BEFORE_SHA" "$GITHUB_SHA" > "$changed"
+          else
+            git diff-tree --no-commit-id --name-only --no-renames -r \
+              "$GITHUB_SHA" > "$changed"
+          fi
+
+          echo "Changed paths:"
+          sed 's/^/  /' "$changed"
+          node scripts/ci-paths.mjs < "$changed"
+
+  docs:
+    name: Documentation
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24.x
+
+      - name: Validate local documentation links
+        run: npm run test:docs
+
   test:
     name: Test
+    needs: changes
+    if: needs.changes.outputs.test == 'true'
     # Visual regression screenshots depend heavily on the installed fonts. Pin the runner and use
     # the official Playwright container, which bundles the browser and fonts.
     # Local baseline updates use the same image (npm run test:visual:update:linux).
@@ -94,6 +170,8 @@ jobs:
 
   cli:
     name: MarkdStage CLI
+    needs: changes
+    if: needs.changes.outputs.cli == 'true'
     runs-on: ubuntu-24.04
 
     steps:
@@ -150,6 +228,8 @@ jobs:
 
   desktop:
     name: MarkdStage Desktop
+    needs: changes
+    if: needs.changes.outputs.desktop == 'true'
     runs-on: windows-latest
 
     steps:
@@ -172,6 +252,7 @@ jobs:
         run: apps\MarkdStage.Desktop\scripts\Publish.ps1 -Architecture x64
 
       - name: ARM64 portable publish
+        if: github.event_name != 'pull_request'
         shell: pwsh
         run: apps\MarkdStage.Desktop\scripts\Publish.ps1 -Architecture arm64
 
@@ -183,3 +264,56 @@ jobs:
             apps/MarkdStage.Desktop/artifacts/*.zip
             apps/MarkdStage.Desktop/artifacts/*.sha256
           retention-days: 7
+          if-no-files-found: error
+
+  gate:
+    name: CI
+    if: always()
+    needs:
+      - changes
+      - docs
+      - test
+      - cli
+      - desktop
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Verify selected jobs
+        shell: bash
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          DOCS_SELECTED: ${{ needs.changes.outputs.docs }}
+          DOCS_RESULT: ${{ needs.docs.result }}
+          TEST_SELECTED: ${{ needs.changes.outputs.test }}
+          TEST_RESULT: ${{ needs.test.result }}
+          CLI_SELECTED: ${{ needs.changes.outputs.cli }}
+          CLI_RESULT: ${{ needs.cli.result }}
+          DESKTOP_SELECTED: ${{ needs.changes.outputs.desktop }}
+          DESKTOP_RESULT: ${{ needs.desktop.result }}
+        run: |
+          set -euo pipefail
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "Changes failed with result: $CHANGES_RESULT"
+            exit 1
+          fi
+
+          check_job() {
+            local name="$1"
+            local selected="$2"
+            local result="$3"
+            if [ "$selected" = "true" ]; then
+              if [ "$result" != "success" ]; then
+                echo "$name was selected but completed with result: $result"
+                exit 1
+              fi
+            elif [ "$result" != "skipped" ]; then
+              echo "$name was not selected but completed with result: $result"
+              exit 1
+            fi
+          }
+
+          check_job "Documentation" "$DOCS_SELECTED" "$DOCS_RESULT"
+          check_job "Test" "$TEST_SELECTED" "$TEST_RESULT"
+          check_job "MarkdStage CLI" "$CLI_SELECTED" "$CLI_RESULT"
+          check_job "MarkdStage Desktop" "$DESKTOP_SELECTED" "$DESKTOP_RESULT"
+          echo "All selected CI jobs passed."
