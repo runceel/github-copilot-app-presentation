@@ -1,4 +1,4 @@
-import { renderArchitectureBlock } from "./architecture.mjs";
+import { powerPointDashStyle, renderArchitectureBlock } from "./architecture.mjs";
 import { attachArchitectureEditor } from "./architecture-editor.mjs";
 import {
   DEFAULT_THEME,
@@ -703,7 +703,11 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
     const source = code.textContent;
     const slideIndex = navIndex;
     if (!architectureEditMode) {
-      target.replaceWith(renderArchitectureBlock(source, document));
+      const wrapper = renderArchitectureBlock(source, document);
+      wrapper.dataset.architectureBlock = String(blockIndex);
+      const title = wrapper.__presentationPptxSnapshot?.title;
+      if (title) wrapper.dataset.architectureTitle = title;
+      target.replaceWith(wrapper);
       return;
     }
     // Insert the editing UI only in editing mode. Normal view never takes this path,
@@ -780,6 +784,7 @@ function createSlide(markdown, fallbackTheme, themeLocked = deckThemeLocked) {
 }
 
 function renderSlide(markdown) {
+  closeArchitecturePicker();
   lastMarkdown = typeof markdown === "string" ? markdown : "";
   document.body.classList.toggle("markdstage-empty", !nonEmpty(markdown));
   // Always detach the previous slide's editing UI because it owns document listeners.
@@ -1292,7 +1297,7 @@ async function collectArchitectureObjects(wrapper, deck, blockIndex) {
           bold: Number(run.fontWeight) >= 600,
         })),
       }));
-    if (mapped.dash !== undefined) mapped.dash = mapped.dash ? "dash" : "solid";
+    if (mapped.dash !== undefined) mapped.dash = powerPointDashStyle(mapped.dash);
     for (const key of ["fill", "stroke", "color"]) {
       if (key in mapped) mapped[key] = resolveModelColor(mapped[key], deck);
     }
@@ -2148,6 +2153,7 @@ let navTotal = 0;
 let navMode = "deck";
 let overviewOpen = false;
 let importOpen = false;
+let architecturePickerOpen = false;
 let importPending = false;
 let importFiles = [];
 let sourceBacked = false;
@@ -2225,7 +2231,11 @@ function updateArchitectureEditButton(enabled = architectureEditMode) {
   if (!button) return;
   button.hidden = presenterMode || !architectureEditAvailable;
   button.dataset.state = enabled && !presenterMode ? "active" : "";
-  button.title = enabled ? "Exit shape editing mode" : "Shape editing mode";
+  button.title = architectureDetailedEdit
+    ? "Open Architecture Designer"
+    : enabled
+      ? "Exit shape editing mode"
+      : "Shape editing mode";
   button.setAttribute("aria-label", button.title);
   syncMoreControls();
 }
@@ -2314,8 +2324,113 @@ async function requestArchitectureEditMode(enabled) {
   }
 }
 
+function architectureDiagramOptions() {
+  return [...document.querySelectorAll(".architecture-diagram[data-architecture-block]")].map(
+    (wrapper, index) => ({
+      block: Number(wrapper.dataset.architectureBlock),
+      title: wrapper.dataset.architectureTitle || `Diagram ${index + 1}`,
+    }),
+  );
+}
+
+function closeArchitecturePicker({ restoreFocus = false } = {}) {
+  architecturePickerOpen = false;
+  const picker = document.getElementById("architecturePicker");
+  if (picker) picker.hidden = true;
+  if (restoreFocus) document.getElementById("navEdit")?.focus();
+}
+
+async function openArchitectureDesigner(block) {
+  const status = document.getElementById("sourceStatus");
+  if (status) status.textContent = "Opening the Architecture Designer.";
+  const result = await openDetailedArchitectureEditor(navIndex, block);
+  if (!result?.ok && status) {
+    status.textContent = result?.message || "Could not open the Architecture Designer.";
+  }
+  return result;
+}
+
+function openArchitecturePicker(options) {
+  const picker = document.getElementById("architecturePicker");
+  const list = document.getElementById("architecturePickerList");
+  if (!picker || !list) return;
+  list.replaceChildren();
+  for (const [index, option] of options.entries()) {
+    const item = document.createElement("li");
+    item.className = "overview-item";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "overview-link";
+    const number = document.createElement("span");
+    number.className = "overview-num";
+    number.textContent = String(index + 1);
+    const label = document.createElement("span");
+    label.className = "overview-label";
+    label.textContent = option.title;
+    button.append(number, label);
+    button.addEventListener("click", () => {
+      closeArchitecturePicker();
+      void openArchitectureDesigner(option.block);
+    });
+    item.appendChild(button);
+    list.appendChild(item);
+  }
+  architecturePickerOpen = true;
+  picker.hidden = false;
+  list.querySelector("button")?.focus();
+}
+
+function handleArchitecturePickerKey(event) {
+  const picker = document.getElementById("architecturePicker");
+  const list = document.getElementById("architecturePickerList");
+  if (!picker || !list) return;
+  const focusable = [...picker.querySelectorAll("button:not([disabled])")];
+  const options = [...list.querySelectorAll("button:not([disabled])")];
+  if (event.key === "Tab") {
+    const current = focusable.indexOf(document.activeElement);
+    if (current < 0 || (!event.shiftKey && current === focusable.length - 1)) {
+      event.preventDefault();
+      focusable[0]?.focus();
+    } else if (event.shiftKey && current === 0) {
+      event.preventDefault();
+      focusable.at(-1)?.focus();
+    }
+    return;
+  }
+  const current = options.indexOf(document.activeElement);
+  let next = null;
+  if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+    next = options[(Math.max(current, -1) + 1) % options.length];
+  } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+    next = options[(current <= 0 ? options.length : current) - 1];
+  } else if (event.key === "Home") {
+    next = options[0];
+  } else if (event.key === "End") {
+    next = options.at(-1);
+  } else if (event.key === "PageDown" || event.key === "PageUp") {
+    event.preventDefault();
+    return;
+  }
+  if (next) {
+    event.preventDefault();
+    next.focus();
+  }
+}
+
 async function toggleArchitectureEditMode() {
   if (presenterMode || !architectureEditAvailable) return;
+  if (architectureDetailedEdit) {
+    const options = architectureDiagramOptions();
+    if (options.length === 1) {
+      await openArchitectureDesigner(options[0].block);
+    } else if (options.length > 1) {
+      openArchitecturePicker(options);
+    } else {
+      const status = document.getElementById("sourceStatus");
+      if (status) status.textContent = "The current slide has no Architecture diagram to edit.";
+    }
+    return;
+  }
   await requestArchitectureEditMode(!architectureEditMode);
   await fetchState();
 }
@@ -2498,6 +2613,8 @@ async function fetchState() {
     if (!architectureEditAvailable) {
       availabilityDisabledEditMode = setArchitectureEditMode(false);
     }
+  }
+  if (editAvailabilityChanged || detailedEditChanged) {
     updateArchitectureEditButton();
   }
   if (
@@ -2686,6 +2803,7 @@ function updateHostActionButtons() {
   if (importButton) importButton.hidden = presenterMode || !markdownImportAvailable;
   if (!presenterViewAvailable && presenterViewOpen) closePresenterView();
   if (!markdownImportAvailable && importOpen) closeImportPicker();
+  if (!architectureDetailedEdit && architecturePickerOpen) closeArchitecturePicker();
   syncMoreControls();
 }
 
@@ -3217,6 +3335,7 @@ function wireControls() {
   bind("navSourceMode", toggleSourceMode, { closeMore: true });
   bind("overviewClose", closeOverview);
   bind("importClose", closeImportPicker);
+  bind("architecturePickerClose", () => closeArchitecturePicker({ restoreFocus: true }));
   bind("presenterPrevButton", goPrev);
   bind("presenterNextButton", goNext);
   bind("presenterListButton", openOverview);
@@ -3239,6 +3358,13 @@ function wireControls() {
     // Click on the dimmed backdrop (outside the panel) closes the overview.
     overview.addEventListener("click", (e) => {
       if (e.target === overview) closeOverview();
+    });
+  }
+
+  const architecturePicker = document.getElementById("architecturePicker");
+  if (architecturePicker) {
+    architecturePicker.addEventListener("click", (e) => {
+      if (e.target === architecturePicker) closeArchitecturePicker({ restoreFocus: true });
     });
   }
 
@@ -3272,6 +3398,15 @@ function wireControls() {
       e.preventDefault();
       return;
     }
+    if (e.key === "Escape" && architecturePickerOpen) {
+      closeArchitecturePicker({ restoreFocus: true });
+      e.preventDefault();
+      return;
+    }
+    if (architecturePickerOpen) {
+      handleArchitecturePickerKey(e);
+      return;
+    }
     if (e.key === "Escape" && moreControlsOpen) {
       setMoreControlsOpen(false, { restoreFocus: true });
       e.preventDefault();
@@ -3295,6 +3430,9 @@ function wireControls() {
       case "Escape":
         if (importOpen) {
           closeImportPicker();
+          e.preventDefault();
+        } else if (architecturePickerOpen) {
+          closeArchitecturePicker({ restoreFocus: true });
           e.preventDefault();
         } else if (overviewOpen) {
           closeOverview();

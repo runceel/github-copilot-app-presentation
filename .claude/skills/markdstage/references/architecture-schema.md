@@ -28,7 +28,11 @@ Key details extracted at runtime from the bundled `schema/architecture-v1.schema
   "shape": [
     "rect",
     "rounded-rect",
-    "ellipse"
+    "ellipse",
+    "diamond",
+    "triangle",
+    "hexagon",
+    "parallelogram"
   ],
   "icon": {
     "builtIn": [

@@ -13,12 +13,14 @@ import {
   MAX_SOURCE_LENGTH,
   MIN_VISIBLE_ROUTE_LENGTH,
   ROUTE_FALLBACK_REASONS,
+  architecturePowerPointSnapshot,
   architectureSemanticSnapshot,
   computeConnectorRoute,
   connectorLabelAnchor,
   connectorLabelBox,
   parseArchitecture,
   pointAtHalfLength,
+  powerPointDashStyle,
   renderArchitectureBlock,
   renderArchitectureDiagram,
   routeLengthOutsideBox,
@@ -263,6 +265,49 @@ test("treats an empty fenced body as an empty architecture diagram", () => {
   const wrapper = renderArchitectureBlock("", new FakeDocument());
   assert.equal(wrapper.className, "architecture-diagram");
   assert.equal(descendants(wrapper).some((element) => element.tagName === "svg"), true);
+});
+
+test("renders additive PowerPoint-compatible node shapes as native SVG geometry", () => {
+  const shapes = ["diamond", "triangle", "hexagon", "parallelogram"];
+  const model = parseArchitecture(
+    JSON.stringify({
+      version: 1,
+      canvas: { width: 1200, height: 400 },
+      elements: shapes.map((shape, index) => ({
+        type: "node",
+        id: shape,
+        shape,
+        x: 40 + index * 280,
+        y: 80,
+        width: 220,
+        height: 160,
+        text: shape,
+      })),
+    }),
+  );
+  const wrapper = renderArchitectureDiagram(model, new FakeDocument());
+  const nodes = descendants(wrapper);
+  const polygons = nodes.filter((node) => node.tagName === "polygon");
+  assert.equal(polygons.length, shapes.length);
+  for (const polygon of polygons) {
+    assert.match(polygon.attributes.get("points"), /^[-\d., ]+$/);
+  }
+
+  const snapshot = architecturePowerPointSnapshot(model);
+  assert.deepEqual(
+    snapshot.objects
+      .filter((object) => object.type === "shape")
+      .map((object) => object.shape),
+    shapes,
+  );
+});
+
+test("maps Architecture dash patterns to PowerPoint solid, dotted, and dashed presets", () => {
+  assert.equal(powerPointDashStyle(""), "solid");
+  assert.equal(powerPointDashStyle("1 5"), "dotted");
+  assert.equal(powerPointDashStyle("2, 8"), "dotted");
+  assert.equal(powerPointDashStyle("10 6"), "dash");
+  assert.equal(powerPointDashStyle("12 8,4 2"), "dash");
 });
 
 test("rejects malformed JSON, unknown references, unsafe colors, and unsupported fields", () => {

@@ -210,20 +210,89 @@ test.describe("Markdown import", () => {
       await expect(page.locator(".architecture-error")).toHaveCount(0);
 
       await clickMoreControl(page, "#navEdit");
-      await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(1);
+      await expect.poll(() => harness.architectureEditorOpens).toEqual([{ index: 0, block: 0 }]);
+      await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(0);
     } finally {
       await harness.close();
       await rm(root, { recursive: true, force: true });
     }
   });
 
-  test("saves imported diagram edits to the source file and preserves them after reopening edit mode", async ({
+  test("opens a diagram picker before the dedicated designer when a slide has multiple diagrams", async ({
+    page,
+  }) => {
+    const root = await mkdtemp(join(tmpdir(), "presentation-import-multiple-architecture-"));
+    const diagram = (title, id) => JSON.stringify({
+      version: 1,
+      title,
+      canvas: { width: 800, height: 450 },
+      elements: [
+        { type: "node", id, text: title, x: 80, y: 80, width: 260, height: 140 },
+      ],
+    }, null, 2);
+    await writeFile(
+      join(root, "multiple.md"),
+      `# Multiple\n\n\`\`\`architecture\n${diagram("Frontend", "web")}\n\`\`\`\n\n\`\`\`architecture\n${diagram("Data tier", "db")}\n\`\`\`\n\n---\n\n# After\n`,
+      "utf8",
+    );
+    const harness = await startHarness({ slides: SLIDES, markdownRoot: root });
+    try {
+      await page.goto(harness.url, { waitUntil: "load" });
+      await waitForSlideReady(page);
+      await clickMoreControl(page, "#navImport");
+      await page.locator("#importList .overview-link", { hasText: "multiple.md" }).click();
+      await waitForSlideReady(page);
+
+      await clickMoreControl(page, "#navEdit");
+      const picker = page.locator("#architecturePicker");
+      await expect(picker).toBeVisible();
+      await expect(picker.getByRole("button", { name: /Frontend/ })).toBeVisible();
+      await page.keyboard.press("PageDown");
+      expect(harness.index).toBe(0);
+      await page.keyboard.press("ArrowDown");
+      await expect(picker.getByRole("button", { name: /Data tier/ })).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect.poll(() => harness.architectureEditorOpens).toEqual([{ index: 0, block: 1 }]);
+      await expect(picker).toBeHidden();
+    } finally {
+      await harness.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reports when the current source-backed slide has no Architecture diagram", async ({ page }) => {
+    const root = await mkdtemp(join(tmpdir(), "presentation-import-no-architecture-"));
+    await writeFile(join(root, "plain.md"), "# Plain slide\n\nNo diagram here.\n", "utf8");
+    const harness = await startHarness({ slides: SLIDES, markdownRoot: root });
+    try {
+      await page.goto(harness.url, { waitUntil: "load" });
+      await waitForSlideReady(page);
+      await clickMoreControl(page, "#navImport");
+      await page.locator("#importList .overview-link", { hasText: "plain.md" }).click();
+      await waitForSlideReady(page);
+
+      await clickMoreControl(page, "#navEdit");
+      await expect(page.locator("#sourceStatus")).toContainText(
+        "current slide has no Architecture diagram",
+      );
+      expect(harness.architectureEditorOpens).toHaveLength(0);
+    } finally {
+      await harness.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("the lightweight edit action still saves imported diagram edits to the source file", async ({
     page,
   }) => {
     const root = await mkdtemp(join(tmpdir(), "presentation-import-edit-"));
     const sourcePath = join(root, "editable.md");
     await writeFile(sourcePath, EDITABLE_SOURCE, "utf8");
-    const harness = await startHarness({ slides: SLIDES, markdownRoot: root });
+    const harness = await startHarness({
+      slides: SLIDES,
+      markdownRoot: root,
+      architectureEdit: true,
+    });
     try {
       await page.goto(harness.url, { waitUntil: "load" });
       await waitForSlideReady(page);
@@ -231,7 +300,6 @@ test.describe("Markdown import", () => {
       await page.locator("#importList .overview-link", { hasText: "editable.md" }).click();
       await waitForSlideReady(page);
 
-      await clickMoreControl(page, "#navEdit");
       await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(1);
       await page.locator('[data-architecture-id="client"]').focus();
       await page.keyboard.press("ArrowDown");
@@ -245,14 +313,10 @@ test.describe("Markdown import", () => {
       const savedDsl = JSON.parse(findArchitectureBlocks(saved)[0].body);
       expect(savedDsl.elements.find((element) => element.id === "client").y).toBe(400);
 
-      await clickMoreControl(page, "#navEdit");
-      await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(0);
-      await clickMoreControl(page, "#navEdit");
-      await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(1);
-      const reopenedY = await page
+      const savedY = await page
         .locator('[data-architecture-id="client"]')
         .evaluate((element) => Math.round(element.getBBox().y));
-      expect(reopenedY).toBe(400);
+      expect(savedY).toBe(400);
     } finally {
       await harness.close();
       await rm(root, { recursive: true, force: true });
@@ -265,14 +329,17 @@ test.describe("Markdown import", () => {
     const root = await mkdtemp(join(tmpdir(), "presentation-import-conflict-"));
     const sourcePath = join(root, "editable.md");
     await writeFile(sourcePath, EDITABLE_SOURCE, "utf8");
-    const harness = await startHarness({ slides: SLIDES, markdownRoot: root });
+    const harness = await startHarness({
+      slides: SLIDES,
+      markdownRoot: root,
+      architectureEdit: true,
+    });
     try {
       await page.goto(harness.url, { waitUntil: "load" });
       await waitForSlideReady(page);
       await clickMoreControl(page, "#navImport");
       await page.locator("#importList .overview-link", { hasText: "editable.md" }).click();
       await waitForSlideReady(page);
-      await clickMoreControl(page, "#navEdit");
       await expect(page.locator(".architecture-editor-toolbar")).toHaveCount(1);
 
       const external = EDITABLE_SOURCE.replace('"y": 380', '"y": 777');

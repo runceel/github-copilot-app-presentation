@@ -186,6 +186,8 @@ export async function startHarness({
   const printReports = [];
   // Diagram edit results posted by the renderer, retained so tests can verify writeback.
   const editReports = [];
+  // Dedicated Architecture Designer open requests posted by source-backed slides.
+  const architectureEditorOpens = [];
   const sseClients = new Set();
 
   function broadcast() {
@@ -327,6 +329,8 @@ export async function startHarness({
         markdownImportAvailable: state.markdownImportAvailable,
         architectureEditAvailable: true,
         architectureEdit: state.architectureEdit,
+        architectureDetailedEdit: state.sourceWriteback,
+        architectureDetailedEditTarget: "canvas",
       });
       return;
     }
@@ -453,6 +457,30 @@ export async function startHarness({
       const changed = state.architectureEdit !== body.enabled;
       state.architectureEdit = body.enabled;
       sendJson(res, 200, { ok: true, changed, architectureEdit: state.architectureEdit });
+      return;
+    }
+
+    if (pathname === "/architecture-editor/open") {
+      if (req.method !== "POST") {
+        res.setHeader("Allow", "POST");
+        sendJson(res, 405, { ok: false, error: "method_not_allowed" });
+        return;
+      }
+      if (!state.sourceWriteback) {
+        sendJson(res, 409, { ok: false, error: "source_not_available" });
+        return;
+      }
+      let body;
+      try {
+        body = await readJsonBody(req);
+      } catch (_) {
+        sendJson(res, 400, { ok: false, error: "bad_request" });
+        return;
+      }
+      const target = Number.isInteger(body.index) ? body.index : state.index;
+      const block = Number.isInteger(body.block) ? body.block : 0;
+      architectureEditorOpens.push({ index: target, block });
+      sendJson(res, 200, { ok: true, index: target, block });
       return;
     }
 
@@ -768,6 +796,8 @@ export async function startHarness({
     printReports,
     /** Diagram edits posted by the renderer (array of { index, block, source }). */
     editReports,
+    /** Dedicated Architecture Designer open requests (array of { index, block }). */
+    architectureEditorOpens,
     /** Currently displayed slide number (zero-based). */
     get index() {
       return state.index;

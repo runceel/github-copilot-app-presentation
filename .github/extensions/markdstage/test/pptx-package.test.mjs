@@ -440,6 +440,64 @@ test("keeps rich text and visible styling together in a configured AutoShape", (
   assert.match(slide, /<a:bodyPr wrap="none"[^>]*\/>[\s\S]*<a:t>Top-level paragraphs<\/a:t>/);
 });
 
+test("emits PowerPoint-native presets for the extended Architecture shapes", () => {
+  const shapes = ["diamond", "triangle", "hexagon", "parallelogram"];
+  const files = readStoredZip(
+    buildPptxPackage({
+      slides: [
+        {
+          elements: shapes.map((shape, index) => ({
+            type: "shape",
+            shape,
+            x: 20 + index * 220,
+            y: 40,
+            width: 180,
+            height: 120,
+            fill: "#ffffff",
+            stroke: "#000000",
+          })),
+        },
+      ],
+    }),
+  );
+  const slide = xml(files, "ppt/slides/slide1.xml");
+  for (const preset of shapes) {
+    assert.match(slide, new RegExp(`<a:prstGeom prst="${preset}">`));
+  }
+});
+
+test("emits solid and dotted DrawingML connector styles", () => {
+  const files = readStoredZip(
+    buildPptxPackage({
+      slides: [
+        {
+          elements: [
+            {
+              type: "connector",
+              points: [{ x: 20, y: 40 }, { x: 300, y: 40 }],
+              stroke: "#000000",
+              dash: "solid",
+            },
+            {
+              type: "connector",
+              points: [{ x: 20, y: 100 }, { x: 300, y: 100 }],
+              stroke: "#000000",
+              dash: "dotted",
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  const slide = xml(files, "ppt/slides/slide1.xml");
+  const connectors = [...slide.matchAll(/name="Connector \d+"[\s\S]*?<\/p:sp>/g)].map(
+    (match) => match[0],
+  );
+  assert.equal(connectors.length, 2);
+  assert.doesNotMatch(connectors[0], /<a:prstDash/);
+  assert.match(connectors[1], /<a:prstDash val="dot"\/>/);
+});
+
 test("places a full-slide PNG background before every native element", () => {
   const files = readStoredZip(samplePackage());
   const slide = xml(files, "ppt/slides/slide1.xml");

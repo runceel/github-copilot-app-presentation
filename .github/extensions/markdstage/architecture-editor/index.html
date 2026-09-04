@@ -7,40 +7,66 @@
   <link rel="stylesheet" href="./renderer/slides.css">
   <link rel="stylesheet" href="./editor/editor.css">
 </head>
-<body>
+<body data-elements-open="true" data-inspector-open="false">
   <header class="editor-header">
     <div class="editor-title">
       <strong>Architecture Editor</strong>
       <span id="sourceLabel"></span>
       <span id="dirtyBadge" class="dirty-badge" hidden>Unsaved</span>
     </div>
+    <div class="editor-panel-actions" role="group" aria-label="Designer panels">
+      <button id="elementsPanelButton" class="editor-panel-toggle" type="button" aria-controls="elementPanel" aria-expanded="false">Elements</button>
+      <button id="inspectorPanelButton" class="editor-panel-toggle" type="button" aria-controls="inspectorPanel" aria-expanded="false">Properties</button>
+    </div>
     <div class="editor-actions" role="toolbar" aria-label="Architecture editing controls">
-      <button type="button" data-action="undo" title="Undo (Ctrl+Z)">↶</button>
-      <button type="button" data-action="redo" title="Redo (Ctrl+Y)">↷</button>
-      <span class="toolbar-separator" aria-hidden="true"></span>
-      <button type="button" data-action="add-node">Node</button>
-      <button type="button" data-action="add-group">Group</button>
-      <button type="button" data-action="add-image">Image</button>
-      <button type="button" data-action="add-connector">Connector</button>
-      <button type="button" data-action="duplicate" title="Duplicate (Ctrl+D)">Duplicate</button>
-      <button type="button" data-action="delete" title="Delete (Delete)">Delete</button>
-      <button type="button" data-action="release-layout">Release layout</button>
-      <span class="toolbar-separator" aria-hidden="true"></span>
-      <button type="button" data-action="order-back" title="Move earlier in declaration order">Send backward</button>
-      <button type="button" data-action="order-front" title="Move later in declaration order">Bring forward</button>
-      <span class="toolbar-separator" aria-hidden="true"></span>
-      <button type="button" data-action="zoom-out" aria-label="Zoom out">−</button>
-      <button type="button" data-action="zoom-fit">Fit</button>
-      <button type="button" data-action="zoom-in" aria-label="Zoom in">＋</button>
-      <label class="snap-toggle"><input id="snapToggle" type="checkbox" checked> Grid</label>
+      <button type="button" data-action="undo" title="Undo (Ctrl+Z)" aria-label="Undo">↶</button>
+      <button type="button" data-action="redo" title="Redo (Ctrl+Y)" aria-label="Redo">↷</button>
+      <div class="shape-palette-host">
+        <button id="shapePaletteButton" type="button" data-action="toggle-shape-palette" aria-haspopup="menu" aria-controls="shapePalette" aria-expanded="false">Shape</button>
+        <div id="shapePalette" class="shape-palette" role="menu" aria-label="Add a shape" hidden></div>
+      </div>
       <button type="button" class="save-button" data-action="save" title="Save to Markdown (Ctrl+S)">Save</button>
-      <button type="button" data-action="reload" title="Reload from Markdown">Reload</button>
+      <div class="toolbar-more-host">
+        <button id="toolbarMoreButton" type="button" aria-haspopup="menu" aria-controls="toolbarMoreMenu" aria-expanded="false">More</button>
+        <div id="toolbarMoreMenu" class="toolbar-more-menu" role="menu" aria-label="More editing controls" hidden>
+          <div class="toolbar-more-group" role="presentation">
+            <span class="toolbar-more-label">Add</span>
+            <button type="button" role="menuitem" data-action="add-group">Group</button>
+            <button type="button" role="menuitem" data-action="add-image">Image</button>
+            <button type="button" role="menuitem" data-action="add-connector">Connector</button>
+          </div>
+          <div class="toolbar-more-group" role="presentation">
+            <span class="toolbar-more-label">Edit</span>
+            <button type="button" role="menuitem" data-action="duplicate" title="Duplicate (Ctrl+D)">Duplicate</button>
+            <button type="button" role="menuitem" data-action="delete" title="Delete (Delete)">Delete</button>
+            <button type="button" role="menuitem" data-action="release-layout">Release layout</button>
+          </div>
+          <div class="toolbar-more-group" role="presentation">
+            <span class="toolbar-more-label">Arrange</span>
+            <button type="button" role="menuitem" data-action="order-back" title="Move earlier in declaration order">Send backward</button>
+            <button type="button" role="menuitem" data-action="order-front" title="Move later in declaration order">Bring forward</button>
+          </div>
+          <div class="toolbar-more-group" role="presentation">
+            <span class="toolbar-more-label">View</span>
+            <div class="toolbar-more-row">
+              <button type="button" role="menuitem" data-action="zoom-out" aria-label="Zoom out">−</button>
+              <button type="button" role="menuitem" data-action="zoom-fit">Fit</button>
+              <button type="button" role="menuitem" data-action="zoom-in" aria-label="Zoom in">＋</button>
+            </div>
+            <label class="snap-toggle"><input id="snapToggle" type="checkbox" checked> Snap to grid</label>
+          </div>
+          <button type="button" role="menuitem" data-action="reload" title="Reload from Markdown">Reload from Markdown</button>
+        </div>
+      </div>
     </div>
   </header>
 
   <main class="editor-layout">
-    <aside class="editor-sidebar element-panel" aria-label="Elements">
-      <h2>Elements</h2>
+    <aside id="elementPanel" class="editor-sidebar element-panel" aria-label="Elements">
+      <div class="editor-sidebar-head">
+        <h2>Elements</h2>
+        <button class="editor-panel-close" type="button" data-panel-close="elements" aria-label="Close Elements">×</button>
+      </div>
       <div id="elementTree" class="element-tree" role="tree"></div>
     </aside>
 
@@ -48,8 +74,11 @@
       <div id="canvasSurface" class="canvas-surface"></div>
     </section>
 
-    <aside class="editor-sidebar inspector-panel" aria-label="Properties">
-      <h2>Properties</h2>
+    <aside id="inspectorPanel" class="editor-sidebar inspector-panel" aria-label="Properties">
+      <div class="editor-sidebar-head">
+        <h2>Properties</h2>
+        <button class="editor-panel-close" type="button" data-panel-close="inspector" aria-label="Close Properties">×</button>
+      </div>
       <form id="inspector" class="inspector" autocomplete="off"></form>
     </aside>
   </main>

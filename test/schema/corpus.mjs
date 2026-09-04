@@ -128,6 +128,10 @@ export const corpus = [
       node({ id: "s1", shape: "rect" }),
       node({ id: "s2", shape: "rounded-rect", x: 200 }),
       node({ id: "s3", shape: "ellipse", x: 400 }),
+      node({ id: "s4", shape: "diamond", x: 600 }),
+      node({ id: "s5", shape: "triangle", x: 800 }),
+      node({ id: "s6", shape: "hexagon", x: 1000 }),
+      node({ id: "s7", shape: "parallelogram", x: 1200 }),
     ]),
   },
   {
@@ -616,7 +620,7 @@ export const corpus = [
   {
     name: "unknown shape",
     expect: "reject",
-    source: doc([node({ shape: "hexagon" })]),
+    source: doc([node({ shape: "pentagon" })]),
   },
   {
     name: "unknown icon",

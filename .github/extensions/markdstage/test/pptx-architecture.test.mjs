@@ -93,3 +93,36 @@ test("Architecture PowerPoint snapshot integrates labels into AutoShapes", () =>
     [{ id: "api", icon: "api" }],
   );
 });
+
+test("Architecture PowerPoint snapshot preserves native node shape presets", () => {
+  const shapes = ["diamond", "triangle", "hexagon", "parallelogram"];
+  const snapshot = architecturePowerPointSnapshot(
+    parseArchitecture(
+      JSON.stringify({
+        version: 1,
+        canvas: { width: 1000, height: 300 },
+        elements: shapes.map((shape, index) => ({
+          type: "node",
+          id: shape,
+          shape,
+          x: 20 + index * 240,
+          y: 40,
+          width: 200,
+          height: 140,
+          text: shape,
+          icon: shape === "triangle" ? "api" : undefined,
+        })),
+      }),
+    ),
+  );
+
+  assert.deepEqual(
+    snapshot.objects.map(({ shape }) => shape),
+    shapes,
+  );
+  assert.ok(snapshot.objects.every((object) => object.textInsets.left > 16));
+  assert.ok(
+    snapshot.icons.find((icon) => icon.id === "triangle").x >= 300,
+    "triangle icons should use the same safe content inset as SVG rendering",
+  );
+});

@@ -117,6 +117,76 @@ test("there are no WCAG violations with the layout submenu open", async ({ page 
   }
 });
 
+test("the shape palette and responsive drawers are keyboard accessible", async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 720 });
+  const harness = await startArchitectureEditorHarness({ source: SOURCE });
+  try {
+    await page.goto(harness.url, { waitUntil: "load" });
+    await expect(page.locator(".tree-item")).toHaveCount(3);
+
+    const shape = page.getByRole("button", { name: "Shape", exact: true });
+    await shape.focus();
+    await page.keyboard.press("Enter");
+    const palette = page.getByRole("menu", { name: "Add a shape" });
+    await expect(palette).toBeVisible();
+    await expect(palette.getByRole("menuitem").first()).toBeFocused();
+    await page.keyboard.press("ArrowRight");
+    await expect(palette.getByRole("menuitem").nth(1)).toBeFocused();
+
+    let result = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .analyze();
+    expect(
+      result.violations.map((violation) => `${violation.id}: ${violation.help}`),
+    ).toEqual([]);
+
+    await page.keyboard.press("Escape");
+    await expect(shape).toBeFocused();
+    await shape.press("Enter");
+    await page.keyboard.press("Enter");
+    await expect(shape).toBeFocused();
+    await expect(page.locator('[data-ref="node"].tree-item')).toHaveCount(1);
+
+    const more = page.getByRole("button", { name: "More", exact: true });
+    await more.press("Enter");
+    const moreMenu = page.getByRole("menu", { name: "More editing controls" });
+    await expect(moreMenu).toBeVisible();
+    await expect(moreMenu.getByRole("menuitem", { name: "Group", exact: true })).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(moreMenu.getByRole("menuitem", { name: "Image", exact: true })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(more).toBeFocused();
+    await more.press("Enter");
+    await page.keyboard.press("Enter");
+    await expect(more).toBeFocused();
+    await expect(page.locator('[data-ref="group"].tree-item')).toHaveCount(1);
+
+    const elements = page.getByRole("button", { name: "Elements", exact: true });
+    await elements.press("Enter");
+    await expect(page.locator("#elementPanel")).toBeVisible();
+    await expect(page.locator('.tree-item[aria-selected="true"]')).toBeFocused();
+    result = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      .analyze();
+    expect(
+      result.violations.map((violation) => `${violation.id}: ${violation.help}`),
+    ).toEqual([]);
+
+    await page.locator('[data-ref="client"].tree-item').focus();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#elementPanel")).toBeVisible();
+    await page.getByRole("button", { name: "Properties", exact: true }).press("Enter");
+    await expect(page.locator("#inspectorPanel")).toBeVisible();
+    await expect(page.getByLabel("ID", { exact: true })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Properties", exact: true })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+  } finally {
+    await harness.close();
+  }
+});
+
 test("the image picker supports keyboard selection, restores focus, and has no WCAG violations", async ({ page }) => {
   const harness = await startArchitectureEditorHarness({
     source: SOURCE,
@@ -124,7 +194,8 @@ test("the image picker supports keyboard selection, restores focus, and has no W
   });
   try {
     await page.goto(harness.url, { waitUntil: "load" });
-    const trigger = page.getByRole("button", { name: "Image", exact: true });
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    const trigger = page.getByRole("menuitem", { name: "Image", exact: true });
     await trigger.focus();
     await page.keyboard.press("Enter");
     const dialog = page.getByRole("dialog", { name: "Add image" });
@@ -143,7 +214,7 @@ test("the image picker supports keyboard selection, restores focus, and has no W
     await page.keyboard.press("Enter");
     await dialog.getByRole("button", { name: "Select", exact: true }).press("Enter");
     await expect(dialog).toBeHidden();
-    await expect(trigger).toBeFocused();
+    await expect(page.getByRole("button", { name: "More", exact: true })).toBeFocused();
     await expect(page.locator('[data-ref="accessible"].tree-item')).toBeVisible();
   } finally {
     await harness.close();

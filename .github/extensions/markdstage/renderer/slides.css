@@ -250,12 +250,15 @@ body.mermaid-loading .mermaid{visibility:hidden;}
 .architecture-editor [data-architecture-movable="false"]{cursor:not-allowed;outline:none;}
 .architecture-editor [data-architecture-type]:focus-visible>rect,
 .architecture-editor [data-architecture-type]:focus-visible>ellipse,
+.architecture-editor [data-architecture-type]:focus-visible>polygon,
 .architecture-editor .architecture-selected>rect,
-.architecture-editor .architecture-selected>ellipse{
+.architecture-editor .architecture-selected>ellipse,
+.architecture-editor .architecture-selected>polygon{
      stroke:var(--accent-strong);stroke-width:7;filter:drop-shadow(0 0 8px var(--accent-line));}
 /* Layout-managed elements cannot move. Show a dashed explanation only when selected. */
 .architecture-editor [data-architecture-movable="false"].architecture-selected>rect,
-.architecture-editor [data-architecture-movable="false"].architecture-selected>ellipse{
+.architecture-editor [data-architecture-movable="false"].architecture-selected>ellipse,
+.architecture-editor [data-architecture-movable="false"].architecture-selected>polygon{
      stroke-dasharray:10 8;}
 .architecture-error{display:flex;flex-direction:column;gap:.35em;margin:.5em 0;
      padding:.8em 1em;border:2px solid #d13438;border-radius:8px;
