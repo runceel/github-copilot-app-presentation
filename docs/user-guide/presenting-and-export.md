@@ -76,12 +76,14 @@ Speaker notes and Architecture editing controls are excluded.
    `markdstage export slides.md --output slides.pptx`.
 4. Open the generated presentation and review every slide.
 
-Headings, paragraphs, lists, links, simple tables, supported images, and Architecture DSL objects
-are native PowerPoint content. Architecture nodes, groups, and connector-label pills are visible
-AutoShapes with their labels stored inside the shape; diagram icons are transparent foreground
-pictures above those shapes. Decorative backgrounds, gradients, highlighted code, Mermaid, and
-unsupported HTML/CSS are preserved as background artwork. The export report lists these fallbacks
-instead of silently omitting them.
+Headings, paragraphs, lists, links, simple tables, fenced code blocks, supported images, and
+Architecture DSL objects are native PowerPoint content. Code blocks retain editable
+syntax-highlighted runs, indentation, blank lines, monospace typography, backgrounds, borders, and
+accent edges. Architecture nodes, groups, and connector-label pills are visible AutoShapes with
+their labels stored inside the shape; diagram icons are transparent foreground pictures above those
+shapes. Decorative backgrounds, gradients, code-block shadows, Mermaid, and unsupported HTML/CSS
+are preserved as background artwork. The export report lists these fallbacks instead of silently
+omitting them.
 
 Native Japanese text uses Yu Gothic as its primary East Asian font, while Latin text keeps the font
 selected by the rendered slide. Exported native text is marked as not requiring proofing, so

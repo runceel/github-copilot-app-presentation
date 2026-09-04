@@ -440,6 +440,84 @@ test("keeps rich text and visible styling together in a configured AutoShape", (
   assert.match(slide, /<a:bodyPr wrap="none"[^>]*\/>[\s\S]*<a:t>Top-level paragraphs<\/a:t>/);
 });
 
+test("writes editable syntax-colored code with exact line and paragraph spacing", () => {
+  const files = readStoredZip(
+    buildPptxPackage({
+      slides: [
+        {
+          elements: [
+            {
+              type: "shape",
+              shape: "roundedRect",
+              x: 40,
+              y: 80,
+              width: 700,
+              height: 180,
+              fill: "#202838",
+              stroke: "#405060",
+              strokeWidth: 1,
+              paragraphs: [
+                {
+                  lineSpacing: 20,
+                  spaceBefore: 0,
+                  spaceAfter: 0,
+                  runs: [
+                    {
+                      text: "const",
+                      fontFace: "Cascadia Code",
+                      fontSize: "16px",
+                      color: "#569CD6",
+                    },
+                    {
+                      text: " answer = 42;",
+                      fontFace: "Cascadia Code",
+                      fontSize: "16px",
+                      color: "#DCDCAA",
+                    },
+                  ],
+                },
+                {
+                  lineSpacing: 20,
+                  spaceBefore: 0,
+                  spaceAfter: 0,
+                  runs: [
+                    {
+                      text: "  return answer;",
+                      fontFace: "Cascadia Code",
+                      fontSize: "16px",
+                      color: "#D4D4D4",
+                    },
+                  ],
+                },
+              ],
+              verticalAlignment: "top",
+              textInsets: { left: 24, top: 16, right: 20, bottom: 16 },
+              textWrap: "none",
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  const slide = xml(files, "ppt/slides/slide1.xml");
+
+  assert.match(slide, /<a:prstGeom prst="roundRect">/);
+  assert.match(
+    slide,
+    /<a:bodyPr wrap="none" lIns="228600" tIns="152400" rIns="190500" bIns="152400" anchor="t"\/>/,
+  );
+  assert.equal(
+    (slide.match(
+      /<a:lnSpc><a:spcPts val="1500"\/><\/a:lnSpc><a:spcBef><a:spcPts val="0"\/><\/a:spcBef><a:spcAft><a:spcPts val="0"\/><\/a:spcAft>/g,
+    ) || []).length,
+    2,
+  );
+  assert.match(slide, /<a:latin typeface="Cascadia Code"\/>/);
+  assert.match(slide, /<a:srgbClr val="569CD6">/);
+  assert.match(slide, /<a:srgbClr val="DCDCAA">/);
+  assert.match(slide, /<a:t xml:space="preserve">  return answer;<\/a:t>/);
+});
+
 test("emits PowerPoint-native presets for the extended Architecture shapes", () => {
   const shapes = ["diamond", "triangle", "hexagon", "parallelogram"];
   const files = readStoredZip(

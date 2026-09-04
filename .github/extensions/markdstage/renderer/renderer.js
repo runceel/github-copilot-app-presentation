@@ -1084,6 +1084,30 @@ function paragraphFor(element, options = {}) {
   };
 }
 
+function codeParagraphsFor(element) {
+  const style = getComputedStyle(element);
+  const baseRun = { text: "", ...runStyle(element) };
+  const lines = [[]];
+  for (const run of collectTextRuns(element)) {
+    const segments = run.text.replace(/\r\n?/g, "\n").split("\n");
+    segments.forEach((text, index) => {
+      if (text) lines.at(-1).push({ ...run, text });
+      if (index < segments.length - 1) lines.push([]);
+    });
+  }
+  // marked terminates fenced code with one newline. Remove that synthetic line
+  // while retaining deliberate blank lines before the closing fence.
+  if (lines.length > 1 && lines.at(-1).length === 0) lines.pop();
+  const lineSpacing = roundedMetric(Number.parseFloat(style.lineHeight));
+  return lines.map((runs) => ({
+    alignment: "left",
+    runs: runs.length ? runs : [{ ...baseRun }],
+    ...(lineSpacing > 0 ? { lineSpacing } : {}),
+    spaceBefore: 0,
+    spaceAfter: 0,
+  }));
+}
+
 function renderedTextLineCount(element) {
   const range = document.createRange();
   range.selectNodeContents(element);
@@ -1600,9 +1624,18 @@ async function collectPptxSlide(slide, index) {
   deck.querySelectorAll("pre.mermaid").forEach((element) =>
     addFallback("mermaid", element, "mermaid-rendered-as-artwork"),
   );
-  deck.querySelectorAll("pre:not(.mermaid)").forEach((element) =>
-    addFallback("code", element, "code-block-rendered-as-artwork"),
-  );
+  deck.querySelectorAll("pre:not(.mermaid)").forEach((element) => {
+    const artworkEffects = unsupportedEffects(element).filter(
+      (effect) => effect !== "box-shadow",
+    );
+    if (artworkEffects.length) {
+      addFallback(
+        "code",
+        element,
+        `code-block-rendered-as-artwork: ${artworkEffects.join(", ")}`,
+      );
+    }
+  });
   deck.querySelectorAll(".architecture-error").forEach((element) =>
     addFallback("architecture", element, "architecture-error-rendered-as-artwork"),
   );
@@ -1682,6 +1715,58 @@ async function collectPptxSlide(slide, index) {
       ...(disableTextWrap ? { textWrap: "none" } : {}),
     });
     element.setAttribute("data-pptx-native", "text");
+  }
+
+  for (const pre of deck.querySelectorAll("pre:not(.mermaid)")) {
+    if (insideFallback(pre)) continue;
+    const code = pre.querySelector("code") || pre;
+    const style = getComputedStyle(pre);
+    const bounds = relativeBounds(pre, deck);
+    const borderRadius = roundedMetric(Number.parseFloat(style.borderRadius));
+    const borderWidth = roundedMetric(Number.parseFloat(style.borderTopWidth));
+    const textInsets = textInsetsFor(pre);
+    elements.push({
+      type: "shape",
+      path: elementPath(pre, deck),
+      shape: borderRadius > 0 ? "roundedRect" : "rect",
+      ...bounds,
+      fill: normalizeCssColor(style.backgroundColor),
+      stroke: normalizeCssColor(style.borderTopColor),
+      strokeWidth: borderWidth || 1,
+      opacity: Number(style.opacity) || 1,
+      paragraphs: codeParagraphsFor(code),
+      verticalAlignment: "top",
+      ...(textInsets ? { textInsets } : {}),
+      textWrap: "none",
+    });
+    const accentWidth = roundedMetric(Number.parseFloat(style.borderLeftWidth));
+    const accentColor = normalizeCssColor(style.borderLeftColor);
+    if (accentWidth > borderWidth && accentColor) {
+      const accentInset = Math.min(borderRadius, Math.max(0, (bounds.height - accentWidth) / 2));
+      elements.push({
+        type: "shape",
+        path: `${elementPath(pre, deck)}.accent`,
+        shape: borderRadius > 0 ? "roundedRect" : "rect",
+        x: bounds.x,
+        y: bounds.y + accentInset,
+        width: accentWidth,
+        height: bounds.height - accentInset * 2,
+        fill: accentColor,
+        stroke: null,
+      });
+    }
+    if (style.boxShadow && style.boxShadow !== "none") {
+      fallbacks.push(
+        pptxFallback(
+          "effect",
+          pre,
+          deck,
+          "native-code-approximates: box-shadow",
+        ),
+      );
+      preserveBoxShadow(pre, deck);
+    }
+    pre.setAttribute("data-pptx-native", "code");
   }
 
   for (const table of deck.querySelectorAll(".body table")) {
