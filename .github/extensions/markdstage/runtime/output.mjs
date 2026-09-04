@@ -135,7 +135,8 @@ async function loadPptxImage(inst, source, fetchImpl, currentTotal) {
 export async function preparePptxPackageModel(
   inst,
   model,
-  backgrounds,
+  layoutArtworks,
+  slideArtworks,
   fetchImpl = fetch,
 ) {
   if (
@@ -143,29 +144,100 @@ export async function preparePptxPackageModel(
     model.version !== 1 ||
     model.width !== PPTX_DIMENSIONS.widthPx ||
     model.height !== PPTX_DIMENSIONS.heightPx ||
+    !Array.isArray(model.masters) ||
+    model.masters.length === 0 ||
+    !Array.isArray(model.layouts) ||
+    model.layouts.length === 0 ||
     !Array.isArray(model.slides) ||
     model.slides.length === 0
   ) {
     throw new Error("The renderer returned an unsupported PowerPoint export model.");
   }
-  if (!Array.isArray(backgrounds) || backgrounds.length !== model.slides.length) {
+  if (!Array.isArray(layoutArtworks) || layoutArtworks.length !== model.layouts.length) {
+    throw new Error("PowerPoint layout artwork does not match the layout count.");
+  }
+  if (!Array.isArray(slideArtworks) || slideArtworks.length !== model.slides.length) {
     throw new Error("PowerPoint fallback artwork does not match the slide count.");
   }
 
   const assets = [];
   const sourceAssets = new Map();
   let totalAssetBytes = 0;
-  for (const [index, background] of backgrounds.entries()) {
-    if (!Buffer.isBuffer(background)) {
-      throw new Error(`PowerPoint fallback artwork for slide ${index + 1} is invalid.`);
+  const addPngAsset = (id, data, label) => {
+    if (!Buffer.isBuffer(data)) {
+      throw new Error(`${label} is invalid.`);
     }
-    ensurePptxAssetSize(background, `slide ${index + 1} fallback artwork`, totalAssetBytes);
-    totalAssetBytes += background.length;
+    ensurePptxAssetSize(data, label, totalAssetBytes);
+    totalAssetBytes += data.length;
     assets.push({
-      id: `markdstage-background-${index + 1}`,
+      id,
       contentType: "image/png",
-      data: background,
+      data,
     });
+  };
+
+  const layouts = [];
+  const layoutById = new Map();
+  for (const [index, sourceLayout] of model.layouts.entries()) {
+    if (
+      !sourceLayout ||
+      typeof sourceLayout.id !== "string" ||
+      !sourceLayout.id ||
+      typeof sourceLayout.name !== "string" ||
+      !sourceLayout.name ||
+      typeof sourceLayout.theme !== "string" ||
+      !sourceLayout.theme
+    ) {
+      throw new Error(`PowerPoint layout ${index + 1} is invalid.`);
+    }
+    if (layoutById.has(sourceLayout.id)) {
+      throw new Error(`PowerPoint layout id is duplicated: ${sourceLayout.id}`);
+    }
+    const artworkAssetId = `markdstage-layout-${index + 1}`;
+    addPngAsset(
+      artworkAssetId,
+      layoutArtworks[index],
+      `PowerPoint artwork for layout ${sourceLayout.id}`,
+    );
+    const layout = {
+      id: sourceLayout.id,
+      name: sourceLayout.name,
+      theme: sourceLayout.theme,
+      artworkAssetId,
+    };
+    layoutById.set(layout.id, layout);
+    layouts.push(layout);
+  }
+
+  const masters = model.masters.map((sourceMaster, index) => {
+    if (
+      !sourceMaster ||
+      typeof sourceMaster.id !== "string" ||
+      !sourceMaster.id ||
+      typeof sourceMaster.theme !== "string" ||
+      !sourceMaster.theme ||
+      !Array.isArray(sourceMaster.layoutIds) ||
+      sourceMaster.layoutIds.length === 0
+    ) {
+      throw new Error(`PowerPoint master ${index + 1} is invalid.`);
+    }
+    const layoutIds = sourceMaster.layoutIds.map((layoutId) => {
+      const layout = layoutById.get(layoutId);
+      if (!layout || layout.theme !== sourceMaster.theme) {
+        throw new Error(
+          `PowerPoint master ${sourceMaster.id} references invalid layout ${layoutId}.`,
+        );
+      }
+      return layoutId;
+    });
+    return {
+      id: sourceMaster.id,
+      theme: sourceMaster.theme,
+      layoutIds,
+    };
+  });
+  if (new Set(masters.map((master) => master.id)).size !== masters.length) {
+    throw new Error("PowerPoint master ids must be unique.");
   }
 
   const slides = [];
@@ -173,9 +245,21 @@ export async function preparePptxPackageModel(
     if (!sourceSlide || !Array.isArray(sourceSlide.elements)) {
       throw new Error(`PowerPoint slide ${slideIndex + 1} has an invalid element list.`);
     }
+    if (
+      typeof sourceSlide.layoutId !== "string" ||
+      !layoutById.has(sourceSlide.layoutId)
+    ) {
+      throw new Error(`PowerPoint slide ${slideIndex + 1} references an invalid layout.`);
+    }
     if (sourceSlide.notes !== undefined && typeof sourceSlide.notes !== "string") {
       throw new Error(`PowerPoint slide ${slideIndex + 1} has invalid speaker notes.`);
     }
+    const artworkAssetId = `markdstage-slide-artwork-${slideIndex + 1}`;
+    addPngAsset(
+      artworkAssetId,
+      slideArtworks[slideIndex],
+      `PowerPoint fallback artwork for slide ${slideIndex + 1}`,
+    );
     const elements = [];
     for (const sourceElement of sourceSlide.elements) {
       if (sourceElement?.type !== "image") {
@@ -212,12 +296,13 @@ export async function preparePptxPackageModel(
       elements.push({ ...image, assetId });
     }
     slides.push({
-      backgroundAssetId: `markdstage-background-${slideIndex + 1}`,
+      layoutId: sourceSlide.layoutId,
+      artworkAssetId,
       ...(sourceSlide.notes ? { notes: sourceSlide.notes } : {}),
       elements,
     });
   }
-  return { slides, assets };
+  return { masters, layouts, slides, assets };
 }
 
 async function runLayoutInspectionJob(inst, snapshot, browser) {
@@ -585,14 +670,19 @@ export async function exportPptx(
       inst.exportJobs.set(token, job);
 
       const pageUrl = pageUrlFor(inst, { pptx: 1, token });
-      const { model, backgrounds } = await runBrowser(
+      const { model, layoutArtworks, slideArtworks } = await runBrowser(
         browser,
         pageUrl,
         profileDir,
         job,
         snapshot.slides.length,
       );
-      const packageModel = await prepareModel(inst, model, backgrounds);
+      const packageModel = await prepareModel(
+        inst,
+        model,
+        layoutArtworks,
+        slideArtworks,
+      );
       const buffer = buildPackage({
         title: model.slides[0]?.title || outputBase,
         ...packageModel,
@@ -605,6 +695,8 @@ export async function exportPptx(
         !packageSummary.valid ||
         packageSummary.slideCount !== snapshot.slides.length ||
         packageSummary.notesCount !== expectedNotes ||
+        packageSummary.masterCount !== model.masters.length ||
+        packageSummary.layoutCount !== model.layouts.length ||
         packageSummary.dimensions.widthEmu !== PPTX_DIMENSIONS.widthEmu ||
         packageSummary.dimensions.heightEmu !== PPTX_DIMENSIONS.heightEmu
       ) {

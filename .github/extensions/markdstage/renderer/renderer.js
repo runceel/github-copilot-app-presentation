@@ -119,6 +119,7 @@ let layoutFrame = 0;
 const SCROLL_EPSILON = 2;
 const OUTPUT_WIDTH = 1280;
 const OUTPUT_HEIGHT = 720;
+const PPTX_LAYOUT_NAMES = ["title", "default", "center", "section", "backcover"];
 const LAYOUT_HINT_LIMIT = 5;
 
 function applyCustomThemeCss(css) {
@@ -1851,6 +1852,7 @@ async function collectPptxSlide(slide, index) {
     if (
       image.closest(".architecture-diagram") ||
       image.classList.contains("theme-cover-background") ||
+      image.classList.contains("theme-cover-logo") ||
       insideFallback(image)
     ) {
       continue;
@@ -1918,12 +1920,13 @@ async function collectPptxSlide(slide, index) {
         ? "center"
         : slide.backcoverSlide
           ? "backcover"
-          : "standard";
+          : "default";
   const visibleTitle = deck.querySelector("h1, h2")?.textContent?.trim();
   const notes = speakerNotesToPlainText(slide.speakerNotes, window.marked, document);
   return {
     index,
     layout,
+    layoutId: `${slide.theme}:${layout}`,
     theme: slide.theme,
     title: visibleTitle || slide.title,
     width: OUTPUT_WIDTH,
@@ -1932,6 +1935,23 @@ async function collectPptxSlide(slide, index) {
     elements,
     fallbacks,
   };
+}
+
+function createPptxLayoutTemplate(theme, layout) {
+  const markdown = `---
+layout: ${layout}
+theme: ${theme}
+---
+`;
+  const slide = createSlide(markdown, theme, true);
+  if (layout === "backcover") {
+    slide.deck
+      .querySelectorAll(".theme-backcover-logo, .theme-backcover-copyright")
+      .forEach((element) => element.remove());
+  }
+  slide.deck.classList.add("pptx-layout-template");
+  slide.deck.dataset.pptxLayoutId = `${theme}:${layout}`;
+  return slide;
 }
 
 async function renderPptxDeck(
@@ -1975,14 +1995,37 @@ async function renderPptxDeck(
   for (const [index, slide] of rendered.entries()) {
     pptxSlides.push(await collectPptxSlide(slide, index));
   }
+  const themes = [...new Set(rendered.map((slide) => slide.theme))];
+  const layoutTemplates = themes.flatMap((slideTheme) =>
+    PPTX_LAYOUT_NAMES.map((layout) => ({
+      id: `${slideTheme}:${layout}`,
+      name: layout,
+      theme: slideTheme,
+      slide: createPptxLayoutTemplate(slideTheme, layout),
+    })),
+  );
+  stage.append(...layoutTemplates.map((layout) => layout.slide.deck));
+  await waitForImages(stage);
+  await afterLayout();
   const model = {
     version: 1,
     width: OUTPUT_WIDTH,
     height: OUTPUT_HEIGHT,
+    masters: themes.map((slideTheme) => ({
+      id: slideTheme,
+      theme: slideTheme,
+      layoutIds: PPTX_LAYOUT_NAMES.map((layout) => `${slideTheme}:${layout}`),
+    })),
+    layouts: layoutTemplates.map(({ id, name, theme: slideTheme }, index) => ({
+      id,
+      name,
+      theme: slideTheme,
+      captureIndex: rendered.length + index,
+    })),
     slides: pptxSlides,
   };
   window.__presentationPptxModel = JSON.parse(JSON.stringify(model));
-  document.body.classList.add("pptx-artwork-mode");
+  document.body.classList.add("pptx-artwork-mode", "pptx-layout-artwork-mode");
   document.body.setAttribute("data-pptx-artwork", "ready");
   document.body.classList.remove("mermaid-loading");
   document.documentElement.setAttribute("data-pptx-ready", "true");

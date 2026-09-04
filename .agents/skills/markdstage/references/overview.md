@@ -96,7 +96,11 @@ The themed slide is displayed and updates automatically
   artwork. Architecture nodes, groups, and connector-label pills are visible
   AutoShapes with integrated text; icons use a transparent foreground picture
   layer. Mermaid and other unsupported styling stay visible as background
-  artwork and are listed in the export report. Speaker
+  artwork and are listed in the export report. Each theme used in the deck gets
+  its own slide master with named `title`, `default`, `center`, `section`, and
+  `backcover` layouts. Common backgrounds, top bars, and theme logos are stored
+  on the layouts; slide-specific fallback artwork remains a transparent slide
+  layer. Speaker
   notes are converted from Markdown to readable plain text in the corresponding
   PowerPoint notes pane. AI may call `export_pptx` with another
   workspace-confined `.pptx` path.
