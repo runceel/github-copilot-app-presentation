@@ -204,7 +204,17 @@
       "properties": {
         "type": { "const": "node" },
         "id": { "$ref": "#/$defs/identifier" },
-        "shape": { "enum": ["rect", "rounded-rect", "ellipse"] },
+        "shape": {
+          "enum": [
+            "rect",
+            "rounded-rect",
+            "ellipse",
+            "diamond",
+            "triangle",
+            "hexagon",
+            "parallelogram"
+          ]
+        },
         "x": { "$ref": "#/$defs/coordinate" },
         "y": { "$ref": "#/$defs/coordinate" },
         "width": { "$ref": "#/$defs/extent" },

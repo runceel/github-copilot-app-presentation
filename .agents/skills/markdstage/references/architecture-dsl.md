@@ -73,7 +73,9 @@ When writing explicit JSON, `elements` is required by the JSON Schema.
 ````
 
 - A `node` has a unique `id`, multiline `text`, and shape `rect`,
-  `rounded-rect`, or `ellipse`.
+  `rounded-rect`, `ellipse`, `diamond`, `triangle`, `hexagon`, or
+  `parallelogram`. These additive shape values remain Architecture DSL v1 and
+  export as native PowerPoint shapes.
 - `icon` is a built-in name or a path under an adjacent or workspace-root
   `assets/` folder. See [Icons](#icons).
 - An `image` places an `assets/` image as an independent element. `fit` is
@@ -106,7 +108,9 @@ When writing explicit JSON, `elements` is required by the JSON Schema.
   `opacity`, `dash`, and `cornerRadius`. Prefer theme tokens `accent`,
   `accentStrong`, `accentSoft`, `accentLine`, `surface`, `fg`, `muted`, `body`,
   `border`, and `bg`. Literal colors are limited to hex, white, black, and
-  transparent.
+  transparent. Omit `dash` (or use an empty value) for a solid line, use
+  `"dash": "1 5"` for a dotted line, or provide another space-separated numeric
+  pattern such as `"10 6"` for dashed/custom output.
 - Invalid JSON, out-of-range numbers, duplicate IDs, unknown references, and
   unsupported elements, styles, or colors render an inline diagram error while
   preserving other slide content. DSL values never generate HTML, script, or
@@ -459,8 +463,8 @@ Enter mode with:
 
 | Method | Purpose |
 | --- | --- |
-| Canvas action `edit_architecture` with `{ "enabled": true }` | Normal agent-controlled operation |
-| Pencil control during CLI `present --watch` | User-controlled live authoring; the browser starts with editing off |
+| Canvas action `edit_architecture` with `{ "enabled": true }` | Agent-controlled lightweight placement operation |
+| **Shape editing** for a deck without a source association | User-controlled lightweight placement operation |
 | Renderer URL `?architectureEdit=1` | Local debugging |
 
 `reset` disables editing. The query parameter also updates server state through
@@ -476,7 +480,6 @@ from disabling a client-only mode or `POST /edit` returning an unexpected 409.
 | Undo | Toolbar **Undo** | Ctrl+Z |
 | Redo | Toolbar **Redo** | Ctrl+Shift+Z / Ctrl+Y |
 | Clear selection | Click outside the diagram | Escape |
-| Full editing | Toolbar **Advanced editing** | — |
 
 Every move redraws the complete diagram and reroutes connectors. A live status
 region announces results.
@@ -490,8 +493,21 @@ blocks.
 
 - Add, delete, duplicate, reorder, and reparent nodes, groups, images, and
   connectors.
-- Drag, resize, snap to grid, zoom, and pan. Scroll horizontally/vertically
-  when the diagram exceeds the workspace, or pan with middle-drag / Space-drag.
+- Add nodes from a bounded shape palette containing rectangles, ellipses,
+  diamonds, triangles, hexagons, and parallelograms.
+- The primary toolbar keeps Undo, Redo, Shape, Save, and More visible. Secondary
+  add, edit, ordering, view, grid, and reload commands are grouped under
+  **More**.
+- Drag and resize with live feedback, snap to grid, zoom, and pan. Drag blank
+  canvas space with the primary button to pan horizontally and vertically;
+  middle-drag and Space-drag remain available.
+- **Elements** and **Properties** are collapsible. Medium windows use nonmodal
+  docks so the canvas remains selectable; narrow windows use lightweight
+  overlays without a blocking backdrop. Opening a panel moves keyboard focus
+  to its content, and each panel has a local close control.
+- Empty Architecture blocks show a focused **Add first shape** action. Toolbar
+  additions start near the visible canvas center and move to an unoccupied
+  sibling position when necessary.
 - Context menus on elements, empty space, and tree items provide appropriate
   add, connect, duplicate, delete, front/back order, Undo/Redo, and Save
   commands. Group **Layout** menus offer `none`, `row`, `column`, `grid`, and
@@ -503,7 +519,7 @@ blocks.
   return with `ArrowLeft`, execute with Enter/Space, and close with Escape.
 - A typed inspector edits geometry, layout, style, icon, ports, routing,
   polyline points, canvas metadata, and other editable v1 fields.
-- Add a standalone **Image** from the toolbar or context menu. Node inspector
+- Add a standalone **Image** from **More** or a context menu. Node inspector
   **Select image from assets/** uses the same picker. It searches
   Markdown-adjacent and workspace-root `assets/` in that order. Import SVG,
   PNG, WebP, JPG, or JPEG up to 10 MB into workspace-root `assets/`; collisions
@@ -516,8 +532,11 @@ blocks.
 - Saving reloads any MarkdStage canvas or watched CLI presentation showing the
   same Markdown while preserving the current page and theme.
 
-Source-backed decks imported through **More controls > Open Markdown** and CLI `present --watch` enable
-**Advanced editing**. Agents can open the editor canvas directly:
+For a source-backed deck imported through **More controls > Open Markdown**,
+**Shape editing** opens this editor directly. If the slide contains multiple
+Architecture blocks, select one from the accessible picker first. CLI
+`present --watch` opens the same editor in a browser window. Agents can open
+the editor canvas directly:
 
 ```json
 {

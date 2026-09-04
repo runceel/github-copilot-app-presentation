@@ -197,13 +197,14 @@ reload the complete deck if its source Markdown changed.
 
 ### Full Architecture editing
 
-Keep **More controls > Shape editing** / `edit_architecture` for position
-adjustments. Use the separate
-`architecture-editor` canvas to add or delete nodes, groups, images, or
-connectors and to edit sizing, parentage, layout, style, ports, and routing.
+For a source-backed deck, **More controls > Shape editing** opens the separate
+`architecture-editor` canvas directly. If a slide has multiple Architecture
+blocks, select one from the accessible diagram picker first. Decks without a
+source association retain the lightweight placement editor, and agents can
+still use `edit_architecture` for that stable placement workflow.
 
-- Users open it from **Advanced editing** inside **Shape editing** after
-  importing Markdown through **More controls > Open Markdown**.
+- Users open it through **Shape editing** after importing Markdown with
+  **More controls > Open Markdown**.
 - Agents open canvas ID `"architecture-editor"` with
   `input: { sourcePath, blockIndex, theme? }`. `sourcePath` is
   workspace-relative and `blockIndex` is zero-based across the Markdown file.
@@ -214,6 +215,20 @@ connectors and to edit sizing, parentage, layout, style, ports, and routing.
   A child never offers an action that detaches its parent group's layout.
   Nodes, groups, and images added from empty space are centered at the context
   menu position.
+- A bounded shape palette adds rectangles, rounded rectangles, ellipses,
+  diamonds, triangles, hexagons, and parallelograms without overflowing the
+  toolbar.
+- The primary toolbar keeps Undo, Redo, Shape, Save, and More visible while
+  secondary add, edit, arrange, view, grid, and reload commands stay under
+  **More**.
+- Drag blank canvas space with the primary button to pan in both directions.
+  Middle-drag and Space-drag remain available. Move and resize gestures show
+  live feedback and respect reduced-motion preferences.
+- **Elements** and **Properties** are collapsible. Medium windows use nonmodal
+  docks; narrow windows use nonblocking overlays. Opening a panel transfers
+  focus to its content, and each panel has a local close control.
+- Empty blocks show **Add first shape**. Toolbar additions begin near the
+  visible canvas center and avoid occupied siblings.
 - Keyboard users open the same menu with `Shift+F10` or the Context Menu key,
   move with arrows, open a submenu with `ArrowRight`, return with `ArrowLeft`,
   execute with Enter/Space, and close with Escape.
@@ -227,7 +242,7 @@ connectors and to edit sizing, parentage, layout, style, ports, and routing.
   file, call `reload` with `{ discard: true }`.
 - The editor modifies only existing `architecture` blocks; it does not create
   new blocks.
-- **Advanced editing** is disabled for non-source-backed decks created directly
+- The dedicated editor is disabled for non-source-backed decks created directly
   by `open` / `load_deck`, because they have no safe write-back target.
 
 These workflows do not alter the Architecture DSL v1 grammar or the stable save
@@ -337,7 +352,10 @@ Groups support `row`, `column`, `grid`, and `layered`; layered direction is
 `user`, `server`, `analytics`, `browser`, `mobile`, `network`, `queue`, and
 `shield`. Connector ports are `auto`, `top`, `right`, `bottom`, and `left`.
 Connector labels default to `labelLayer: "front"`; use `"behind"` only for
-legacy behind-box placement.
+legacy behind-box placement. Node shapes are `rect`, `rounded-rect`, `ellipse`,
+`diamond`, `triangle`, `hexagon`, and `parallelogram`. Omit `style.dash` for a
+solid connector, use `"1 5"` for dotted, or use another numeric pattern such as
+`"10 6"` for dashed/custom output.
 
 For custom Architecture icons, place SVG / PNG / WebP / JPG / JPEG files in
 Markdown-adjacent or workspace-root `assets/` and use

@@ -74,11 +74,12 @@ The themed slide is displayed and updates automatically
   presenter, and PDF output.
 - The **canvas renderer** owns the compact navigation controls, shape editing,
   the slide list, and current position. **More controls > Shape editing**
-  toggles the same placement mode as `edit_architecture`. For Markdown loaded
-  with **More controls > Open Markdown**, **Advanced editing** opens
-  the dedicated `architecture-editor` canvas. The agent only opens the deck and
-  does not run an `ask_user` loop. Margin clicks are installed only in normal
-  canvas and presenter modes, never print mode. `goto_slide` remains available
+  opens the dedicated `architecture-editor` canvas directly for Markdown loaded
+  with **More controls > Open Markdown**; slides with multiple diagrams first
+  show a diagram picker. Decks without a source association retain the
+  lightweight placement mode. The agent only opens the deck and does not run an
+  `ask_user` loop. Margin clicks are installed only in normal canvas and
+  presenter modes, never print mode. `goto_slide` remains available
   for an explicit page request from chat.
 - **PDF Export is available from More controls > Export PDF.** When
   `sourceName` is passed

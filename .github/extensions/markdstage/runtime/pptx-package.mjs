@@ -569,8 +569,16 @@ function nativeShapeXml(element, path, id, relationships) {
     rect: "rect",
     roundedRect: "roundRect",
     ellipse: "ellipse",
+    diamond: "diamond",
+    triangle: "triangle",
+    hexagon: "hexagon",
+    parallelogram: "parallelogram",
   }[element.shape];
-  if (!preset) fail(`${path}.shape must be rect, roundedRect, or ellipse`);
+  if (!preset) {
+    fail(
+      `${path}.shape must be rect, roundedRect, ellipse, diamond, triangle, hexagon, or parallelogram`,
+    );
+  }
   const opacity = optionalUnitInterval(element.opacity, `${path}.opacity`);
   const properties = `${xfrmXml(bounds)}<a:prstGeom prst="${preset}"><a:avLst/></a:prstGeom>${colorXml(
     element.fill,

@@ -15,7 +15,35 @@ const LABEL_LAYERS = [
   { value: "front", label: "In front of boxes" },
   { value: "behind", label: "Behind boxes" },
 ];
-const SHAPES = ["rect", "rounded-rect", "ellipse"];
+const SHAPES = [
+  "rect",
+  "rounded-rect",
+  "ellipse",
+  "diamond",
+  "triangle",
+  "hexagon",
+  "parallelogram",
+];
+const SHAPE_LABELS = new Map([
+  ["rect", "Rectangle"],
+  ["rounded-rect", "Rounded rectangle"],
+  ["ellipse", "Ellipse"],
+  ["diamond", "Diamond"],
+  ["triangle", "Triangle"],
+  ["hexagon", "Hexagon"],
+  ["parallelogram", "Parallelogram"],
+]);
+const LINE_STYLES = [
+  { value: "solid", label: "Solid" },
+  { value: "dotted", label: "Dotted" },
+  { value: "dashed", label: "Dashed" },
+  { value: "custom", label: "Custom" },
+];
+const LINE_STYLE_PATTERNS = {
+  solid: "",
+  dotted: "1 5",
+  dashed: "10 6",
+};
 const IMAGE_FITS = ["contain", "cover", "stretch"];
 const ASSET_MAX_BYTES = 10 * 1024 * 1024;
 const SNAP_SIZE = 10;
@@ -28,6 +56,14 @@ const tree = document.getElementById("elementTree");
 const inspector = document.getElementById("inspector");
 const viewport = document.getElementById("viewport");
 const surface = document.getElementById("canvasSurface");
+const elementPanel = document.getElementById("elementPanel");
+const inspectorPanel = document.getElementById("inspectorPanel");
+const elementsPanelButton = document.getElementById("elementsPanelButton");
+const inspectorPanelButton = document.getElementById("inspectorPanelButton");
+const shapePaletteButton = document.getElementById("shapePaletteButton");
+const shapePalette = document.getElementById("shapePalette");
+const toolbarMoreButton = document.getElementById("toolbarMoreButton");
+const toolbarMoreMenu = document.getElementById("toolbarMoreMenu");
 const status = document.getElementById("status");
 const zoomStatus = document.getElementById("zoomStatus");
 const snapToggle = document.getElementById("snapToggle");
@@ -45,6 +81,8 @@ const assetPreviewPath = document.getElementById("assetPreviewPath");
 const assetDialogStatus = document.getElementById("assetDialogStatus");
 const assetCancelButton = document.getElementById("assetCancelButton");
 const assetChooseButton = document.getElementById("assetChooseButton");
+const responsivePanels = window.matchMedia("(max-width: 1100px)");
+const compactPanels = window.matchMedia("(max-width: 620px)");
 
 let architecture = null;
 let selectedRef = null;
@@ -52,6 +90,7 @@ let sourcePath = "";
 let blockIndex = 0;
 let dirty = false;
 let zoom = 1;
+let fitToViewport = true;
 let draftRevision = 0;
 let targetGeneration = null;
 let draftQueue = Promise.resolve();
@@ -66,10 +105,151 @@ let availableAssets = [];
 let selectedAssetPath = "";
 let assetUploadPending = false;
 let assetLibraryRequest = 0;
+let dragFrame = 0;
+let responsivePanel = null;
+let desktopElementsOpen = true;
+let desktopInspectorOpen = false;
+let suppressCanvasClick = false;
 
 function announce(message, kind = "info") {
   status.textContent = message;
   status.dataset.kind = kind;
+}
+
+function syncResponsivePanels() {
+  const adaptive = responsivePanels.matches;
+  const elementsOpen = adaptive ? responsivePanel === "elements" : desktopElementsOpen;
+  const inspectorOpen = adaptive ? responsivePanel === "inspector" : desktopInspectorOpen;
+  document.body.dataset.elementsOpen = String(elementsOpen);
+  document.body.dataset.inspectorOpen = String(inspectorOpen);
+  elementsPanelButton.setAttribute("aria-expanded", String(elementsOpen));
+  inspectorPanelButton.setAttribute("aria-expanded", String(inspectorOpen));
+  elementPanel.inert = !elementsOpen;
+  inspectorPanel.inert = !inspectorOpen;
+  if (architecture && fitToViewport) requestAnimationFrame(fitZoom);
+}
+
+function toggleResponsivePanel(panel) {
+  let opened = false;
+  if (responsivePanels.matches) {
+    opened = responsivePanel !== panel;
+    responsivePanel = opened ? panel : null;
+  } else if (panel === "elements") {
+    desktopElementsOpen = !desktopElementsOpen;
+    opened = desktopElementsOpen;
+  } else {
+    desktopInspectorOpen = !desktopInspectorOpen;
+    opened = desktopInspectorOpen;
+  }
+  syncResponsivePanels();
+  if (opened) requestAnimationFrame(() => focusPanel(panel));
+}
+
+function focusPanel(panel) {
+  if (panel === "elements") {
+    (tree.querySelector('[aria-selected="true"]') || tree.querySelector(".tree-item"))?.focus();
+    return;
+  }
+  inspector.querySelector("input, select, textarea, button")?.focus();
+}
+
+function closeResponsivePanel(panel = responsivePanel, { restoreFocus = true } = {}) {
+  if (!panel) return;
+  if (responsivePanels.matches) {
+    if (responsivePanel !== panel) return;
+    responsivePanel = null;
+  } else if (panel === "elements") {
+    desktopElementsOpen = false;
+  } else {
+    desktopInspectorOpen = false;
+  }
+  syncResponsivePanels();
+  if (restoreFocus) {
+    (panel === "elements" ? elementsPanelButton : inspectorPanelButton).focus();
+  }
+}
+
+function positionShapePalette() {
+  if (shapePalette.hidden) return;
+  const trigger = shapePaletteButton.getBoundingClientRect();
+  const palette = shapePalette.getBoundingClientRect();
+  const left = Math.min(
+    Math.max(8, trigger.left),
+    Math.max(8, window.innerWidth - palette.width - 8),
+  );
+  const below = trigger.bottom + 6;
+  const top = below + palette.height <= window.innerHeight - 8
+    ? below
+    : Math.max(8, trigger.top - palette.height - 6);
+  shapePalette.style.left = `${left}px`;
+  shapePalette.style.top = `${top}px`;
+}
+
+function closeShapePalette({ restoreFocus = false } = {}) {
+  if (shapePalette.hidden) return;
+  shapePalette.hidden = true;
+  shapePaletteButton.setAttribute("aria-expanded", "false");
+  if (restoreFocus) shapePaletteButton.focus();
+}
+
+function openShapePalette() {
+  closeToolbarMore();
+  shapePalette.hidden = false;
+  shapePaletteButton.setAttribute("aria-expanded", "true");
+  positionShapePalette();
+  shapePalette.querySelector("button")?.focus();
+}
+
+function renderShapePalette() {
+  shapePalette.replaceChildren(
+    ...SHAPES.map((shape) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.role = "menuitem";
+      button.dataset.shape = shape;
+      button.innerHTML = `<span class="shape-swatch" data-shape="${shape}" aria-hidden="true"></span><span>${SHAPE_LABELS.get(shape)}</span>`;
+      return button;
+    }),
+  );
+}
+
+function positionToolbarMoreMenu() {
+  if (toolbarMoreMenu.hidden) return;
+  const trigger = toolbarMoreButton.getBoundingClientRect();
+  const menu = toolbarMoreMenu.getBoundingClientRect();
+  const left = Math.min(
+    Math.max(8, trigger.right - menu.width),
+    Math.max(8, window.innerWidth - menu.width - 8),
+  );
+  const below = trigger.bottom + 6;
+  const top = below + menu.height <= window.innerHeight - 8
+    ? below
+    : Math.max(8, trigger.top - menu.height - 6);
+  toolbarMoreMenu.style.left = `${left}px`;
+  toolbarMoreMenu.style.top = `${top}px`;
+}
+
+function toolbarMoreItems() {
+  return [
+    ...toolbarMoreMenu.querySelectorAll(
+      'button:not([disabled]), input:not([disabled])',
+    ),
+  ];
+}
+
+function closeToolbarMore({ restoreFocus = false } = {}) {
+  if (toolbarMoreMenu.hidden) return;
+  toolbarMoreMenu.hidden = true;
+  toolbarMoreButton.setAttribute("aria-expanded", "false");
+  if (restoreFocus) toolbarMoreButton.focus();
+}
+
+function openToolbarMore() {
+  closeShapePalette();
+  toolbarMoreMenu.hidden = false;
+  toolbarMoreButton.setAttribute("aria-expanded", "true");
+  positionToolbarMoreMenu();
+  toolbarMoreItems()[0]?.focus();
 }
 
 function setDirty(value) {
@@ -815,6 +995,23 @@ function decorateDiagram(svg) {
 }
 
 function renderSurface() {
+  if (!architecture.model.elements.length) {
+    const empty = document.createElement("section");
+    empty.className = "editor-empty-state";
+    empty.setAttribute("aria-labelledby", "emptyStateTitle");
+    empty.innerHTML = `
+      <span class="empty-state-shape" aria-hidden="true"></span>
+      <h2 id="emptyStateTitle">Build your first diagram</h2>
+      <p>Add a shape, then connect elements to describe the architecture.</p>
+      <button type="button" class="save-button">Add first shape</button>
+      <small>Right-click the canvas to add at a specific location.</small>
+    `;
+    empty.querySelector("button").addEventListener("click", () => {
+      invokeAction("add-node", { shape: "rounded-rect" });
+    });
+    surface.replaceChildren(empty);
+    return;
+  }
   const wrapper = renderArchitectureBlock(architecture.source, document);
   wrapper.style.width = `${960 * zoom}px`;
   surface.replaceChildren(wrapper);
@@ -910,7 +1107,15 @@ function addInspectorAction(container, label, onClick) {
   return button;
 }
 
-function addStyleFields(container) {
+function lineStyleForDash(value) {
+  const dash = String(value || "").trim();
+  if (!dash) return "solid";
+  if (dash === LINE_STYLE_PATTERNS.dotted) return "dotted";
+  if (dash === LINE_STYLE_PATTERNS.dashed) return "dashed";
+  return "custom";
+}
+
+function addStyleFields(container, { connector = false } = {}) {
   for (const [label, path] of [
     ["Fill", "style.fill"],
     ["Stroke", "style.stroke"],
@@ -939,11 +1144,38 @@ function addStyleFields(container) {
       step,
     });
   }
-  addField(container, {
-    label: "Dash pattern",
-    path: "style.dash",
-    value: readValue("style.dash"),
-  });
+  if (connector) {
+    const currentDash = readValue("style.dash");
+    const currentLineStyle = lineStyleForDash(currentDash);
+    addField(container, {
+      label: "Line style",
+      path: "style.dash-preset",
+      value: currentLineStyle,
+      options: LINE_STYLES,
+      onChange: (value) => {
+        if (value === "custom") {
+          applyResult(architecture.setElement(selectedRef, "style.dash", "6 3"));
+          return;
+        }
+        applyResult(
+          architecture.setElement(selectedRef, "style.dash", LINE_STYLE_PATTERNS[value]),
+        );
+      },
+    });
+    if (currentLineStyle === "custom") {
+      addField(container, {
+        label: "Dash pattern",
+        path: "style.dash",
+        value: currentDash,
+      });
+    }
+  } else {
+    addField(container, {
+      label: "Dash pattern",
+      path: "style.dash",
+      value: readValue("style.dash"),
+    });
+  }
 }
 
 function renderRootInspector() {
@@ -1242,7 +1474,7 @@ function renderInspector() {
   });
 
   const style = section("Style");
-  addStyleFields(style);
+  addStyleFields(style, { connector: entry.element.type === "connector" });
 }
 
 function refreshToolbar() {
@@ -1304,10 +1536,14 @@ function beginMove(event) {
   event.preventDefault();
   event.stopPropagation();
   event.currentTarget.setPointerCapture?.(event.pointerId);
+  event.currentTarget.classList.add("editor-drag-target");
+  viewport.classList.add("is-dragging");
   drag = {
     kind: "move",
     ref,
     target: event.currentTarget,
+    captureTarget: event.currentTarget,
+    baseTransform: event.currentTarget.getAttribute("transform"),
     pointerId: event.pointerId,
     startX: event.clientX,
     startY: event.clientY,
@@ -1322,6 +1558,13 @@ function beginResize(event) {
   const ref = event.currentTarget.dataset.ref;
   const element = modelFor(ref);
   if (!element) return;
+  event.currentTarget.setPointerCapture?.(event.pointerId);
+  const targets = [
+    surface.querySelector(`[data-editor-ref="${CSS.escape(ref)}"]`),
+    ...surface.querySelectorAll(`.editor-resize-handle[data-ref="${CSS.escape(ref)}"]`),
+  ].filter(Boolean);
+  targets[0]?.classList.add("editor-drag-target");
+  viewport.classList.add("is-dragging");
   drag = {
     kind: "resize",
     ref,
@@ -1330,40 +1573,25 @@ function beginResize(event) {
     startX: event.clientX,
     startY: event.clientY,
     box: { x: element.x, y: element.y, width: element.width, height: element.height },
+    targets: targets.map((target) => ({
+      target,
+      baseTransform: target.getAttribute("transform"),
+    })),
+    captureTarget: event.currentTarget,
     dx: 0,
     dy: 0,
   };
 }
 
-function updateDrag(event) {
-  if (!drag || event.pointerId !== drag.pointerId) return;
-  const svg = surface.querySelector("svg");
-  const scale = viewBoxScale(svg);
-  drag.dx = (event.clientX - drag.startX) / scale.x;
-  drag.dy = (event.clientY - drag.startY) / scale.y;
-  if (drag.kind === "move") {
-    drag.target.setAttribute("transform", `translate(${drag.dx} ${drag.dy})`);
-  }
-}
-
-function finishDrag(event) {
-  if (!drag || event.pointerId !== drag.pointerId) return;
-  const pending = drag;
-  drag = null;
-  if (pending.kind === "move") {
-    pending.target.removeAttribute("transform");
-    const dx = snap(pending.dx);
-    const dy = snap(pending.dy);
-    if (dx || dy) applyResult(architecture.move(pending.ref, dx, dy));
-    return;
-  }
+function resizedBox(pending, shouldSnap) {
   let { x, y, width, height } = pending.box;
   const right = x + width;
   const bottom = y + height;
-  const nextX = snap(x + pending.dx);
-  const nextY = snap(y + pending.dy);
-  const nextRight = snap(right + pending.dx);
-  const nextBottom = snap(bottom + pending.dy);
+  const normalize = shouldSnap ? snap : (value) => value;
+  const nextX = normalize(x + pending.dx);
+  const nextY = normalize(y + pending.dy);
+  const nextRight = normalize(right + pending.dx);
+  const nextBottom = normalize(bottom + pending.dy);
   if (pending.corner.includes("w")) {
     x = Math.min(nextX, right - 20);
     width = right - x;
@@ -1374,7 +1602,88 @@ function finishDrag(event) {
     height = bottom - y;
   }
   if (pending.corner.includes("s")) height = Math.max(20, nextBottom - y);
-  applyResult(architecture.resize(pending.ref, { x, y, width, height }));
+  return { x, y, width, height };
+}
+
+function restoreTransform(target, transform) {
+  if (transform == null) target.removeAttribute("transform");
+  else target.setAttribute("transform", transform);
+}
+
+function renderDragPreview() {
+  dragFrame = 0;
+  if (!drag) return;
+  if (drag.kind === "move") {
+    const translation = `translate(${drag.dx} ${drag.dy})`;
+    drag.target.setAttribute(
+      "transform",
+      drag.baseTransform ? `${drag.baseTransform} ${translation}` : translation,
+    );
+    return;
+  }
+  const next = resizedBox(drag, false);
+  const sx = next.width / drag.box.width;
+  const sy = next.height / drag.box.height;
+  const tx = next.x - drag.box.x * sx;
+  const ty = next.y - drag.box.y * sy;
+  const transform = `matrix(${sx} 0 0 ${sy} ${tx} ${ty})`;
+  for (const item of drag.targets) {
+    item.target.setAttribute(
+      "transform",
+      item.baseTransform ? `${item.baseTransform} ${transform}` : transform,
+    );
+  }
+}
+
+function updateDrag(event) {
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  const svg = surface.querySelector("svg");
+  const scale = viewBoxScale(svg);
+  drag.dx = (event.clientX - drag.startX) / scale.x;
+  drag.dy = (event.clientY - drag.startY) / scale.y;
+  if (!dragFrame) dragFrame = requestAnimationFrame(renderDragPreview);
+}
+
+function settleElement(ref) {
+  const target = surface.querySelector(`[data-editor-ref="${CSS.escape(ref)}"]`);
+  if (!target || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  target.classList.add("editor-settle");
+  target.addEventListener("animationend", () => target.classList.remove("editor-settle"), {
+    once: true,
+  });
+}
+
+function finishDrag(event) {
+  if (!drag || event.pointerId !== drag.pointerId) return;
+  const pending = drag;
+  drag = null;
+  if (dragFrame) {
+    cancelAnimationFrame(dragFrame);
+    dragFrame = 0;
+  }
+  viewport.classList.remove("is-dragging");
+  if (pending.captureTarget?.hasPointerCapture?.(pending.pointerId)) {
+    pending.captureTarget.releasePointerCapture(pending.pointerId);
+  }
+  if (pending.kind === "move") {
+    pending.target.classList.remove("editor-drag-target");
+    restoreTransform(pending.target, pending.baseTransform);
+    const dx = snap(pending.dx);
+    const dy = snap(pending.dy);
+    if (dx || dy) {
+      if (applyResult(architecture.move(pending.ref, dx, dy))) settleElement(pending.ref);
+    }
+    return;
+  }
+  for (const item of pending.targets) {
+    item.target.classList.remove("editor-drag-target");
+    restoreTransform(item.target, item.baseTransform);
+  }
+  const next = resizedBox(pending, true);
+  const changed = Object.entries(next).some(
+    ([key, value]) => value !== pending.box[key],
+  );
+  if (changed && applyResult(architecture.resize(pending.ref, next))) settleElement(pending.ref);
 }
 
 function onElementKeyDown(event) {
@@ -1464,25 +1773,79 @@ async function reloadFromMarkdown() {
   announce("Reloaded from the source Markdown.");
 }
 
-function setZoom(value) {
+function setZoom(value, { fit = false } = {}) {
   zoom = Math.min(2.5, Math.max(0.3, value));
+  fitToViewport = fit;
   renderSurface();
   zoomStatus.textContent = `${Math.round(zoom * 100)}%`;
 }
 
 function fitZoom() {
   const available = Math.max(320, viewport.clientWidth - 96);
-  setZoom(Math.min(1, available / 996));
+  setZoom(Math.min(1, available / 996), { fit: true });
   viewport.scrollTo({ left: 0, top: 0 });
 }
 
+function visibleCanvasCenter() {
+  const bounds = viewport.getBoundingClientRect();
+  return (
+    architecturePoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2) || {
+      x: architecture.model.canvas.width / 2,
+      y: architecture.model.canvas.height / 2,
+    }
+  );
+}
+
+function siblingBoxes(parentId) {
+  return rawEntries(architecture.raw)
+    .filter((entry) => entry.parentId === parentId)
+    .map((entry) => entry.element)
+    .filter(
+      (element) =>
+        element.type !== "connector" &&
+        [element.x, element.y, element.width, element.height].every(Number.isFinite),
+    );
+}
+
+function boxesOverlap(left, right, gap = 20) {
+  return !(
+    left.x + left.width + gap <= right.x ||
+    right.x + right.width + gap <= left.x ||
+    left.y + left.height + gap <= right.y ||
+    right.y + right.height + gap <= left.y
+  );
+}
+
+function avoidSiblingOverlap(box, parentId) {
+  const occupied = siblingBoxes(parentId);
+  const step = 40;
+  for (let ring = 0; ring <= 12; ring += 1) {
+    for (let y = -ring; y <= ring; y += 1) {
+      for (let x = -ring; x <= ring; x += 1) {
+        if (Math.max(Math.abs(x), Math.abs(y)) !== ring) continue;
+        const candidate = {
+          ...box,
+          x: snap(box.x + x * step),
+          y: snap(box.y + y * step),
+        };
+        if (!occupied.some((item) => boxesOverlap(candidate, item))) return candidate;
+      }
+    }
+  }
+  return box;
+}
+
 function addPosition(point, parentId, width, height) {
-  if (!point) return {};
+  const explicitPoint = Boolean(point);
+  const target = point || visibleCanvasCenter();
   const parent = parentId ? modelFor(parentId) : null;
-  return {
-    x: snap(point.x - (parent?.x || 0) - width / 2),
-    y: snap(point.y - (parent?.y || 0) - height / 2),
+  const box = {
+    x: snap(target.x - (parent?.x || 0) - width / 2),
+    y: snap(target.y - (parent?.y || 0) - height / 2),
+    width,
+    height,
   };
+  return explicitPoint ? box : avoidSiblingOverlap(box, parentId);
 }
 
 function invokeAction(action, context = {}) {
@@ -1491,10 +1854,14 @@ function invokeAction(action, context = {}) {
     applyResult(architecture.undo(), { quiet: true });
   } else if (action === "redo") {
     applyResult(architecture.redo(), { quiet: true });
+  } else if (action === "toggle-shape-palette") {
+    if (shapePalette.hidden) openShapePalette();
+    else closeShapePalette({ restoreFocus: true });
   } else if (action === "add-node") {
     const parentId = entryFor(ref)?.element.type === "group" ? ref : null;
     applyResult(architecture.addNode({
       parentId,
+      shape: SHAPES.includes(context.shape) ? context.shape : "rounded-rect",
       ...addPosition(context.point, parentId, 260, 140),
     }));
   } else if (action === "add-group") {
@@ -1551,8 +1918,104 @@ function invokeAction(action, context = {}) {
 }
 
 function wireControls() {
+  renderShapePalette();
+  syncResponsivePanels();
   document.querySelectorAll("[data-action]").forEach((button) => {
-    button.addEventListener("click", () => invokeAction(button.dataset.action));
+    button.addEventListener("click", () => {
+      const insideMore = toolbarMoreMenu.contains(button);
+      if (insideMore) closeToolbarMore({ restoreFocus: true });
+      invokeAction(
+        button.dataset.action,
+        insideMore ? { returnFocus: toolbarMoreButton } : {},
+      );
+    });
+  });
+  elementsPanelButton.addEventListener("click", () => toggleResponsivePanel("elements"));
+  inspectorPanelButton.addEventListener("click", () => toggleResponsivePanel("inspector"));
+  document.querySelectorAll("[data-panel-close]").forEach((button) => {
+    button.addEventListener("click", () => {
+      closeResponsivePanel(button.dataset.panelClose);
+    });
+  });
+  responsivePanels.addEventListener("change", () => {
+    if (responsivePanels.matches) {
+      const focusedPanel = elementPanel.contains(document.activeElement)
+        ? "elements"
+        : inspectorPanel.contains(document.activeElement)
+          ? "inspector"
+          : null;
+      responsivePanel =
+        focusedPanel ||
+        (desktopInspectorOpen ? "inspector" : desktopElementsOpen ? "elements" : null);
+    } else if (responsivePanel === "elements") {
+      desktopElementsOpen = true;
+    } else if (responsivePanel === "inspector") {
+      desktopInspectorOpen = true;
+    }
+    if (!responsivePanels.matches) responsivePanel = null;
+    syncResponsivePanels();
+  });
+  toolbarMoreButton.addEventListener("click", () => {
+    if (toolbarMoreMenu.hidden) openToolbarMore();
+    else closeToolbarMore({ restoreFocus: true });
+  });
+  toolbarMoreMenu.addEventListener("keydown", (event) => {
+    const items = toolbarMoreItems();
+    const current = items.indexOf(document.activeElement);
+    let next = null;
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+      next = items[(current + 1 + items.length) % items.length];
+    } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+      next = items[(current - 1 + items.length) % items.length];
+    } else if (event.key === "Home") {
+      next = items[0];
+    } else if (event.key === "End") {
+      next = items.at(-1);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeToolbarMore({ restoreFocus: true });
+      return;
+    } else if (event.key === "Tab") {
+      closeToolbarMore();
+      return;
+    }
+    if (next) {
+      event.preventDefault();
+      next.focus();
+    }
+  });
+  window.addEventListener("resize", () => {
+    positionShapePalette();
+    positionToolbarMoreMenu();
+    if (fitToViewport) requestAnimationFrame(fitZoom);
+  });
+  shapePalette.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-shape]");
+    if (!button) return;
+    closeShapePalette({ restoreFocus: true });
+    invokeAction("add-node", { shape: button.dataset.shape });
+  });
+  shapePalette.addEventListener("keydown", (event) => {
+    const items = [...shapePalette.querySelectorAll("button[data-shape]")];
+    const current = items.indexOf(document.activeElement);
+    let next = null;
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+      next = items[(current + 1 + items.length) % items.length];
+    } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+      next = items[(current - 1 + items.length) % items.length];
+    } else if (event.key === "Home") {
+      next = items[0];
+    } else if (event.key === "End") {
+      next = items.at(-1);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeShapePalette({ restoreFocus: true });
+      return;
+    }
+    if (next) {
+      event.preventDefault();
+      next.focus();
+    }
   });
   document.addEventListener("pointermove", updateDrag);
   document.addEventListener("pointerup", finishDrag);
@@ -1580,6 +2043,28 @@ function wireControls() {
   });
   document.addEventListener("pointerdown", (event) => {
     if (!contextMenu.hidden && !contextMenu.contains(event.target)) closeContextMenu();
+    if (
+      !shapePalette.hidden &&
+      !shapePalette.contains(event.target) &&
+      !shapePaletteButton.contains(event.target)
+    ) {
+      closeShapePalette();
+    }
+    if (
+      !toolbarMoreMenu.hidden &&
+      !toolbarMoreMenu.contains(event.target) &&
+      !toolbarMoreButton.contains(event.target)
+    ) {
+      closeToolbarMore();
+    }
+    if (
+      compactPanels.matches &&
+      responsivePanel &&
+      !(responsivePanel === "elements" ? elementPanel : inspectorPanel).contains(event.target) &&
+      !event.target.closest(".editor-panel-actions")
+    ) {
+      closeResponsivePanel(responsivePanel, { restoreFocus: false });
+    }
   }, true);
   contextMenu.addEventListener("keydown", (event) => {
     const activeMenu = document.activeElement.closest('[role="menu"]');
@@ -1642,24 +2127,54 @@ function wireControls() {
     });
   });
   viewport.addEventListener("pointerdown", (event) => {
-    if (event.button !== 1 && !(event.button === 0 && spacePressed)) return;
+    const interactiveTarget = event.target.closest(
+      "[data-editor-ref], .editor-resize-handle, button, input, select, textarea, a",
+    );
+    const primaryBlankDrag = event.button === 0 && !interactiveTarget;
+    if (event.button !== 1 && !(event.button === 0 && spacePressed) && !primaryBlankDrag) return;
     event.preventDefault();
+    viewport.setPointerCapture?.(event.pointerId);
     pan = {
       pointerId: event.pointerId,
       x: event.clientX,
       y: event.clientY,
       left: viewport.scrollLeft,
       top: viewport.scrollTop,
+      moved: false,
     };
+    viewport.classList.add("is-panning");
   });
   viewport.addEventListener("pointermove", (event) => {
     if (!pan || pan.pointerId !== event.pointerId) return;
-    viewport.scrollLeft = pan.left - (event.clientX - pan.x);
-    viewport.scrollTop = pan.top - (event.clientY - pan.y);
+    const dx = event.clientX - pan.x;
+    const dy = event.clientY - pan.y;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) pan.moved = true;
+    viewport.scrollLeft = pan.left - dx;
+    viewport.scrollTop = pan.top - dy;
   });
-  viewport.addEventListener("pointerup", () => {
+  const finishPan = (event) => {
+    if (!pan || pan.pointerId !== event.pointerId) return;
+    suppressCanvasClick = pan.moved;
     pan = null;
+    viewport.classList.remove("is-panning");
+    if (viewport.hasPointerCapture?.(event.pointerId)) {
+      viewport.releasePointerCapture(event.pointerId);
+    }
+  };
+  viewport.addEventListener("pointerup", finishPan);
+  viewport.addEventListener("pointercancel", finishPan);
+  viewport.addEventListener("lostpointercapture", (event) => {
+    if (pan?.pointerId !== event.pointerId) return;
+    suppressCanvasClick = pan.moved;
+    pan = null;
+    viewport.classList.remove("is-panning");
   });
+  viewport.addEventListener("click", (event) => {
+    if (!suppressCanvasClick) return;
+    suppressCanvasClick = false;
+    event.preventDefault();
+    event.stopPropagation();
+  }, true);
   viewport.addEventListener("scroll", () => closeContextMenu(), { passive: true });
   tree.closest(".editor-sidebar")?.addEventListener("scroll", () => closeContextMenu(), {
     passive: true,
@@ -1679,6 +2194,21 @@ function wireControls() {
     if (event.code === "Space" && !editable) spacePressed = true;
     const modifier = event.ctrlKey || event.metaKey;
     const key = event.key.toLowerCase();
+    if (event.key === "Escape" && !toolbarMoreMenu.hidden) {
+      event.preventDefault();
+      closeToolbarMore({ restoreFocus: true });
+      return;
+    }
+    if (event.key === "Escape" && !shapePalette.hidden) {
+      event.preventDefault();
+      closeShapePalette({ restoreFocus: true });
+      return;
+    }
+    if (event.key === "Escape" && responsivePanels.matches && responsivePanel) {
+      event.preventDefault();
+      closeResponsivePanel();
+      return;
+    }
     if (modifier && key === "s") {
       event.preventDefault();
       if (editable) event.target.blur();
@@ -1728,6 +2258,7 @@ async function refreshState() {
   const stateGeneration = state.generation ?? 0;
   document.documentElement.dataset.theme = state.theme || "dark";
   sourceLabel.textContent = `${sourcePath} — diagram ${blockIndex + 1}`;
+  sourceLabel.title = sourceLabel.textContent;
   if (targetGeneration !== stateGeneration) {
     targetGeneration = stateGeneration;
     draftRevision = stateRevision;
@@ -1758,7 +2289,11 @@ async function init() {
   wireControls();
   await refreshState();
   fitZoom();
-  announce("Select the diagram to edit it. The Markdown remains unchanged until you save.");
+  announce(
+    architecture.model.elements.length
+      ? "Select an element to edit it. The Markdown remains unchanged until you save."
+      : "Add the first shape to start the diagram. The Markdown remains unchanged until you save.",
+  );
   const events = new EventSource("./events");
   events.onmessage = () => {
     void refreshState().catch((error) => announce(error.message, "error"));

@@ -65,24 +65,31 @@ Mermaid の構文に誤りがある場合は、スライドの他の内容はそ
 ```
 ````
 
-ノードには長方形、角丸長方形、楕円を使えます。グループには row、column、grid、layered の
-レイアウトがあり、コネクターは straight、orthogonal、polyline の経路を選べます。
+ノードには長方形、角丸長方形、楕円、ひし形、三角形、六角形、平行四辺形を使えます。
+追加された形状も Architecture DSL v1 のまま下位互換で、PowerPoint ではネイティブ図形として
+書き出されます。グループには row、column、grid、layered のレイアウトがあり、コネクターは
+straight、orthogonal、polyline の経路を選べます。
+
+コネクターの線種は既存の `style.dash` を使います。実線は `dash` を省略し、点線は
+`"dash": "1 5"`、破線は `"10 6"` のような数値パターンを指定します。
 
 ## Canvas Extension で配置を調整する
 
-**More controls > Shape editing** を選ぶと、手早く使える配置エディターが開きます。要素を選び、ドラッグか矢印キーで動かします。
-エディターには Undo、Redo、レイアウト解除、**Advanced edit** があります。
+Markdown の元ファイルにひも付かない Canvas で直接作ったデッキでは、
+**More controls > Shape editing** を選ぶと、手早く使える配置エディターが開きます。
+要素を選び、ドラッグか矢印キーで動かします。エディターには Undo、Redo、レイアウト解除があります。
 
 ![Canvas Extension での Architecture 配置編集](../images/canvas-architecture-edit.png)
 
-**More controls > Open Markdown** で読み込んだ Markdown では、配置の変更が元の Architecture ブロックに保存されます。
 Canvas で直接作ったデッキでは、変更は Canvas 側に保存されます。
 
 発表を始める前に、編集モードを終了してください。
 
 ## Advanced Architecture Editor を使う
 
-配置編集モードから **Advanced edit** を選ぶと、専用エディターが開きます。
+**More controls > Open Markdown** で読み込んだ Markdown では、
+**More controls > Shape editing** から専用エディターへ直接移動します。現在のスライドに
+Architecture ブロックが複数ある場合は、先にピッカーから編集対象を選びます。
 
 ![API ノードを選択した Advanced Architecture Editor](../images/architecture-editor.png)
 
@@ -92,6 +99,11 @@ Canvas で直接作ったデッキでは、変更は Canvas 側に保存され�
 - テキスト、形状、アイコン、位置、サイズ、スタイル、ポート、経路、親グループの変更
 - グループレイアウトの適用と解除
 - 画像ファイルの選択と読み込み
+- キャンバスの余白ドラッグによる上下左右のパン
+- Elements / Properties の折りたたみ。中幅では非モーダルドック、狭幅では
+  キャンバスを遮断しないオーバーレイとして表示
+- 補助コマンドを **More** にまとめ、キャンバスを主役として維持
+- 空の図を **Add first shape** から開始
 - 編集中の内容の Undo と Redo
 
 変更は **Save** を選ぶまで下書きのままです。Markdown が外部で書き換えられていた場合、

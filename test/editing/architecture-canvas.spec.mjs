@@ -61,11 +61,45 @@ async function screenPoint(page, x, y) {
   }, { x, y });
 }
 
+async function addShape(page, name = "Rounded rectangle") {
+  await page.getByRole("button", { name: "Shape", exact: true }).click();
+  await page.getByRole("menuitem", { name, exact: true }).click();
+}
+
+async function openProperties(page) {
+  const panel = page.locator("#inspectorPanel");
+  if (!(await panel.isVisible())) {
+    await page.getByRole("button", { name: "Properties", exact: true }).click();
+  }
+}
+
+async function openMore(page) {
+  const menu = page.getByRole("menu", { name: "More editing controls" });
+  if (!(await menu.isVisible())) {
+    await page.getByRole("button", { name: "More", exact: true }).click();
+  }
+}
+
+async function clickEditorAction(page, action) {
+  const control = page.locator(`[data-action="${action}"]`);
+  if (!(await control.isVisible())) await openMore(page);
+  await control.click();
+}
+
+function boxesIntersect(left, right, gap = 20) {
+  return !(
+    left.x + left.width + gap <= right.x ||
+    right.x + right.width + gap <= left.x ||
+    left.y + left.height + gap <= right.y ||
+    right.y + right.height + gap <= left.y
+  );
+}
+
 test("changes remain in the draft until the save button writes them to Markdown", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     await expect(page.locator('[data-action="save"]')).toBeDisabled();
-    await page.locator('[data-action="add-node"]').click();
+    await addShape(page);
     await expect(page.locator(".tree-item")).toHaveCount(4);
     await expect(page.locator('[data-action="save"]')).toBeEnabled();
     expect(harness.saves).toHaveLength(0);
@@ -85,6 +119,7 @@ test("connector label overlap can be placed in front of or behind boxes", async 
   const harness = await openEditor(page);
   try {
     await page.locator('[data-ref="elements[2]"].tree-item').click();
+    await openProperties(page);
     const layer = page.locator('select[id^="field-labelLayer"]');
     await expect(layer).toHaveValue("front");
     await expect(
@@ -113,6 +148,29 @@ test("connector label overlap can be placed in front of or behind boxes", async 
   }
 });
 
+test("connector line-style presets preserve the Architecture v1 dash contract", async ({ page }) => {
+  const harness = await openEditor(page);
+  try {
+    await page.locator('[data-ref="elements[2]"].tree-item').click();
+    await openProperties(page);
+    const lineStyle = page.getByLabel("Line style");
+    await expect(lineStyle).toHaveValue("solid");
+
+    await lineStyle.selectOption("dotted");
+    await expect.poll(
+      () => JSON.parse(harness.draftSource).elements[2].style?.dash,
+    ).toBe("1 5");
+    await page.getByLabel("Line style").selectOption("custom");
+    await expect(page.getByLabel("Dash pattern")).toHaveValue("6 3");
+    await page.getByLabel("Line style").selectOption("solid");
+    await expect.poll(
+      () => JSON.parse(harness.draftSource).elements[2].style?.dash || "",
+    ).toBe("");
+  } finally {
+    await harness.close();
+  }
+});
+
 test("selection, keyboard movement, resizing, and undo/redo share one draft", async ({ page }) => {
   const harness = await openEditor(page);
   try {
@@ -127,6 +185,7 @@ test("selection, keyboard movement, resizing, and undo/redo share one draft", as
       .toBeGreaterThan(before);
 
     await page.locator('[data-ref="client"].tree-item').click();
+    await openProperties(page);
     await expect(page.locator(".editor-resize-handle")).toHaveCount(4);
     const width = page.locator('input[id^="field-width"]');
     await width.fill("340");
@@ -145,6 +204,224 @@ test("selection, keyboard movement, resizing, and undo/redo share one draft", as
   }
 });
 
+test("the shape palette stays bounded and adds PowerPoint-compatible shapes", async ({ page }) => {
+  await page.setViewportSize({ width: 560, height: 720 });
+  const harness = await openEditor(page);
+  try {
+    const trigger = page.getByRole("button", { name: "Shape", exact: true });
+    await trigger.click();
+    const palette = page.getByRole("menu", { name: "Add a shape" });
+    await expect(palette).toBeVisible();
+    await expect(palette.getByRole("menuitem")).toHaveCount(7);
+    const bounds = await palette.boundingBox();
+    expect(bounds.x).toBeGreaterThanOrEqual(0);
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(560);
+
+    await palette.getByRole("menuitem", { name: "Diamond", exact: true }).click();
+    await expect(page.locator('[data-ref="node"].tree-item')).toHaveCount(1);
+    await expect.poll(
+      () => JSON.parse(harness.draftSource).elements.find((element) => element.id === "node")?.shape,
+    ).toBe("diamond");
+    await expect(page.locator('[data-editor-ref="node"] > polygon')).toHaveCount(1);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("an empty diagram offers a direct first-shape action", async ({ page }) => {
+  const harness = await startArchitectureEditorHarness({
+    source: `${JSON.stringify({ version: 1, elements: [] }, null, 2)}\n`,
+  });
+  try {
+    await page.goto(harness.url, { waitUntil: "load" });
+    const empty = page.locator(".editor-empty-state");
+    await expect(empty.getByRole("heading", { name: "Build your first diagram" })).toBeVisible();
+    await expect(page.locator("#status")).toContainText("Add the first shape");
+    await empty.getByRole("button", { name: "Add first shape" }).click();
+    await expect(page.locator('[data-ref="node"].tree-item')).toBeVisible();
+    await expect(empty).toHaveCount(0);
+    await expect(page.locator('[data-editor-ref="node"]')).toBeVisible();
+  } finally {
+    await harness.close();
+  }
+});
+
+test("toolbar-added shapes avoid occupied siblings", async ({ page }) => {
+  const harness = await openEditor(page);
+  try {
+    await addShape(page);
+    await addShape(page, "Hexagon");
+    await expect(page.locator(".tree-item")).toHaveCount(5);
+    const elements = JSON.parse(harness.draftSource).elements.filter(
+      (element) => element.type === "node",
+    );
+    const added = elements.filter((element) => element.id.startsWith("node"));
+    expect(added).toHaveLength(2);
+    for (const candidate of added) {
+      expect(
+        elements.some(
+          (element) => element.id !== candidate.id && boxesIntersect(candidate, element),
+        ),
+      ).toBe(false);
+    }
+  } finally {
+    await harness.close();
+  }
+});
+
+test("medium and narrow layouts expose Elements and Properties as responsive drawers", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 900, height: 720 });
+  const harness = await openEditor(page);
+  try {
+    const elementsButton = page.getByRole("button", { name: "Elements", exact: true });
+    const propertiesButton = page.getByRole("button", { name: "Properties", exact: true });
+    await expect(elementsButton).toBeVisible();
+    await expect(propertiesButton).toBeVisible();
+    await expect(page.locator("#elementPanel")).not.toBeVisible();
+    await expect(page.locator("#inspectorPanel")).not.toBeVisible();
+
+    const client = page.locator('[data-editor-ref="client"]');
+    const clientBounds = await client.boundingBox();
+    await page.mouse.move(
+      clientBounds.x + clientBounds.width / 2,
+      clientBounds.y + clientBounds.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      clientBounds.x + clientBounds.width / 2 + 40,
+      clientBounds.y + clientBounds.height / 2,
+    );
+    await page.mouse.up();
+    await expect(page.locator("#inspectorPanel")).not.toBeVisible();
+    await expect.poll(
+      () => JSON.parse(harness.draftSource).elements.find((element) => element.id === "client")?.x,
+    ).toBeGreaterThan(100);
+
+    await elementsButton.click();
+    await expect(elementsButton).toHaveAttribute("aria-expanded", "true");
+    await expect(page.locator("#elementPanel")).toBeVisible();
+    await page.locator('[data-ref="client"].tree-item').click();
+    await expect(page.locator("#elementPanel")).toBeVisible();
+    await propertiesButton.click();
+    await expect(page.locator("#elementPanel")).not.toBeVisible();
+    await expect(page.locator("#inspectorPanel")).toBeVisible();
+    await expect(propertiesButton).toHaveAttribute("aria-expanded", "true");
+    await expect(page.getByLabel("ID", { exact: true })).toBeFocused();
+    await expect(page.locator("#panelScrim")).toHaveCount(0);
+    const fitted = await page.evaluate(() => {
+      const viewport = document.querySelector("#viewport").getBoundingClientRect();
+      const diagram = document.querySelector(".architecture-diagram").getBoundingClientRect();
+      return {
+        left: diagram.left - viewport.left,
+        right: viewport.right - diagram.right,
+      };
+    });
+    expect(fitted.left).toBeGreaterThanOrEqual(0);
+    expect(fitted.right).toBeGreaterThanOrEqual(0);
+
+    const selectedBounds = await page.locator('[data-editor-ref="client"]').boundingBox();
+    await page.mouse.move(
+      selectedBounds.x + selectedBounds.width / 2,
+      selectedBounds.y + selectedBounds.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      selectedBounds.x + selectedBounds.width / 2 + 30,
+      selectedBounds.y + selectedBounds.height / 2,
+    );
+    await page.mouse.up();
+    await expect(page.locator("#inspectorPanel")).toBeVisible();
+
+    await page.setViewportSize({ width: 520, height: 720 });
+    await expect(page.getByRole("button", { name: "Save", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Shape", exact: true })).toBeVisible();
+    await expect(page.locator("#inspectorPanel")).toBeVisible();
+    const headerHeight = await page.locator(".editor-header").evaluate((element) => element.offsetHeight);
+    expect(headerHeight).toBeLessThan(120);
+    const primaryHeights = await page.locator(".editor-actions > button, .editor-actions > div > button")
+      .evaluateAll((buttons) => buttons.map((button) => button.getBoundingClientRect().height));
+    expect(Math.min(...primaryHeights)).toBeGreaterThanOrEqual(40);
+    await openMore(page);
+    await expect(page.locator("#inspectorPanel")).not.toBeVisible();
+    await expect(page.getByRole("menu", { name: "More editing controls" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Group", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("breakpoint changes preserve the focused panel without stale Escape handling", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1300, height: 720 });
+  const harness = await openEditor(page);
+  try {
+    await page.locator('[data-ref="client"].tree-item').click();
+    await openProperties(page);
+    const clientTreeItem = page.locator('[data-ref="client"].tree-item');
+    await clientTreeItem.focus();
+
+    await page.setViewportSize({ width: 900, height: 720 });
+    await expect(page.locator("#elementPanel")).toBeVisible();
+    await expect(page.locator("#inspectorPanel")).not.toBeVisible();
+    await expect(clientTreeItem).toBeFocused();
+
+    await page.setViewportSize({ width: 1300, height: 720 });
+    await expect(page.locator("#elementPanel")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator("#elementPanel")).toBeVisible();
+    await expect(clientTreeItem).toHaveAttribute("aria-selected", "false");
+  } finally {
+    await harness.close();
+  }
+});
+
+test("move and resize gestures show live transforms before committing", async ({ page }) => {
+  const harness = await openEditor(page);
+  try {
+    const client = page.locator('[data-editor-ref="client"]');
+    const clientBounds = await client.boundingBox();
+    await page.mouse.move(
+      clientBounds.x + clientBounds.width / 2,
+      clientBounds.y + clientBounds.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      clientBounds.x + clientBounds.width / 2 + 60,
+      clientBounds.y + clientBounds.height / 2 + 30,
+    );
+    await expect(client).toHaveClass(/editor-drag-target/);
+    await expect.poll(() => client.getAttribute("transform")).toContain("translate");
+    await page.mouse.up();
+    await expect.poll(
+      () => JSON.parse(harness.draftSource).elements.find((element) => element.id === "client")?.x,
+    ).toBeGreaterThan(100);
+
+    await page.locator('[data-ref="client"].tree-item').click();
+    const handle = page.locator('.editor-resize-handle[data-corner="se"]');
+    const handleBounds = await handle.boundingBox();
+    await page.mouse.move(
+      handleBounds.x + handleBounds.width / 2,
+      handleBounds.y + handleBounds.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      handleBounds.x + handleBounds.width / 2 + 70,
+      handleBounds.y + handleBounds.height / 2 + 40,
+    );
+    await expect.poll(() => client.getAttribute("transform")).toContain("matrix");
+    await page.mouse.up();
+    await expect.poll(
+      () => JSON.parse(harness.draftSource).elements.find((element) => element.id === "client")?.width,
+    ).toBeGreaterThan(260);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("large diagrams scroll and pan to the edges, then fit centered in the viewport", async ({ page }) => {
   await page.setViewportSize({ width: 1100, height: 720 });
   const harness = await openEditor(page);
@@ -152,10 +429,10 @@ test("large diagrams scroll and pan to the edges, then fit centered in the viewp
     const viewport = page.locator("#viewport");
     const surface = page.locator("#canvasSurface");
     const diagram = page.locator(".architecture-diagram");
-    await expect(page.locator("#status")).toContainText("Select the diagram to edit it");
-    await page.locator('[data-action="zoom-in"]').click();
-    await page.locator('[data-action="zoom-in"]').click();
-    await page.locator('[data-action="zoom-in"]').click();
+    await expect(page.locator("#status")).toContainText("Select an element to edit it");
+    await clickEditorAction(page, "zoom-in");
+    await clickEditorAction(page, "zoom-in");
+    await clickEditorAction(page, "zoom-in");
     const initial = await viewport.evaluate((element) => ({
       clientWidth: element.clientWidth,
       scrollWidth: element.scrollWidth,
@@ -187,15 +464,17 @@ test("large diagrams scroll and pan to the edges, then fit centered in the viewp
 
     await viewport.evaluate((element) => {
       element.scrollLeft = 0;
+      element.scrollTop = 0;
     });
     const bounds = await viewport.boundingBox();
-    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
-    await page.mouse.down({ button: "middle" });
-    await page.mouse.move(bounds.x + bounds.width / 2 - 140, bounds.y + bounds.height / 2);
-    await page.mouse.up({ button: "middle" });
+    await page.mouse.move(bounds.x + 44, bounds.y + 44);
+    await page.mouse.down();
+    await page.mouse.move(bounds.x + 4, bounds.y + 4);
+    await page.mouse.up();
     await expect.poll(() => viewport.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    await expect.poll(() => viewport.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
 
-    await page.locator('[data-action="zoom-fit"]').click();
+    await clickEditorAction(page, "zoom-fit");
     const fitted = await viewport.evaluate((element) => ({
       clientWidth: element.clientWidth,
       scrollWidth: element.scrollWidth,
@@ -204,7 +483,7 @@ test("large diagrams scroll and pan to the edges, then fit centered in the viewp
     expect(fitted.scrollWidth - fitted.clientWidth).toBeLessThanOrEqual(1);
     expect(fitted.scrollLeft).toBe(0);
 
-    await page.locator('[data-action="zoom-out"]').click();
+    await clickEditorAction(page, "zoom-out");
     const centers = await page.evaluate(() => {
       const viewportBounds = document.getElementById("viewport").getBoundingClientRect();
       const diagramBounds = document.querySelector(".architecture-diagram").getBoundingClientRect();
@@ -223,13 +502,13 @@ test("large diagrams scroll and pan to the edges, then fit centered in the viewp
 test("adding connectors and deleting nodes preserves reference integrity", async ({ page }) => {
   const harness = await openEditor(page);
   try {
-    await page.locator('[data-action="add-connector"]').click();
+    await clickEditorAction(page, "add-connector");
     await page.locator('[data-editor-ref="api"]').click();
     await page.locator('[data-editor-ref="client"]').click();
     await expect(page.locator(".tree-item")).toHaveCount(4);
 
     await page.locator('[data-ref="api"].tree-item').click();
-    await page.locator('[data-action="delete"]').click();
+    await clickEditorAction(page, "delete");
     await expect(page.locator('[data-ref="api"].tree-item')).toHaveCount(0);
     await expect(page.locator(".tree-item")).toHaveCount(1);
   } finally {
@@ -240,7 +519,7 @@ test("adding connectors and deleting nodes preserves reference integrity", async
 test("the asset picker edits standalone images and node icons", async ({ page }) => {
   const harness = await openEditor(page);
   try {
-    await page.getByRole("button", { name: "Image", exact: true }).click();
+    await clickEditorAction(page, "add-image");
     const dialog = page.getByRole("dialog", { name: "Add image" });
     await expect(dialog).toBeVisible();
     await expect
@@ -254,6 +533,7 @@ test("the asset picker edits standalone images and node icons", async ({ page })
       "data-architecture-type",
       "image",
     );
+    await openProperties(page);
     await page.getByLabel("Display mode").selectOption("cover");
     await expect
       .poll(
@@ -269,6 +549,7 @@ test("the asset picker edits standalone images and node icons", async ({ page })
     await expect(page.locator('[data-architecture-type="connector"]')).toHaveCount(2);
 
     await page.locator('[data-ref="client"].tree-item').click();
+    await openProperties(page);
     await page.getByRole("button", { name: "Select image from assets/" }).click();
     await expect(page.getByRole("dialog", { name: "Select node image" })).toBeVisible();
     await page.getByRole("option", { name: "assets/existing.svg" }).click();
@@ -290,7 +571,7 @@ test("importing an image from the computer numbers duplicate names and diagram u
 }) => {
   const harness = await openEditor(page);
   try {
-    await page.getByRole("button", { name: "Image", exact: true }).click();
+    await clickEditorAction(page, "add-image");
     await page.locator("#assetFileInput").setInputFiles({
       name: "existing.svg",
       mimeType: "image/svg+xml",
@@ -322,7 +603,7 @@ test("importing an image from the computer numbers duplicate names and diagram u
 test("external-change conflicts remain visible without overwriting Markdown", async ({ page }) => {
   const harness = await openEditor(page);
   try {
-    await page.locator('[data-action="add-node"]').click();
+    await addShape(page);
     harness.setConflict();
     await page.locator('[data-action="save"]').click();
     await expect(page.locator("#status")).toContainText("changed outside");
@@ -331,12 +612,12 @@ test("external-change conflicts remain visible without overwriting Markdown", as
     await expect(page.locator('[data-action="save"]')).toBeEnabled();
 
     page.once("dialog", (dialog) => dialog.accept());
-    await page.locator('[data-action="reload"]').click();
+    await clickEditorAction(page, "reload");
     await expect(page.locator("#status")).toContainText("Reloaded");
     await expect(page.locator('[data-ref="node"].tree-item')).toHaveCount(0);
     await expect(page.locator('[data-action="save"]')).toBeDisabled();
 
-    await page.locator('[data-action="add-node"]').click();
+    await addShape(page);
     await page.locator('[data-action="save"]').click();
     await expect(page.locator("#status")).toContainText("Saved");
     expect(harness.saves).toHaveLength(1);
@@ -348,12 +629,12 @@ test("external-change conflicts remain visible without overwriting Markdown", as
 test("editing can continue with the current revision after reloading an unsaved draft", async ({ page }) => {
   const harness = await openEditor(page);
   try {
-    await page.locator('[data-action="add-node"]').click();
+    await addShape(page);
     await expect(page.locator(".tree-item")).toHaveCount(4);
     await page.reload({ waitUntil: "load" });
     await expect(page.locator(".tree-item")).toHaveCount(4);
 
-    await page.locator('[data-action="add-node"]').click();
+    await addShape(page);
     await expect(page.locator(".tree-item")).toHaveCount(5);
     await page.locator('[data-action="save"]').click();
     await expect(page.locator("#status")).toContainText("Saved");
@@ -366,14 +647,14 @@ test("editing can continue with the current revision after reloading an unsaved 
 test("reloading source Markdown does not carry over a draft from the old generation", async ({ page }) => {
   const harness = await openEditor(page);
   try {
-    await page.locator('[data-action="add-node"]').click();
+    await addShape(page);
     await expect(page.locator('[data-ref="node"].tree-item')).toHaveCount(1);
 
     harness.reloadSource(SOURCE.replace('"text": "Client"', '"text": "Reloaded client"'));
     await expect(page.locator('[data-ref="node"].tree-item')).toHaveCount(0);
     await expect(page.locator('[data-ref="client"].tree-item')).toContainText("Reloaded client");
 
-    await page.locator('[data-action="add-node"]').click();
+    await addShape(page);
     await page.locator('[data-action="save"]').click();
     await expect(page.locator("#status")).toContainText("Saved");
     expect(harness.markdown).toContain("Reloaded client");
@@ -387,7 +668,7 @@ test("a delayed stale state response does not roll back the generation after rel
   const harness = await openEditor(page);
   try {
     harness.delayNextState(300);
-    await page.locator('[data-action="add-node"]').click();
+    await addShape(page);
     harness.reloadSource(SOURCE.replace('"text": "Client"', '"text": "Reloaded client"'));
 
     await expect(page.locator('[data-ref="client"].tree-item')).toContainText("Reloaded client");
@@ -395,7 +676,7 @@ test("a delayed stale state response does not roll back the generation after rel
     await expect(page.locator('[data-ref="client"].tree-item')).toContainText("Reloaded client");
     await expect(page.locator('[data-ref="node"].tree-item')).toHaveCount(0);
 
-    await page.locator('[data-action="add-node"]').click();
+    await addShape(page);
     await page.locator('[data-action="save"]').click();
     await expect(page.locator("#status")).toContainText("Saved");
     expect(harness.markdown).toContain("Reloaded client");
@@ -412,11 +693,11 @@ test("edits made during save remain dirty instead of being marked saved", async 
   try {
     await page.goto(harness.url, { waitUntil: "load" });
     await expect(page.locator(".tree-item")).toHaveCount(3);
-    await page.locator('[data-action="add-node"]').click();
+    await addShape(page);
     await page.locator('[data-action="save"]').click();
     await expect(page.locator("#status")).toContainText("Saving");
 
-    await page.locator('[data-action="add-node"]').click();
+    await addShape(page);
     await expect(page.locator(".tree-item")).toHaveCount(5);
     await expect(page.locator("#status")).toContainText("still unsaved");
     await expect(page.locator('[data-action="save"]')).toBeEnabled();
@@ -433,7 +714,7 @@ test("edits made during save remain dirty instead of being marked saved", async 
 test("save server communication failures appear in the UI", async ({ page }) => {
   const harness = await openEditor(page);
   try {
-    await page.locator('[data-action="add-node"]').click();
+    await addShape(page);
     await expect(page.locator('[data-action="save"]')).toBeEnabled();
     await page.route("**/save", (route) => route.abort("connectionfailed"));
 
@@ -530,7 +811,7 @@ test("context menus support ordering, connector duplication, undo, and save", as
   }
 });
 
-test("blank space in the element tree offers add actions at default positions", async ({ page }) => {
+test("blank space in the element tree adds near the visible canvas without overlap", async ({ page }) => {
   const harness = await openEditor(page);
   try {
     const menu = page.locator("#contextMenu");
@@ -546,7 +827,12 @@ test("blank space in the element tree offers add actions at default positions", 
     await expect(page.locator('[data-ref="node"].tree-item')).toHaveCount(1);
     await expect.poll(() => JSON.parse(harness.draftSource).elements.find(
       (element) => element.id === "node",
-    )).toMatchObject({ x: 140, y: 140 });
+    )).toMatchObject({ width: 260, height: 140 });
+    const elements = JSON.parse(harness.draftSource).elements;
+    const added = elements.find((element) => element.id === "node");
+    expect(added.x).toBeGreaterThan(300);
+    expect(added.y).toBeGreaterThan(200);
+    expect(elements.slice(0, 2).some((element) => boxesIntersect(added, element))).toBe(false);
   } finally {
     await harness.close();
   }
@@ -592,6 +878,8 @@ test("layout actions appear only in the group context submenu", async ({ page })
     await expect(menu.getByRole("menuitem", { name: "Release layout" })).toHaveCount(0);
     await expect(page.locator('[data-action="release-layout"]')).toBeDisabled();
 
+    await page.locator('[data-ref="zone"].tree-item').click();
+    await openProperties(page);
     await page.locator('[data-ref="zone"].tree-item').click({ button: "right" });
     const layoutTrigger = menu.getByRole("menuitem", { name: "Layout", exact: true });
     await expect(layoutTrigger).toHaveAttribute("aria-haspopup", "menu");
@@ -758,6 +1046,7 @@ test("Ctrl+S while editing an inspector field commits and saves the change", asy
   const harness = await openEditor(page);
   try {
     await page.locator('[data-ref="client"].tree-item').click();
+    await openProperties(page);
     const text = page.locator('textarea[id^="field-text-"]');
     await text.fill("Updated client");
     await page.keyboard.press("Control+S");
