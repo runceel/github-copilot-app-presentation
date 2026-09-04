@@ -497,14 +497,14 @@ export async function exportPdf(inst, requestedPath, requestedTheme) {
     profileDir = await mkdtemp(join(tmpdir(), "markdstage-pdf-"));
     const outputBase = basename(outputPath, extname(outputPath)) || "markdstage";
     temporaryOutputPath = join(outputParent, `.${outputBase}.${token}.tmp.pdf`);
-    inst.exportJobs.set(token, createOutputJob(snapshot, "pdf"));
+    const exportJob = createOutputJob(snapshot, "pdf");
+    inst.exportJobs.set(token, exportJob);
 
     const pageUrl = pageUrlFor(inst, { print: 1, token });
-    await runPdfBrowser(browser, pageUrl, temporaryOutputPath, profileDir);
-    const exportJob = inst.exportJobs.get(token);
-    if (exportJob?.status !== "ready") {
+    await runPdfBrowser(browser, pageUrl, temporaryOutputPath, profileDir, exportJob);
+    if (exportJob.status !== "ready") {
       throw new Error(
-        exportJob?.error || "The print renderer did not finish before the browser exited.",
+        exportJob.error || "The print renderer did not finish before PDF generation.",
       );
     }
     const bytes = await verifyPdf(temporaryOutputPath);

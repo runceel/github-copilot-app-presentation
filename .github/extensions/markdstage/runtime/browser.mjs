@@ -6,7 +6,7 @@
 // because the Extension is distributed as a folder ZIP.
 
 import { existsSync } from "node:fs";
-import { readFile, open, rm, stat } from "node:fs/promises";
+import { readFile, open, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { execFileSync, spawn } from "node:child_process";
 
@@ -173,84 +173,6 @@ export function delay(milliseconds) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
 }
 
-/**
- * Run a headless browser once with `--print-to-pdf`.
- *
- * ⚠️ **`pageUrl` must include `?print=1&token=...` (#12).**
- *
- * `--print-to-pdf` completes only when the page becomes idle. In renderer `init()`,
- * only print mode returns early. Normal and presenter views keep an unclosed SSE
- * (`new EventSource("./events")`) and a two-second `setInterval` running.
- * Passing a URL without `?print=1` therefore means **the browser never exits**.
- *
- * Observed results, using Chrome arguments byte-for-byte identical to this function:
- *
- * | URL                        | Result                                  |
- * | -------------------------- | --------------------------------------- |
- * | `/?print=1&token=<valid>`  | exit 0 @ 2.4s (valid PDF)               |
- * | `/?print=1&token=` (empty) | exit 0 @ 1.9s (blank; renderer reports failure) |
- * | `/` (normal view)          | **HANG** (still running after 120 seconds) |
- * | `/?present=1`              | **HANG**                                |
- * | `/nope-404` (no renderer)  | exit 0 @ 3.0s                           |
- *
- * ⚠️ **`--virtual-time-budget` is effectively ignored by `--headless=new`.**
- * The `--virtual-time-budget=12000` argument below does not stop this hang.
- * Adding `--timeout=8000` is also ineffective, as verified empirically.
- * The argument is harmless and remains in place, but **do not treat it as a
- * wall-clock timeout**. Only Node's `PDF_RENDER_TIMEOUT_MS` and
- * `terminateProcessTree` enforce a limit, and failure may take up to 60 seconds.
- */
-export async function runHeadlessBrowser(browser, args, failureLabel) {
-  await new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(browser, args, {
-      detached: process.platform !== "win32",
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    let diagnostics = "";
-    let settled = false;
-    let timedOut = false;
-    const appendDiagnostics = (chunk) => {
-      diagnostics = `${diagnostics}${chunk.toString()}`.slice(-12_000);
-    };
-    child.stdout.on("data", appendDiagnostics);
-    child.stderr.on("data", appendDiagnostics);
-
-    const settle = (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      if (error) rejectPromise(error);
-      else resolvePromise();
-    };
-    const timer = setTimeout(async () => {
-      if (settled) return;
-      timedOut = true;
-      await terminateProcessTree(child);
-      settle(new Error(`${failureLabel} timed out after ${PDF_RENDER_TIMEOUT_MS / 1000}s.`));
-    }, PDF_RENDER_TIMEOUT_MS);
-
-    child.once("error", (error) => {
-      if (!timedOut) settle(error);
-    });
-    child.once("exit", (code, signal) => {
-      if (timedOut) return;
-      if (code === 0) {
-        settle();
-        return;
-      }
-      const detail = diagnostics.trim();
-      settle(
-        new Error(
-          `${failureLabel} failed (${signal ? `signal ${signal}` : `exit ${code}`})${
-            detail ? `: ${detail}` : "."
-          }`,
-        ),
-      );
-    });
-  });
-}
-
 function withSandboxFallback(args) {
   if (
     process.platform !== "win32" &&
@@ -262,35 +184,38 @@ function withSandboxFallback(args) {
   return args;
 }
 
-export async function runPdfBrowser(browser, pageUrl, outputPath, profileDir) {
-  // Enforce the contract at runtime. Otherwise it silently waits 60 seconds
-  // before timing out, obscuring the cause; fail immediately with an explanation.
+export async function runPdfBrowser(browser, pageUrl, outputPath, profileDir, job) {
   if (new URL(pageUrl).searchParams.get("print") !== "1") {
     throw new Error(
-      `Refusing to run --print-to-pdf against a non-print URL (${pageUrl}): only ?print=1 stops the renderer's SSE and polling loops, so any other page hangs the browser forever.`,
+      `Refusing to render PDF from a non-print URL (${pageUrl}).`,
     );
   }
-  const args = withSandboxFallback([
-    "--headless=new",
-    "--disable-gpu",
-    "--disable-background-networking",
-    "--disable-component-update",
-    "--disable-default-apps",
-    "--disable-extensions",
-    "--force-color-profile=srgb",
-    "--hide-scrollbars",
-    "--no-first-run",
-    "--no-pdf-header-footer",
-    "--print-to-pdf-no-header",
-    "--run-all-compositor-stages-before-draw",
-    // Ineffective (#12): --headless=new ignores it. See the JSDoc above.
-    // The actual safeguards are PDF_RENDER_TIMEOUT_MS + terminateProcessTree.
-    "--virtual-time-budget=12000",
-    `--user-data-dir=${profileDir}`,
-    `--print-to-pdf=${outputPath}`,
-    pageUrl,
-  ]);
-  await runHeadlessBrowser(browser, args, "Browser PDF rendering");
+  if (!job || typeof job !== "object") {
+    throw new Error("PDF rendering requires an output job.");
+  }
+
+  const { cdp, child } = await openCdpOutputPage(browser, pageUrl, profileDir, job);
+  try {
+    // The renderer reports ready only after Mermaid, images, fonts, and layout
+    // have settled. Give Chromium two compositor frames before printing.
+    await cdp.send("Runtime.evaluate", {
+      expression:
+        "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+      awaitPromise: true,
+    });
+    const pdf = await cdp.send("Page.printToPDF", {
+      displayHeaderFooter: false,
+      printBackground: true,
+      preferCSSPageSize: true,
+      transferMode: "ReturnAsBase64",
+    });
+    if (typeof pdf.data !== "string" || pdf.data.length === 0) {
+      throw new Error("Chromium DevTools did not return PDF data.");
+    }
+    await writeFile(outputPath, Buffer.from(pdf.data, "base64"));
+  } finally {
+    await closeCdpOutputPage(cdp, child);
+  }
 }
 
 async function waitForDevToolsPort(profileDir, child, diagnostics) {

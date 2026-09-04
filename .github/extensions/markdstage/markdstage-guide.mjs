@@ -115,7 +115,13 @@ export async function readGuide(topic = "overview") {
         "For details, request `slide-format`, `themes`, `custom-themes`, `theme-schema`, `architecture-dsl`, or `architecture-schema`.",
       ].join("\n");
     case "slide-format":
-      return section(readme, "### Slide fragment format");
+      return [
+        section(readme, "### Markdown file syntax"),
+        "",
+        section(readme, "### Canvas API `slides` array"),
+        "",
+        section(readme, "### `sourceName` role"),
+      ].join("\n");
     case "themes":
       return section(readme, "### Choosing a theme");
     case "custom-themes":

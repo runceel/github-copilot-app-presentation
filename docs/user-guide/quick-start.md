@@ -30,6 +30,11 @@ Markdown, ready for the stage.
 
 Save the file with a `.md` or `.markdown` extension.
 
+At the top level, a line containing only `---` after a blank line separates
+slides. Do not use custom markers such as `<!-- slide -->`. If a slide ends with
+a top-level HTML comment, leave a blank line between the closing comment and the
+next `---` separator.
+
 ## 2. Open it in the Canvas Extension
 
 Use either method:

@@ -207,10 +207,31 @@ When the extension detects a presentation-related prompt, it adds a short hint
 to use `markdstage_guide` at most once per session. No hint is added after the
 tool has already been called, and session-end cleanup removes the state.
 
-### Slide fragment format
+### Markdown file syntax
 
-Each element in open / `load_deck` `slides` is one Markdown string. It may start
-with front matter delimited by `---`, followed by GFM-compatible content.
+A Markdown file represents the complete deck. At the top level, a line containing
+only `---` after a blank line separates slides. A leading `---` block is file
+front matter, and `---` inside a fenced code block is not a separator.
+
+Use only the top-level `---` syntax for slide boundaries. Custom markers such as
+`<!-- slide -->` are not slide separators and must not be used.
+
+Do not place a top-level HTML comment immediately before a slide separator. End
+the comment, leave a blank line, and then write `---`; without the blank line,
+the separator may not be recognized as a slide boundary.
+
+To have MarkdStage read and split a workspace Markdown file, use **More controls >
+Open Markdown**. This file-loading workflow is separate from the Canvas API.
+
+### Canvas API `slides` array
+
+For canvas `open` and `load_deck`, each element of the `slides` array is exactly
+one slide. The caller must read, split, or generate the deck before invoking the
+Canvas API. Do not pass a complete multi-slide Markdown file as one array element
+and expect its `---` lines to be split.
+
+Each array element is one Markdown string. It may start with front matter
+delimited by `---`, followed by GFM-compatible content.
 
 | Front matter | Purpose |
 | --- | --- |
@@ -245,14 +266,6 @@ First explain the **prerequisites**.
 -->
 ```
 
-Write local images as `![Alternative text](/assets/foo.png)` and pass the source
-Markdown's workspace-relative path as `sourceName`. Lookup tries adjacent
-`assets/` before workspace-root `assets/`. Architecture `icon` and `image.src`
-use `assets/foo.svg` without a leading slash and follow the same lookup order.
-`sourceName` supplies this resolution base only; it does not read or watch the
-Markdown file.
-Specifically, lookup checks `assets/` beside the Markdown before `assets/` at the workspace root.
-
 On a standard slide, the first H1/H2 is fixed in the top title area, so its
 position does not move with body length. Later headings remain in the body.
 Specialized `title`, `section`, and `backcover` layouts retain their own
@@ -286,6 +299,20 @@ layout: section
 
 ## Key GitHub Copilot features
 ```
+
+### `sourceName` role
+
+`sourceName` is workspace-relative metadata used to resolve adjacent themes and
+images and to derive output filenames. It does not read, parse, split, or watch
+Markdown content. Passing `sourceName` does not load a deck; non-empty canvas
+input must still include the complete `slides` array.
+
+To have MarkdStage load a Markdown file, use **More controls > Open Markdown**.
+
+Write local images as `![Alternative text](/assets/foo.png)`. With `sourceName`,
+lookup tries `assets/` beside the Markdown before workspace-root `assets/`.
+Architecture `icon` and `image.src` use `assets/foo.svg` without a leading slash
+and follow the same lookup order.
 
 ### Choosing a theme
 

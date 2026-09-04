@@ -23,6 +23,9 @@ test("canvas exposes layout, PNG, PDF, and editable PowerPoint output", async ()
   assert.match(browser, /--force-device-scale-factor=1/);
   assert.match(browser, /--remote-debugging-port=0/);
   assert.match(browser, /Page\.captureScreenshot/);
+  assert.match(browser, /Page\.printToPDF/);
+  assert.match(browser, /await openCdpOutputPage\(browser, pageUrl, profileDir, job\)/);
+  assert.doesNotMatch(browser, /--print-to-pdf=/);
   assert.match(source, /Every non-empty input must include slides/);
   assert.match(source, /sourceName is metadata and never reads or watches Markdown/);
   assert.match(source, /registered in-memory output snapshot/);
