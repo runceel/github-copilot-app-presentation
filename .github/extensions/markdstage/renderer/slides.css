@@ -276,6 +276,12 @@ body.mermaid-loading .mermaid{visibility:hidden;}
 .architecture-routing-warning span{font-family:"Cascadia Code","Cascadia Mono",Consolas,monospace;
      font-size:.85em;overflow-wrap:anywhere;}
 hr{border:0;border-top:1px solid var(--border);margin:.7em 0;}
+/* Flex item margins do not collapse, so regular slide bodies use their gap as
+   the single source of vertical spacing. Nested component spacing is unchanged. */
+.deck:not(.title-slide):not(.section-slide):not(.backcover-slide)>.body>:where(p,h1,h2,h3,h4,h5,h6,ul,ol,blockquote,pre,table):has(+:where(p,h1,h2,h3,h4,h5,h6,ul,ol,blockquote,pre,table)),
+.deck:not(.title-slide):not(.section-slide):not(.backcover-slide)>.body>:where(p,h1,h2,h3,h4,h5,h6,ul,ol,blockquote,pre,table)+:where(p,h1,h2,h3,h4,h5,h6,ul,ol,blockquote,pre,table){
+  margin-block:0;
+}
 footer{flex:0 0 auto;display:flex;justify-content:space-between;align-items:center;
        color:var(--muted);font-size:clamp(12px,1.7vh,16px);
        margin-top:clamp(12px,2.2vh,26px);border-top:1px solid var(--border);padding-top:12px;}

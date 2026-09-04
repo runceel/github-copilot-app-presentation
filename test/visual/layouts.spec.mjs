@@ -46,6 +46,102 @@ const CENTER_SLIDE = [
   "- Short body",
 ].join("\n");
 
+function regularSlide(title, bodyLines) {
+  return ["---", "size: normal", "---", "", `## ${title}`, "", ...bodyLines].join("\n");
+}
+
+const BODY_SPACING_CASES = [
+  {
+    name: "paragraphs",
+    markdown: regularSlide("Paragraph spacing", [
+      "First paragraph.",
+      "",
+      "Second paragraph.",
+    ]),
+  },
+  {
+    name: "body h2",
+    markdown: regularSlide("Non-leading H2 spacing", [
+      "Paragraph before the body heading.",
+      "",
+      "## Heading 2 within the body",
+      "",
+      "Paragraph after the body heading.",
+    ]),
+  },
+  {
+    name: "lists",
+    markdown: regularSlide("List spacing", [
+      "Before the unordered list.",
+      "",
+      "- First item",
+      "- Second item",
+      "",
+      "Between the lists.",
+      "",
+      "1. First ordered item",
+      "2. Second ordered item",
+      "",
+      "After the ordered list.",
+    ]),
+    preservesListItemSpacing: true,
+  },
+  {
+    name: "blockquote",
+    markdown: regularSlide("Blockquote spacing", [
+      "Before the quotation.",
+      "",
+      "> Quoted paragraph.",
+      "",
+      "After the quotation.",
+    ]),
+  },
+  {
+    name: "code",
+    markdown: regularSlide("Code spacing", [
+      "Before the code block.",
+      "",
+      "```js",
+      "const answer = 42;",
+      "```",
+      "",
+      "After the code block.",
+    ]),
+  },
+  {
+    name: "table",
+    markdown: regularSlide("Table spacing", [
+      "Before the table.",
+      "",
+      "| Name | Value |",
+      "| --- | --- |",
+      "| Alpha | 1 |",
+      "",
+      "After the table.",
+    ]),
+  },
+  {
+    name: "headings",
+    markdown: regularSlide("Heading spacing", [
+      "### Heading 3",
+      "",
+      "Paragraph after H3.",
+      "",
+      "#### Heading 4",
+      "",
+      "Paragraph after H4.",
+      "",
+      "##### Heading 5",
+      "",
+      "Paragraph after H5.",
+      "",
+      "###### Heading 6",
+      "",
+      "Paragraph after H6.",
+    ]),
+  },
+];
+
 test("section-divider fixture matches snapshot names", () => {
   expect(SLIDES).toHaveLength(SLIDE_NAMES.length);
   expect(STANDARD_SLIDES).toHaveLength(4);
@@ -136,6 +232,84 @@ test("regular slide titles stay at the same top position regardless of body leng
     await harness.close();
   }
 });
+
+for (const theme of [...THEMES, "custom"]) {
+  test(`regular body blocks use one consistent gap: ${theme}`, async ({ page }) => {
+    const harness = await startHarness({
+      slides: BODY_SPACING_CASES.map(({ markdown }) => markdown),
+      theme,
+      customThemeCss:
+        theme === "custom" ? "--bg:#f8fafc;--fg:#172033;--body:#344054;--accent:#2563eb;" : "",
+    });
+    try {
+      await page.goto(`${harness.url}/`, { waitUntil: "load" });
+      await waitForSlideReady(page);
+
+      for (let index = 0; index < BODY_SPACING_CASES.length; index += 1) {
+        if (index > 0) {
+          await page.locator("#navNext").click();
+          await expect.poll(() => harness.index).toBe(index);
+          await waitForSlideReady(page);
+        }
+
+        const metrics = await page.locator("#stage > .deck").evaluate((deck) => {
+          const body = deck.querySelector(":scope > .body");
+          const children = [...body.children];
+          const bodyStyle = getComputedStyle(body);
+          const directChildMargins = children.map((child) => {
+            const style = getComputedStyle(child);
+            return {
+              top: parseFloat(style.marginBlockStart),
+              bottom: parseFloat(style.marginBlockEnd),
+            };
+          });
+          const measuredGaps = children.slice(1).map((child, childIndex) => {
+            const previous = children[childIndex];
+            return child.getBoundingClientRect().top - previous.getBoundingClientRect().bottom;
+          });
+          const listItemMargins = [...body.querySelectorAll("li")].map((item) => {
+            const style = getComputedStyle(item);
+            return {
+              top: parseFloat(style.marginBlockStart),
+              bottom: parseFloat(style.marginBlockEnd),
+            };
+          });
+          const titleStyle = getComputedStyle(deck.querySelector(":scope > header > .slide-title"));
+          return {
+            gap: parseFloat(bodyStyle.rowGap),
+            directChildMargins,
+            measuredGaps,
+            listItemMargins,
+            titleMarginBottom: parseFloat(titleStyle.marginBlockEnd),
+            scrollable: body.classList.contains("is-scrollable"),
+            overflow: body.scrollHeight - body.clientHeight,
+          };
+        });
+
+        expect(metrics.gap).toBeGreaterThan(0);
+        for (const margin of metrics.directChildMargins) {
+          expect(margin.top).toBe(0);
+          expect(margin.bottom).toBe(0);
+        }
+        for (const gap of metrics.measuredGaps) {
+          expect(Math.abs(gap - metrics.gap), BODY_SPACING_CASES[index].name).toBeLessThan(0.5);
+        }
+        if (BODY_SPACING_CASES[index].preservesListItemSpacing) {
+          expect(metrics.listItemMargins.length).toBeGreaterThan(0);
+          for (const margin of metrics.listItemMargins) {
+            expect(margin.top).toBeGreaterThan(0);
+            expect(margin.bottom).toBeGreaterThan(0);
+          }
+        }
+        expect(metrics.titleMarginBottom).toBeGreaterThan(0);
+        expect(metrics.scrollable).toBe(false);
+        expect(metrics.overflow).toBeLessThanOrEqual(2);
+      }
+    } finally {
+      await harness.close();
+    }
+  });
+}
 
 test("regular slides move only a leading H1 or H2 into the title region", async ({ page }) => {
   const harness = await startHarness({ slides: STANDARD_SLIDES, theme: "light", index: 2 });
