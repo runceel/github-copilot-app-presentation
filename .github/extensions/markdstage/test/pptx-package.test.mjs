@@ -429,6 +429,66 @@ test("emits native text, hyperlinks, tables, images, shapes, and connector segme
   assert.match(slide, /<a:t>Flow<\/a:t>/);
 });
 
+test("emits grouped list paragraphs with explicit marker colors and offsets", () => {
+  const files = readStoredZip(
+    buildPptxPackage({
+      slides: [
+        {
+          elements: [
+            {
+              type: "text",
+              x: 40,
+              y: 40,
+              width: 600,
+              height: 180,
+              paragraphs: [
+                {
+                  bullet: { character: "•", color: "rgba(0, 120, 212, 0.5)" },
+                  level: 0,
+                  lineSpacing: 32,
+                  spaceBefore: 0,
+                  spaceAfter: 12,
+                  runs: [{ text: "First", fontSize: "24px", color: "#323130" }],
+                },
+                {
+                  bullet: { character: "•", color: "#0078D4" },
+                  level: 1,
+                  leftMargin: 36,
+                  lineSpacing: 32,
+                  spaceBefore: 0,
+                  spaceAfter: 12,
+                  runs: [{ text: "Nested", fontSize: "24px", color: "#323130" }],
+                },
+                {
+                  bullet: { character: "2.", color: "#0078D4" },
+                  level: 0,
+                  lineSpacing: 32,
+                  spaceBefore: 0,
+                  spaceAfter: 0,
+                  runs: [{ text: "Last", fontSize: "24px", color: "#323130" }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  const slide = xml(files, "ppt/slides/slide1.xml");
+
+  assert.equal((slide.match(/name="Text \d+"/g) || []).length, 1);
+  assert.equal((slide.match(/<a:p>/g) || []).length, 3);
+  assert.match(
+    slide,
+    /<a:pPr algn="l" lvl="0" marL="228600" indent="-228600">[\s\S]*?<a:buClr><a:srgbClr val="0078D4"><a:alpha val="50000"\/><\/a:srgbClr><\/a:buClr><a:buChar char="•"\/>/,
+  );
+  assert.match(
+    slide,
+    /<a:pPr algn="l" lvl="1" marL="571500" indent="-228600">[\s\S]*?<a:buClr><a:srgbClr val="0078D4"><\/a:srgbClr><\/a:buClr><a:buChar char="•"\/>/,
+  );
+  assert.match(slide, /<a:buChar char="2\."\/>/);
+});
+
 test("uses Yu Gothic for Japanese theme fonts and native text", () => {
   const files = readStoredZip(
     buildPptxPackage({

@@ -196,13 +196,18 @@ function colorOf(value, path) {
   };
 }
 
-function colorXml(value, path, opacity = 1) {
+function colorChoiceXml(value, path, opacity = 1) {
   const color = colorOf(value, path);
-  if (!color) return "<a:noFill/>";
+  if (!color) return null;
   const alpha = Math.round(color.alpha * opacity * 100000);
-  return `<a:solidFill><a:srgbClr val="${color.hex}">${
+  return `<a:srgbClr val="${color.hex}">${
     alpha < 100000 ? `<a:alpha val="${alpha}"/>` : ""
-  }</a:srgbClr></a:solidFill>`;
+  }</a:srgbClr>`;
+}
+
+function colorXml(value, path, opacity = 1) {
+  const color = colorChoiceXml(value, path, opacity);
+  return color ? `<a:solidFill>${color}</a:solidFill>` : "<a:noFill/>";
 }
 
 function lineXml(element, path) {
@@ -407,14 +412,29 @@ function paragraphXml(paragraph, path, relationships, leftMarginPx = 0) {
   }
   let bullet = "";
   if (paragraph.bullet) {
+    const bulletValue =
+      typeof paragraph.bullet === "string" ? null : paragraph.bullet;
     const character =
-      typeof paragraph.bullet === "string"
+      !bulletValue
         ? paragraph.bullet
-        : paragraph.bullet.character || "•";
-    bullet = `<a:buChar char="${xmlEscape(character)}"/>`;
+        : bulletValue.character || "•";
+    const bulletColor =
+      bulletValue?.color === undefined
+        ? null
+        : colorChoiceXml(bulletValue.color, `${path}.bullet.color`);
+    bullet = `${
+      bulletColor ? `<a:buClr>${bulletColor}</a:buClr>` : ""
+    }<a:buChar char="${xmlEscape(character)}"/>`;
   }
   const bulletOffsetPx = bulletTextOffsetPx(paragraph, path);
-  const paragraphMarginPx = Math.max(leftMarginPx, bulletOffsetPx);
+  const leftMargin =
+    paragraph.leftMargin === undefined
+      ? 0
+      : nonNegativeNumber(paragraph.leftMargin, `${path}.leftMargin`);
+  const paragraphMarginPx = Math.max(
+    leftMarginPx + leftMargin,
+    bulletOffsetPx,
+  );
   const indentation = [
     paragraphMarginPx > 0 ? `marL="${emu(paragraphMarginPx)}"` : "",
     bulletOffsetPx > 0 ? `indent="-${emu(bulletOffsetPx)}"` : "",
