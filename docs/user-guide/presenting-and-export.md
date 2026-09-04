@@ -79,7 +79,8 @@ Speaker notes and Architecture editing controls are excluded.
 Headings, paragraphs, lists, links, simple tables, fenced code blocks, supported images, and
 Architecture DSL objects are native PowerPoint content. Code blocks retain editable
 syntax-highlighted runs, indentation, blank lines, monospace typography, backgrounds, borders, and
-accent edges. Architecture nodes, groups, and connector-label pills are visible AutoShapes with
+accent edges. Each contiguous list is one editable PowerPoint text box, including nested levels, and
+its bullet colors follow the rendered slide theme. Architecture nodes, groups, and connector-label pills are visible AutoShapes with
 their labels stored inside the shape; diagram icons are transparent foreground pictures above those
 shapes. Supported SVG files remain individual pictures. Decorative backgrounds, gradients,
 code-block shadows, Mermaid, unsupported image effects, and unsupported HTML/CSS are preserved as

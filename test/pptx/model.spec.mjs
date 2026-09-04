@@ -513,6 +513,9 @@ test("collects native text, nested lists, links, tables, and raster images", asy
     const lists = text
       .flatMap((element) => element.paragraphs)
       .filter((paragraph) => paragraph.bullet);
+    const listText = text.filter((element) =>
+      element.paragraphs.some((paragraph) => paragraph.bullet),
+    );
     const table = slide.elements.find((element) => element.type === "table");
     const images = slide.elements.filter((element) => element.type === "image");
     const image = images.find((element) => element.src.endsWith("simple-slide.png"));
@@ -540,8 +543,18 @@ test("collects native text, nested lists, links, tables, and raster images", asy
     expect(allRuns.some((run) => run.text.includes("Rotated fallback"))).toBe(false);
     expect(allRuns.some((run) => run.text.includes("effect fallback"))).toBe(false);
     expect(allRuns.some((run) => run.text.includes("Explain why"))).toBe(false);
+    expect(listText).toHaveLength(1);
+    expect(
+      listText[0].paragraphs.map((paragraph) =>
+        paragraph.runs.map((run) => run.text).join("").trim(),
+      ),
+    ).toEqual(["First", "Nested", "Last"]);
     expect(lists.map((paragraph) => paragraph.level)).toContain(1);
     expect(lists.every((paragraph) => paragraph.bullet.character === "•")).toBe(true);
+    expect(lists.every((paragraph) => paragraph.bullet.color === "#0078D4")).toBe(true);
+    expect(listText[0].paragraphs[1].leftMargin).toBeGreaterThan(
+      listText[0].paragraphs[0].leftMargin || 0,
+    );
     expect(table.rows).toHaveLength(2);
     expect(table.rows[0].cells).toHaveLength(2);
     expect(table.rows[1].cells[1].paragraphs[0].runs[0].text.trim()).toBe("42");
@@ -638,6 +651,51 @@ test("collects native text, nested lists, links, tables, and raster images", asy
     expect(rotatedVisibility.codeNative).toBe("code");
     expect(rotatedVisibility.codeVisibility).toBe("hidden");
     expect(rotatedVisibility.decorationCount).toBe(2);
+  } finally {
+    await harness.close();
+  }
+});
+
+test("groups separate unordered and ordered lists into editable text boxes", async ({ page }) => {
+  const harness = await startHarness({
+    slides: [
+      `---
+theme: microsoft
+title: Lists
+---
+## Lists
+
+- First
+  - Nested
+- Last
+
+3. Third
+4. Fourth`,
+    ],
+  });
+  try {
+    const model = await openPptx(page, harness);
+    const listText = model.slides[0].elements.filter(
+      (element) =>
+        element.type === "text" &&
+        element.paragraphs.length > 0 &&
+        element.paragraphs.every((paragraph) => paragraph.bullet),
+    );
+    const textOf = (paragraph) =>
+      paragraph.runs.map((run) => run.text).join("").trim();
+
+    expect(listText).toHaveLength(2);
+    expect(listText[0].paragraphs.map(textOf)).toEqual(["First", "Nested", "Last"]);
+    expect(listText[0].paragraphs.map((paragraph) => paragraph.level)).toEqual([0, 1, 0]);
+    expect(listText[1].paragraphs.map(textOf)).toEqual(["Third", "Fourth"]);
+    expect(
+      listText[1].paragraphs.map((paragraph) => paragraph.bullet.character),
+    ).toEqual(["3.", "4."]);
+    expect(
+      listText.flatMap((element) =>
+        element.paragraphs.map((paragraph) => paragraph.bullet.color),
+      ),
+    ).toEqual(["#0078D4", "#0078D4", "#0078D4", "#0078D4", "#0078D4"]);
   } finally {
     await harness.close();
   }

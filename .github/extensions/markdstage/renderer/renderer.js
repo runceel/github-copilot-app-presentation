@@ -948,6 +948,39 @@ function textContentBounds(element, deck) {
   };
 }
 
+function listItemTextBounds(element, deck) {
+  const rects = [];
+  const visit = (node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (!node.nodeValue) return;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      rects.push(
+        ...[...range.getClientRects()].filter(
+          (rect) => rect.width > 0 && rect.height > 0,
+        ),
+      );
+      return;
+    }
+    if (node.nodeType !== Node.ELEMENT_NODE) return;
+    if (node !== element && node.matches("ul, ol")) return;
+    node.childNodes.forEach(visit);
+  };
+  element.childNodes.forEach(visit);
+  if (rects.length === 0) return relativeBounds(element, deck);
+  const slide = deck.getBoundingClientRect();
+  const left = Math.min(...rects.map((rect) => rect.left));
+  const top = Math.min(...rects.map((rect) => rect.top));
+  const right = Math.max(...rects.map((rect) => rect.right));
+  const bottom = Math.max(...rects.map((rect) => rect.bottom));
+  return {
+    x: roundedMetric(left - slide.left),
+    y: roundedMetric(top - slide.top),
+    width: roundedMetric(right - left),
+    height: roundedMetric(bottom - top),
+  };
+}
+
 function textInsetsFor(element) {
   const style = getComputedStyle(element);
   const metric = (padding, border) => {
@@ -1084,6 +1117,117 @@ function paragraphFor(element, options = {}) {
     runs,
     ...(options.level !== undefined ? { level: options.level } : {}),
     ...(options.bullet ? { bullet: options.bullet } : {}),
+  };
+}
+
+function listBulletFor(element) {
+  const parentList = element.parentElement;
+  const ordered = parentList?.tagName === "OL";
+  const start = Number(parentList?.getAttribute("start") || 1);
+  const itemIndex = parentList
+    ? [...parentList.children].filter((child) => child.tagName === "LI").indexOf(element)
+    : 0;
+  const number = start + Math.max(0, itemIndex);
+  return {
+    type: ordered ? "number" : "bullet",
+    character: ordered ? `${number}.` : "•",
+    color: normalizeCssColor(getComputedStyle(element, "::marker").color),
+    ...(ordered ? { start: number } : {}),
+  };
+}
+
+function outermostListFor(element) {
+  let list = element.parentElement;
+  while (list?.matches("ul, ol")) {
+    const parentItem = list.parentElement?.closest("li");
+    const parentList = parentItem?.parentElement;
+    if (!parentItem || !parentList?.matches("ul, ol")) return list;
+    list = parentList;
+  }
+  return null;
+}
+
+function trimListItemRuns(runs) {
+  const trimmed = runs.map((run) => ({ ...run }));
+  while (trimmed.length > 0 && /^[ \t\r\n]*$/.test(trimmed[0].text)) {
+    trimmed.shift();
+  }
+  while (trimmed.length > 0 && /^[ \t\r\n]*$/.test(trimmed.at(-1).text)) {
+    trimmed.pop();
+  }
+  if (trimmed.length > 0) {
+    trimmed[0].text = trimmed[0].text.replace(/^[ \t\r\n]+/, "");
+    trimmed.at(-1).text = trimmed.at(-1).text.replace(/[ \t\r\n]+$/, "");
+  }
+  return trimmed.filter((run) => run.text);
+}
+
+function nativeListTextElement(list, deck, eligibleItems) {
+  const items = [...list.querySelectorAll("li")].filter((item) =>
+    eligibleItems.has(item),
+  );
+  if (items.length === 0) return null;
+  const entries = items
+    .map((item) => {
+      const paragraph = paragraphFor(item, {
+        omitNestedLists: true,
+        level: Math.max(
+          0,
+          [...item.closest(".body").querySelectorAll("ul, ol")].filter((candidate) =>
+            candidate.contains(item),
+          ).length - 1,
+        ),
+        bullet: listBulletFor(item),
+      });
+      paragraph.runs = trimListItemRuns(paragraph.runs);
+      return {
+        item,
+        paragraph,
+        bounds: listItemTextBounds(item, deck),
+        availableBounds: relativeBounds(item, deck),
+      };
+    })
+    .filter(({ paragraph }) => paragraph.runs.length > 0);
+  if (entries.length === 0) return null;
+  const x = Math.min(...entries.map(({ bounds }) => bounds.x));
+  const y = Math.min(...entries.map(({ bounds }) => bounds.y));
+  const right = Math.max(
+    ...entries.map(({ availableBounds }) => availableBounds.x + availableBounds.width),
+  );
+  const bottom = Math.max(
+    ...entries.map(({ bounds }) => bounds.y + bounds.height),
+  );
+  const paragraphs = entries.map(({ item, paragraph, bounds }, index) => {
+    const style = getComputedStyle(item);
+    const lineSpacing = roundedMetric(Number.parseFloat(style.lineHeight));
+    const nextBounds = entries[index + 1]?.bounds;
+    const leftMargin = roundedMetric(Math.max(0, bounds.x - x));
+    const spaceAfter = roundedMetric(
+      Math.max(0, nextBounds ? nextBounds.y - (bounds.y + bounds.height) : 0),
+    );
+    return {
+      ...paragraph,
+      ...(lineSpacing > 0 ? { lineSpacing } : {}),
+      ...(leftMargin > 0 ? { leftMargin } : {}),
+      spaceBefore: 0,
+      spaceAfter,
+    };
+  });
+  for (const { item } of entries) item.setAttribute("data-pptx-native", "text");
+  list.setAttribute("data-pptx-native", "text");
+  return {
+    type: "text",
+    path: elementPath(list, deck),
+    x,
+    y,
+    width: roundedMetric(right - x),
+    height: roundedMetric(bottom - y),
+    zOrder: Math.max(
+      Number(list.dataset.pptxZOrder) || 0,
+      ...items.map((item) => Number(item.dataset.pptxZOrder) || 0),
+    ),
+    paragraphs,
+    opacity: Number(getComputedStyle(list).opacity) || 1,
   };
 }
 
@@ -1938,31 +2082,18 @@ async function collectPptxSlide(slide, index) {
       !element.closest("table") &&
       !(element.matches("p") && element.closest("blockquote, li")),
   );
-  for (const element of textCandidates) {
-    const list = element.matches("li")
-      ? [...element.querySelectorAll(":scope > ul, :scope > ol")]
-      : [];
-    const parentList = element.matches("li") ? element.parentElement : null;
-    const actualLevel = element.matches("li")
-      ? Math.max(0, [...element.closest(".body").querySelectorAll("ul, ol")].filter((candidate) =>
-          candidate.contains(element),
-        ).length - 1)
-      : undefined;
+  const listItems = textCandidates.filter((element) => element.matches("li"));
+  const eligibleListItems = new Set(listItems);
+  const listRoots = [
+    ...new Set(listItems.map(outermostListFor).filter(Boolean)),
+  ];
+  for (const list of listRoots) {
+    const textElement = nativeListTextElement(list, deck, eligibleListItems);
+    if (textElement) elements.push(textElement);
+  }
+  for (const element of textCandidates.filter((candidate) => !candidate.matches("li"))) {
     const paragraph = paragraphFor(element, {
-      omitNestedLists: list.length > 0,
-      level: actualLevel,
-      bullet: parentList
-        ? {
-            type: parentList.tagName === "OL" ? "number" : "bullet",
-            character:
-              parentList.tagName === "OL"
-                ? `${Number(parentList.getAttribute("start") || 1) + [...parentList.children].indexOf(element)}.`
-                : "•",
-            ...(parentList.tagName === "OL"
-              ? { start: Number(parentList.getAttribute("start") || 1) + [...parentList.children].indexOf(element) }
-              : {}),
-          }
-        : undefined,
+      omitNestedLists: false,
     });
     if (!paragraph.runs.some((run) => run.text.trim())) continue;
     const disableTextWrap = renderedTextLineCount(element) === 1;
