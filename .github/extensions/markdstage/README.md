@@ -772,8 +772,8 @@ Architecture diagrams can be moved directly over the rendered result. For decks
 imported through **More controls > Open Markdown**, edits write back to the source `architecture` fence and
 survive re-import. Decks supplied directly through open / `load_deck` cannot be
 reversibly mapped to a source file, so they save only to canvas deck state.
-In the standalone CLI, `markdstage present slides.md --watch` enables the same
-source-backed editing workflow; `present` without `--watch` is read-only.
+In the standalone CLI, `markdstage preview slides.md --watch` enables the same
+source-backed editing workflow; `preview` without `--watch` is read-only.
 
 **Placement editing is a stable part of Architecture DSL v1.**
 
@@ -864,7 +864,7 @@ blocks.
 For a source-backed deck imported through **More controls > Open Markdown**,
 **Shape editing** opens this editor directly. If the slide contains multiple
 Architecture blocks, select one from the accessible picker first. CLI
-`present --watch` opens the same editor in a browser window. Agents can open
+`preview --watch` opens the same editor in a browser window. Agents can open
 the editor canvas directly:
 
 ```json

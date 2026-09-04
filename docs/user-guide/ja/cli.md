@@ -17,8 +17,8 @@ CLI は Canvas Extension と同じ Markdown パーサー、レンダラー、テ
 ## コマンド
 
 ```console
-markdstage presentation slides.md
-markdstage present slides.md --watch
+markdstage present slides.md
+markdstage preview slides.md --watch
 markdstage validate slides.md --json
 markdstage inspect slides.md --json
 markdstage capture slides.md --pages 2,4
@@ -30,8 +30,8 @@ markdstage skill install --target codex
 
 | コマンド | 説明 |
 | --- | --- |
-| `presentation` | 現在のスライド、次のスライドのプレビュー、スピーカーノート、ナビゲーションを備えた発表者ビューを開きます。**Start presentation** を選ぶと同期された観客向けウィンドウを開き、**End presentation** で閉じます。`--watch` は保存時に再読み込みし、`--no-open` はブラウザーを起動せずに発表者ビューを配信します。 |
-| `present` | ループバックでデッキを配信し、発表用ウィンドウを開きます。ページ送り、発表者ビュー、次スライドのプレビュー、スピーカーノート、一覧、カスタムテーマ、Mermaid、Architecture DSL、ローカルアセットに対応します。`--watch` は Markdown の保存時に再読み込みし、表示中のページと直前の正常なデッキを保持しながら Architecture 編集を有効にします。`--watch` がない場合、ソースは読み取り専用です。`--no-open` はブラウザーを起動せずに配信だけ行います。 |
+| `present` | 現在のスライド、次のスライドのプレビュー、スピーカーノート、ナビゲーションを備えた発表者ビューを開きます。**Start presentation** を選ぶと同期された観客向けウィンドウを開き、**End presentation** で閉じます。`--watch` は保存時に再読み込みし、`--no-open` はブラウザーを起動せずに発表者ビューを配信します。 |
+| `preview` | ループバックでデッキを配信し、プレビューを開きます。ページ送り、発表者ビュー、次スライドのプレビュー、スピーカーノート、一覧、カスタムテーマ、Mermaid、Architecture DSL、ローカルアセットに対応します。`--watch` は Markdown の保存時に再読み込みし、表示中のページと直前の正常なデッキを保持しながら Architecture 編集を有効にします。`--watch` がない場合、ソースは読み取り専用です。`--no-open` はブラウザーを起動せずに配信だけ行います。 |
 | `validate` | デッキ構造、Architecture DSL ブロック、テーマ、テーマのパスを検証します。 |
 | `inspect` | Canvas の `inspect_layout` と同じ 1280x720 のクリッピング診断を返します。`--slide <n>` で 1 ページだけ、`--all` で収まっているスライドも含め、`--fail-on-issues` で終了コード 5 を返します。 |
 | `capture` | 1280x720 の PNG を書き出します。`--pages` を指定しない場合はクリッピングが報告されたスライドだけを取得します。 |
@@ -57,7 +57,7 @@ markdstage capture --help
 3. Markdown を唯一の正本としてデッキ全体を作成し、空行の後の `---` でスライドを区切ります。
 4. 見た目を確認する前に `markdstage validate slides.md --json` を実行し、構造、テーマ、
    Architecture DSL のエラーを修正します。
-5. 編集中は `markdstage present slides.md --watch` を実行します。保存時に再読み込みし、表示中の
+5. 編集中は `markdstage preview slides.md --watch` を実行します。保存時に再読み込みし、表示中の
    スライドを維持しながら、一時的に不完全な保存では直前の正常なデッキを表示し続けます。
 6. `markdstage inspect slides.md --json` で固定 16:9 出力のクリッピングを確認します。局所的な
    修正後は `--slide <n>`、CI などの品質ゲートでは `--fail-on-issues` を使います。
@@ -66,7 +66,7 @@ markdstage capture --help
    `--pages 2,4` を使います。
 8. Markdown を修正し、検証と対象ページの診断を繰り返して、エラーやクリッピングがなく、簡潔で
    視覚的なバランスが取れた状態にします。
-9. `markdstage presentation slides.md` で発表するか、
+9. `markdstage present slides.md` で発表するか、
    `markdstage export slides.md --output slides.pdf` で PDF を出力するか、
    `markdstage export slides.md --output slides.pptx` で PowerPoint を出力します。
 
@@ -75,7 +75,7 @@ markdstage capture --help
 
 ## watch モードで Architecture を編集する
 
-`markdstage present slides.md --watch` はライブ編集用の環境です。ブラウザーは通常の表示モードで
+`markdstage preview slides.md --watch` はライブ編集用の環境です。ブラウザーは通常の表示モードで
 開始します。
 
 1. Architecture DSL を含むスライドで鉛筆ボタンを選びます。
@@ -89,8 +89,8 @@ markdstage capture --help
 ページを保ったままデッキを再読み込みします。Markdown が一時的に不完全な状態で保存されても、
 直前の正常なデッキを表示し続けます。
 
-`--watch` のない `markdstage present slides.md` は編集ボタンを表示せず、ソースを変更できません。
-発表者、capture、inspect、export の出力にも編集 UI は含まれません。別の preview コマンドや
+`--watch` のない `markdstage preview slides.md` は編集ボタンを表示せず、ソースを変更できません。
+発表者、capture、inspect、export の出力にも編集 UI は含まれません。別の edit コマンドや
 edit オプションはありません。
 
 ## 終了コード

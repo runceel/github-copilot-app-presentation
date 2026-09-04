@@ -1,4 +1,4 @@
-// markdstage present — serve the deck on loopback and open it in a browser.
+// Shared server for the markdstage preview and present commands.
 
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -139,7 +139,9 @@ export async function presentCommand(options, io) {
           });
         }
 
-        io.print(`MarkdStage is presenting ${session.sourceName || session.file}`);
+        io.print(
+          `MarkdStage is ${options.presenterView ? "presenting" : "previewing"} ${session.sourceName || session.file}`,
+        );
         io.print(`  slides:    ${session.slides.length}`);
         io.print(`  theme:     ${session.theme}`);
         io.print(`  workspace: ${resolve(session.workspaceRoot)}`);

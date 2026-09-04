@@ -36,8 +36,8 @@ import {
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 const COMMANDS = [
-  ["presentation", "Open presenter view and launch the audience view from it."],
-  ["present", "Serve a deck on loopback and open it in a browser window."],
+  ["present", "Open presenter view and launch the audience view from it."],
+  ["preview", "Serve a deck on loopback and open it in a browser window."],
   ["validate", "Check deck structure, Architecture DSL blocks, and themes."],
   ["inspect", "Report 1280x720 clipping diagnostics for a deck."],
   ["capture", "Write 1280x720 PNG files for selected or clipped slides."],
@@ -59,8 +59,8 @@ const GLOBAL_OPTIONS = {
 };
 
 const COMMAND_OPTIONS = {
-  presentation: { watch: { type: "boolean" }, "no-open": { type: "boolean" } },
   present: { watch: { type: "boolean" }, "no-open": { type: "boolean" } },
+  preview: { watch: { type: "boolean" }, "no-open": { type: "boolean" } },
   validate: {},
   inspect: { slide: { type: "string" }, all: { type: "boolean" }, "fail-on-issues": { type: "boolean" } },
   capture: { pages: { type: "string" }, output: { type: "string" } },
@@ -103,8 +103,8 @@ function usage(command) {
     return lines.join("\n");
   }
   const help = {
-    presentation: [
-      "Usage: markdstage presentation <file.md> [options]",
+    present: [
+      "Usage: markdstage present <file.md> [options]",
       "",
       "Opens presenter view with the current slide, next-slide preview, and speaker notes.",
       "Use Start presentation in that view to open the synchronized audience window.",
@@ -114,16 +114,16 @@ function usage(command) {
       "",
       "Presentation requires an installed Microsoft Edge, Google Chrome, or Chromium.",
     ],
-    present: [
-      "Usage: markdstage present <file.md> [options]",
+    preview: [
+      "Usage: markdstage preview <file.md> [options]",
       "",
       "  --watch     Reload on save and enable Architecture editing.",
       "  --no-open   Serve the deck without launching a browser.",
       "",
-      "Without --watch, presentation is read-only. Watch mode starts in normal viewing mode;",
+      "Without --watch, preview is read-only. Watch mode starts in normal viewing mode;",
       "use the pencil control to edit Architecture diagrams and open the detailed designer.",
       "",
-      "Presenting requires an installed Microsoft Edge, Google Chrome, or Chromium.",
+      "Preview requires an installed Microsoft Edge, Google Chrome, or Chromium.",
     ],
     validate: [
       "Usage: markdstage validate <file.md> [--json]",
@@ -262,8 +262,8 @@ export async function run(argv, io = {}) {
 
   try {
     switch (command) {
-      case "present": {
-        const file = requireFile(positionals, "present");
+      case "preview": {
+        const file = requireFile(positionals, "preview");
         const report = await presentCommand(
           { ...deckOptions(file, values), watch: values.watch, open: !values["no-open"], until: io.until },
           {
@@ -277,8 +277,8 @@ export async function run(argv, io = {}) {
         if (values.json) json(report);
         return EXIT_OK;
       }
-      case "presentation": {
-        const file = requireFile(positionals, "presentation");
+      case "present": {
+        const file = requireFile(positionals, "present");
         const report = await presentCommand(
           {
             ...deckOptions(file, values),

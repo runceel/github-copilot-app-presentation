@@ -112,7 +112,7 @@ Run commands with `npx @markdstage/markdstage` or install
    `markdstage validate slides.md --json` and fix deck, theme, and Architecture
    DSL errors before judging layout.
 5. **Use watch mode for live authoring.** Run
-   `markdstage present slides.md --watch`, edit the Markdown, and review the
+   `markdstage preview slides.md --watch`, edit the Markdown, and review the
    reloaded deck without losing the current slide. The browser begins in
    viewing mode; the pencil control enables Architecture placement and detailed
    editing.
@@ -127,7 +127,7 @@ Run commands with `npx @markdstage/markdstage` or install
    when structure, themes, or diagrams change, then inspect affected pages.
    Repeat until the deck is valid, unclipped, concise, and visually balanced.
 9. **Deliver from the same source.** Use
-   `markdstage presentation slides.md` for presenter view,
+   `markdstage present slides.md` for presenter view,
    `markdstage export slides.md --output slides.pdf` for PDF, or
    `markdstage export slides.md --output slides.pptx` for hybrid editable
    PowerPoint.
