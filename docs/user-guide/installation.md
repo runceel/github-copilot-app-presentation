@@ -33,8 +33,8 @@ reproducible installation.
 Run directly with `npx`, or install globally:
 
 ```console
-npx @markdstage/markdstage presentation slides.md
 npx @markdstage/markdstage present slides.md
+npx @markdstage/markdstage preview slides.md
 npm install --global @markdstage/markdstage
 ```
 

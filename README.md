@@ -145,19 +145,19 @@ Markdown decks also work in terminals, CI jobs, Codex, and Claude Code. It needs
 later and an installed Microsoft Edge, Google Chrome, or Chromium.
 
 ```console
-npx @markdstage/markdstage presentation slides.md
-npx @markdstage/markdstage present slides.md --watch
+npx @markdstage/markdstage present slides.md
+npx @markdstage/markdstage preview slides.md --watch
 npx @markdstage/markdstage validate slides.md --json
 npx @markdstage/markdstage inspect slides.md
 npx @markdstage/markdstage export slides.md --output slides.pdf
 ```
 
-`presentation` opens the presenter dashboard; select **Start presentation** there
+`present` opens the presenter dashboard; select **Start presentation** there
 to open the synchronized audience window.
 
-`present --watch` starts in viewing mode and enables the pencil placement editor
+`preview --watch` starts in viewing mode and enables the pencil placement editor
 and detailed Architecture designer; saves update the matching Markdown fence
-atomically. `present` without `--watch` is read-only.
+atomically. `preview` without `--watch` is read-only.
 
 `markdstage skill install --target codex` and `--target claude` write portable Agent Skills that
 are generated from the same guide topics as the canvas `markdstage_guide` tool.

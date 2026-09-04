@@ -112,7 +112,7 @@ Run commands with `npx @markdstage/markdstage` or install
    `markdstage validate slides.md --json` and fix deck, theme, and Architecture
    DSL errors before judging layout.
 5. **Use watch mode for live authoring.** Run
-   `markdstage present slides.md --watch`, edit the Markdown, and review the
+   `markdstage preview slides.md --watch`, edit the Markdown, and review the
    reloaded deck without losing the current slide. The browser begins in
    viewing mode; the pencil control enables Architecture placement and detailed
    editing.
@@ -127,7 +127,7 @@ Run commands with `npx @markdstage/markdstage` or install
    when structure, themes, or diagrams change, then inspect affected pages.
    Repeat until the deck is valid, unclipped, concise, and visually balanced.
 9. **Deliver from the same source.** Use
-   `markdstage presentation slides.md` for presenter view,
+   `markdstage present slides.md` for presenter view,
    `markdstage export slides.md --output slides.pdf` for PDF, or
    `markdstage export slides.md --output slides.pptx` for hybrid editable
    PowerPoint.
@@ -248,10 +248,31 @@ still use `edit_architecture` for that stable placement workflow.
 These workflows do not alter the Architecture DSL v1 grammar or the stable save
 contract of the placement editor.
 
-## Slide fragment format
+## Markdown file syntax
 
-Each `slides` element contains optional YAML-like front matter delimited by
-`---`, followed by GFM-compatible Markdown.
+A Markdown file represents the complete deck. At the top level, a line containing
+only `---` after a blank line separates slides. A leading `---` block is file
+front matter, and separators inside fenced code blocks are ignored.
+
+Use only top-level `---` slide separators. Do not invent custom separators such
+as `<!-- slide -->`.
+
+Do not put a top-level HTML comment immediately before a separator. End the
+comment, leave a blank line, and then write `---`; otherwise the line may not be
+recognized as a slide boundary.
+
+To have MarkdStage itself read and split a workspace Markdown file, use **More
+controls > Open Markdown**. Do not use `sourceName` as a file-loading mechanism.
+
+## Canvas API `slides` array
+
+For `open_canvas` and `load_deck`, each `slides` array element is exactly one
+slide. Read, split, or generate the deck before calling the Canvas API. Do not
+pass a complete multi-slide Markdown file as one element and expect its `---`
+lines to be split.
+
+Each element contains optional YAML-like front matter delimited by `---`,
+followed by GFM-compatible Markdown.
 
 | Key | Role |
 | --- | --- |
@@ -290,6 +311,15 @@ The first H1/H2 in a standard slide is fixed in the top title region. Later
 headings stay in the body. Cover, section, and back-cover layouts retain their
 specialized positioning. Add a language such as `csharp`, `json`, or `diff` to
 a code fence for highlight.js syntax coloring.
+
+## `sourceName` role
+
+`sourceName` is workspace-relative metadata used to resolve themes and images
+and derive output filenames. It does not read, parse, split, or watch Markdown
+content. Passing `sourceName` does not load a deck; every non-empty canvas input
+must still contain the complete `slides` array.
+
+To have MarkdStage load a Markdown file, use **More controls > Open Markdown**.
 
 ## Themes
 

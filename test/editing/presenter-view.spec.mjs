@@ -84,6 +84,44 @@ test("speaker notes do not leak into slide overview titles", async ({ page }) =>
   }
 });
 
+test("slide overview distinguishes title and section hierarchy", async ({ page }) => {
+  const harness = await startHarness({
+    slides: [
+      "---\nlayout: title\n---\n# Product update",
+      "## Agenda",
+      "---\nlayout: section\n---\n## Platform",
+      "## Architecture",
+      "## Delivery",
+      "---\nlayout: section\n---\n## Adoption",
+      "## Next steps",
+    ],
+  });
+  try {
+    await page.goto(harness.url, { waitUntil: "load" });
+    await waitForSlideReady(page);
+    await page.getByRole("button", { name: "Slide list" }).click();
+
+    const items = page.locator("#overviewList > .overview-item");
+    await expect(items).toHaveCount(7);
+    await expect(items.nth(0)).toHaveClass(/overview-item-title/);
+    await expect(items.nth(0).locator(".overview-kind")).toHaveText("Title");
+    await expect(items.nth(1)).not.toHaveClass(/overview-item-section-child/);
+    await expect(items.nth(2)).toHaveClass(/overview-item-section/);
+    await expect(items.nth(2).locator(".overview-kind")).toHaveText("Section");
+    await expect(items.nth(3)).toHaveClass(/overview-item-section-child/);
+    await expect(items.nth(6)).toHaveClass(/overview-item-section-child/);
+    await expect(items.nth(2).locator(".overview-link")).toHaveCSS("border-left-width", "4px");
+
+    const agendaBox = await items.nth(1).locator(".overview-link").boundingBox();
+    const architectureBox = await items.nth(3).locator(".overview-link").boundingBox();
+    expect(agendaBox).not.toBeNull();
+    expect(architectureBox).not.toBeNull();
+    expect(architectureBox.x).toBeGreaterThan(agendaBox.x);
+  } finally {
+    await harness.close();
+  }
+});
+
 test("hides controls for actions that the host cannot provide", async ({ page }) => {
   const harness = await startHarness({
     slides: SLIDES,

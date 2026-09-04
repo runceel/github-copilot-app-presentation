@@ -2148,6 +2148,7 @@ let currentVersion = -1;
 let knownDeckVersion = -1;
 let deckSlides = [];
 let deckTitles = [];
+let deckLayouts = [];
 let navIndex = 0;
 let navTotal = 0;
 let navMode = "deck";
@@ -2189,6 +2190,11 @@ function deriveTitle(md) {
   return fallback ? trimTitle(fallback) : "(Untitled)";
 }
 
+function deriveLayout(md) {
+  const { meta } = splitFrontMatter(typeof md === "string" ? md : "");
+  return typeof meta.layout === "string" ? meta.layout.trim().toLowerCase() : "";
+}
+
 function trimTitle(text) {
   const stripped = text
     .replace(/[*_`>#~]/g, "")
@@ -2205,6 +2211,7 @@ async function fetchDeck() {
     if (Array.isArray(data.slides)) {
       deckSlides = data.slides;
       deckTitles = deckSlides.map(deriveTitle);
+      deckLayouts = deckSlides.map(deriveLayout);
     }
     if (typeof data.deckVersion === "number") knownDeckVersion = data.deckVersion;
     buildOverview();
@@ -3032,24 +3039,51 @@ function buildOverview() {
   const list = document.getElementById("overviewList");
   if (!list) return;
   list.replaceChildren();
+  let insideSection = false;
   deckTitles.forEach((title, i) => {
+    const layout = deckLayouts[i] || "";
+    if (layout === "title" || layout === "backcover") insideSection = false;
+    const sectionChild =
+      insideSection && layout !== "title" && layout !== "section" && layout !== "backcover";
+
     const li = document.createElement("li");
     li.className = "overview-item";
+    if (layout === "title" || layout === "section") {
+      li.classList.add(`overview-item-${layout}`);
+    }
+    if (sectionChild) li.classList.add("overview-item-section-child");
     li.dataset.index = String(i);
+    if (layout) li.dataset.layout = layout;
+
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "overview-link";
+    btn.setAttribute(
+      "aria-label",
+      `${i + 1} ${title}${layout === "title" || layout === "section" ? `, ${layout} slide` : ""}`,
+    );
+
     const num = document.createElement("span");
     num.className = "overview-num";
     num.textContent = String(i + 1);
     const label = document.createElement("span");
     label.className = "overview-label";
     label.textContent = title;
+
     btn.appendChild(num);
+    if (layout === "title" || layout === "section") {
+      const kind = document.createElement("span");
+      kind.className = "overview-kind";
+      kind.textContent = layout === "title" ? "Title" : "Section";
+      kind.setAttribute("aria-hidden", "true");
+      btn.appendChild(kind);
+    }
     btn.appendChild(label);
     btn.addEventListener("click", () => goToIndex(i));
     li.appendChild(btn);
     list.appendChild(li);
+
+    if (layout === "section") insideSection = true;
   });
   highlightOverview();
 }
@@ -3478,13 +3512,9 @@ function init() {
     return;
   }
   if (params.get("print") === "1") {
-    // Print mode never reaches editing-mode branches. Removing this return would
-    // bake the editing UI into PDFs, so a regression test protects it.
-    //
-    // This early return is also **the primary fix for the #12 hang**. Only print
-    // mode avoids connectEvents() (an unclosed SSE) and the two-second setInterval,
-    // allowing the page to become idle and --print-to-pdf to complete.
-    // Removing the return makes printing hang forever.
+    // Print mode renders one immutable output snapshot and never reaches editing,
+    // SSE, or polling branches. The output runtime waits for its ready report
+    // before asking Chromium to create the PDF.
     initPrint(params).catch(reportPrintBootstrapFailure);
     return;
   }

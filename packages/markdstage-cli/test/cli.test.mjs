@@ -75,8 +75,8 @@ test("unknown commands and options fail with the usage exit code", async () => {
 
 test("every command documents itself", async () => {
   for (const command of [
-    "presentation",
     "present",
+    "preview",
     "validate",
     "inspect",
     "capture",
@@ -107,19 +107,25 @@ test("the help command prints global and per-command help", async () => {
   assert.equal(io2.stdout(), io3.stdout());
 });
 
-test("present help explains watch-mode Architecture editing", async () => {
+test("preview help explains watch-mode Architecture editing", async () => {
   const io = capture();
-  assert.equal(await run(["present", "--help"], io), EXIT_OK);
+  assert.equal(await run(["preview", "--help"], io), EXIT_OK);
   assert.match(io.stdout(), /--watch\s+Reload on save and enable Architecture editing/);
-  assert.match(io.stdout(), /Without --watch, presentation is read-only/);
+  assert.match(io.stdout(), /Without --watch, preview is read-only/);
   assert.match(io.stdout(), /detailed designer/);
 });
 
-test("presentation help explains the presenter and audience views", async () => {
+test("present help explains the presenter and audience views", async () => {
   const io = capture();
-  assert.equal(await run(["presentation", "--help"], io), EXIT_OK);
+  assert.equal(await run(["present", "--help"], io), EXIT_OK);
   assert.match(io.stdout(), /Opens presenter view/);
   assert.match(io.stdout(), /Start presentation.*audience window/);
+});
+
+test("presentation is not retained as a compatibility alias", async () => {
+  const io = capture();
+  assert.equal(await run(["presentation"], io), EXIT_USAGE);
+  assert.match(io.stderr(), /Unknown command: presentation/);
 });
 
 test("help is listed as a command", async () => {
@@ -220,23 +226,37 @@ test("export selects PDF or PowerPoint from the output extension", async () => {
   });
 });
 
-test("present --json writes only one machine-readable document", async () => {
+test("preview --json writes only one machine-readable document", async () => {
   await withDeck(VALID_DECK, async ({ file }) => {
     const io = capture();
     io.until = Promise.resolve();
-    assert.equal(await run(["present", file, "--no-open", "--json"], io), EXIT_OK);
+    assert.equal(await run(["preview", file, "--no-open", "--json"], io), EXIT_OK);
     const report = JSON.parse(io.stdout());
     assert.equal(report.ok, true);
     assert.equal(report.total, 3);
   });
 });
 
-test("presentation starts at the presenter view URL", async () => {
+test("preview and present identify their operation in terminal output", async () => {
+  await withDeck(VALID_DECK, async ({ file }) => {
+    const previewIo = capture();
+    previewIo.until = Promise.resolve();
+    assert.equal(await run(["preview", file, "--no-open"], previewIo), EXIT_OK);
+    assert.match(previewIo.stdout(), /MarkdStage is previewing/);
+
+    const presentIo = capture();
+    presentIo.until = Promise.resolve();
+    assert.equal(await run(["present", file, "--no-open"], presentIo), EXIT_OK);
+    assert.match(presentIo.stdout(), /MarkdStage is presenting/);
+  });
+});
+
+test("present starts at the presenter view URL", async () => {
   await withDeck(VALID_DECK, async ({ file }) => {
     const io = capture();
     io.until = Promise.resolve();
     assert.equal(
-      await run(["presentation", file, "--no-open", "--json"], io),
+      await run(["present", file, "--no-open", "--json"], io),
       EXIT_OK,
     );
     assert.equal(new URL(JSON.parse(io.stdout()).url).searchParams.get("presenter"), "1");

@@ -33,8 +33,8 @@ GitHub Copilot に次のように依頼します。
 `npx` で直接実行するか、グローバルにインストールします。
 
 ```console
-npx @markdstage/markdstage presentation slides.md
 npx @markdstage/markdstage present slides.md
+npx @markdstage/markdstage preview slides.md
 npm install --global @markdstage/markdstage
 ```
 

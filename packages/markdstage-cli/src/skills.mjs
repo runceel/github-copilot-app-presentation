@@ -78,7 +78,7 @@ what the MarkdStage canvas and MarkdStage Desktop render.
    \`references/slide-format.md\`).
 4. Validate structure, themes, and Architecture DSL before visual review:
    \`markdstage validate slides.md --json\`.
-5. Use \`markdstage present slides.md --watch\` for live source-backed authoring.
+5. Use \`markdstage preview slides.md --watch\` for live source-backed authoring.
    It reloads on save without losing the current slide and keeps the last valid
    deck while a save is incomplete.
 6. Check fixed 16:9 output with \`markdstage inspect slides.md --json\`. Use
@@ -88,14 +88,14 @@ what the MarkdStage canvas and MarkdStage Desktop render.
    whose balance, spacing, or diagrams need visual judgment.
 8. Revise Markdown and repeat validation plus targeted inspection until the deck
    is valid, unclipped, concise, and visually balanced.
-9. Deliver from the same source with \`markdstage presentation slides.md\`,
+9. Deliver from the same source with \`markdstage present slides.md\`,
    \`markdstage export slides.md --output slides.pdf\`, or
    \`markdstage export slides.md --output slides.pptx\`.
 
-The browser in \`present --watch\` starts in viewing mode. The user can activate
+The browser in \`preview --watch\` starts in viewing mode. The user can activate
 the pencil control to move Architecture elements, then choose **Advanced edit**
 for the detailed designer. Placement changes save immediately, while the
-detailed designer saves only when the user selects **Save**. \`present\` without
+detailed designer saves only when the user selects **Save**. \`preview\` without
 \`--watch\` is read-only.
 
 Never hand-write HTML or CSS for a slide. Fix layout problems by shortening the
@@ -106,8 +106,8 @@ and layout diagnostics over capturing every slide.
 
 | Command | Purpose |
 | --- | --- |
-| \`markdstage presentation <file> [--watch]\` | Open presenter view with the current slide, next-slide preview, speaker notes, and controls for a synchronized audience window. |
-| \`markdstage present <file> [--watch]\` | Serve the deck on loopback and open it in a browser window. \`--watch\` reloads on save, keeps the current slide, and enables Architecture placement and detailed editing. Without it, the source is read-only. |
+| \`markdstage present <file> [--watch]\` | Open presenter view with the current slide, next-slide preview, speaker notes, and controls for a synchronized audience window. |
+| \`markdstage preview <file> [--watch]\` | Serve the deck on loopback and open it in a browser window. \`--watch\` reloads on save, keeps the current slide, and enables Architecture placement and detailed editing. Without it, the source is read-only. |
 | \`markdstage validate <file> [--json]\` | Check deck structure, Architecture DSL blocks, and themes. |
 | \`markdstage inspect <file> [--json]\` | Report 1280x720 clipping diagnostics for the deck or one slide; use \`--fail-on-issues\` for quality gates. |
 | \`markdstage capture <file> [--pages 2,4]\` | Write 1280x720 PNG files; without \`--pages\` only clipped slides are captured. |

@@ -71,7 +71,7 @@ async function post(baseUrl, route, body) {
   });
 }
 
-test("present without watch is read-only", async () => {
+test("preview without watch is read-only", async () => {
   await withWorkspace(async ({ dir, file }) => {
     await withDeckServer({ file, workspace: dir }, async (_session, server) => {
       const state = await (await fetch(new URL("state", server.url))).json();

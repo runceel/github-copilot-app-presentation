@@ -287,9 +287,7 @@ async function instrumentLiveUpdates(page) {
 // Two polling intervals (renderer.js setInterval).
 const QUIESCENCE_WAIT_MS = 4_500;
 
-// Regression guard (#12): `--print-to-pdf` completes when the page becomes idle. If init() no longer
-// returns early in the print branch, persistent SSE and two-second polling continue and the browser
-// **never exits** (observed beyond 120 seconds). No PDF bytes appear before Node kills it at 60s.
+// Output mode is an immutable render job. It must not start the live deck's SSE or polling loops.
 test("print mode starts neither SSE nor periodic polling", async ({ page }) => {
   const harness = await startHarness({ slides: ARCHITECTURE_DECK });
   try {

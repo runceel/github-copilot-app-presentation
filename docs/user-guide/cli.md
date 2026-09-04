@@ -17,8 +17,8 @@ tarball installation.
 ## Commands
 
 ```console
-markdstage presentation slides.md
-markdstage present slides.md --watch
+markdstage present slides.md
+markdstage preview slides.md --watch
 markdstage validate slides.md --json
 markdstage inspect slides.md --json
 markdstage capture slides.md --pages 2,4
@@ -30,8 +30,8 @@ markdstage skill install --target codex
 
 | Command | Description |
 | --- | --- |
-| `presentation` | Opens the presenter view with the current slide, next-slide preview, speaker notes, and navigation. Select **Start presentation** to open the synchronized audience-facing window; select **End presentation** to close it. `--watch` reloads on save, and `--no-open` serves the presenter URL without launching a browser. |
-| `present` | Serves the deck on loopback and opens the presenter window: navigation, presenter view, next-slide preview, speaker notes, overview, custom themes, Mermaid, Architecture DSL, and local assets. `--watch` reloads the deck when the Markdown file is saved, preserves the current slide, keeps the last valid deck if a save is incomplete, and enables Architecture editing. Without `--watch`, the source is read-only. `--no-open` serves the deck without launching a browser. |
+| `present` | Opens the presenter view with the current slide, next-slide preview, speaker notes, and navigation. Select **Start presentation** to open the synchronized audience-facing window; select **End presentation** to close it. `--watch` reloads on save, and `--no-open` serves the presenter URL without launching a browser. |
+| `preview` | Serves the deck on loopback and opens the preview: navigation, presenter view, next-slide preview, speaker notes, overview, custom themes, Mermaid, Architecture DSL, and local assets. `--watch` reloads the deck when the Markdown file is saved, preserves the current slide, keeps the last valid deck if a save is incomplete, and enables Architecture editing. Without `--watch`, the source is read-only. `--no-open` serves the deck without launching a browser. |
 | `validate` | Checks deck structure, Architecture DSL blocks, themes, and theme paths. |
 | `inspect` | Reports the same compact 1280x720 clipping diagnostics as the canvas `inspect_layout` action. Use `--slide <n>` for one page, `--all` to include slides that fit, and `--fail-on-issues` to exit with code 5. |
 | `capture` | Writes 1280x720 PNG files. Without `--pages` only the slides reported as clipped are captured. |
@@ -60,7 +60,7 @@ markdstage capture --help
    blank line.
 4. Run `markdstage validate slides.md --json` and fix structure, theme, and Architecture DSL errors
    before visual review.
-5. Run `markdstage present slides.md --watch` while editing. The browser reloads on save, preserves
+5. Run `markdstage preview slides.md --watch` while editing. The browser reloads on save, preserves
    the current slide, and keeps the last valid deck if a save is temporarily incomplete.
 6. Run `markdstage inspect slides.md --json` to find fixed 16:9 clipping. Use `--slide <n>` after a
    localized change and `--fail-on-issues` in CI or other quality gates.
@@ -68,7 +68,7 @@ markdstage capture --help
    use `--pages 2,4` when specific pages need visual review for balance, spacing, or diagrams.
 8. Revise the Markdown and repeat validation plus targeted inspection until the deck is valid,
    unclipped, concise, and visually balanced.
-9. Start `markdstage presentation slides.md`, run
+9. Start `markdstage present slides.md`, run
    `markdstage export slides.md --output slides.pdf`, or use
    `markdstage export slides.md --output slides.pptx`.
 
@@ -77,7 +77,7 @@ export before distribution.
 
 ## Architecture editing in watch mode
 
-`markdstage present slides.md --watch` is the live authoring environment. The
+`markdstage preview slides.md --watch` is the live authoring environment. The
 browser still starts in normal viewing mode:
 
 1. Select the pencil control on a slide containing Architecture DSL.
@@ -92,9 +92,9 @@ overwriting it. After a successful save, watch mode reloads the deck and keeps
 the current slide. A temporarily incomplete Markdown save leaves the last valid
 deck on screen.
 
-`markdstage present slides.md` without `--watch` hides the editing control and
+`markdstage preview slides.md` without `--watch` hides the editing control and
 cannot change the source. Presenter, capture, inspect, and export output also
-contains no editing UI. There is no separate preview command or edit option.
+contains no editing UI. There is no separate edit command or edit option.
 
 ## Exit codes
 
