@@ -42,7 +42,7 @@ the source of truth from the first draft to the stage.
 - **Markdown is the source**: Keep `.md` as the source of truth instead of moving to a proprietary format
 - **Write, then present immediately**: Open a file in the canvas or Desktop and it becomes a slide deck
 - **Present technical content directly**: Supports code, Mermaid, Architecture DSL, images, tables, and speaker notes
-- **Keep output consistent**: Use the same renderer in the canvas, presentation window, Desktop, PDF, and PowerPoint export
+- **Keep output consistent**: Use the same renderer in the canvas, presentation window, Desktop, PDF, and PowerPoint export, with fenced code remaining editable in PowerPoint
 - **Validate PDF fit before export**: Preview the fixed 16:9 layout, inspect clipping, and capture only pages that need visual review
 - **Keep controls focused on presenting**: Navigate with buttons, the keyboard, or Surface Pen in supported environments
 

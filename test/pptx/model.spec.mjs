@@ -49,7 +49,11 @@ Fran&ccedil;ais &eacute;lan &copy; 2026.
 ![Unsupported vector](/assets/sample.svg)
 
 \`\`\`js
-console.log("fallback");
+const answer = 42;
+
+if (answer) {
+  console.log("value", answer);
+}
 \`\`\`
 
 <div class="raw-card">Raw HTML fallback</div>
@@ -349,6 +353,20 @@ test("collects native text, nested lists, links, tables, and raster images", asy
       .filter((paragraph) => paragraph.bullet);
     const table = slide.elements.find((element) => element.type === "table");
     const image = slide.elements.find((element) => element.type === "image");
+    const textOf = (element) =>
+      element.paragraphs.flatMap((paragraph) => paragraph.runs).map((run) => run.text).join("");
+    const code = slide.elements.find(
+      (element) =>
+        element.type === "shape" &&
+        Array.isArray(element.paragraphs) &&
+        textOf(element).includes('console.log("value", answer);'),
+    );
+    const codeAccent = slide.elements.find(
+      (element) =>
+        element.type === "shape" &&
+        code &&
+        element.path === `${code.path}.accent`,
+    );
 
     expect(allRuns.some((run) => run.text.includes("bold") && run.bold)).toBe(true);
     expect(allRuns.some((run) => run.text.includes("emphasis") && run.bold)).toBe(true);
@@ -365,10 +383,42 @@ test("collects native text, nested lists, links, tables, and raster images", asy
     expect(table.rows[1].cells[1].paragraphs[0].runs[0].text.trim()).toBe("42");
     expect(image.src).toMatch(/simple-slide\.png$/);
     expect(slide.elements.filter((element) => element.type === "table")).toHaveLength(1);
+    expect(code).toMatchObject({
+      shape: "roundedRect",
+      textWrap: "none",
+      verticalAlignment: "top",
+    });
+    expect(code.fill).toBeTruthy();
+    expect(code.stroke).toBeTruthy();
+    expect(code.textInsets.left).toBeGreaterThan(code.textInsets.right);
+    expect(code.paragraphs.map((paragraph) => textOf({ paragraphs: [paragraph] }))).toEqual([
+      "const answer = 42;",
+      "",
+      "if (answer) {",
+      '  console.log("value", answer);',
+      "}",
+    ]);
+    expect(code.paragraphs.every((paragraph) => paragraph.lineSpacing > 0)).toBe(true);
+    expect(
+      code.paragraphs.every(
+        (paragraph) => paragraph.spaceBefore === 0 && paragraph.spaceAfter === 0,
+      ),
+    ).toBe(true);
+    const codeRuns = code.paragraphs.flatMap((paragraph) => paragraph.runs);
+    expect(codeRuns.every((run) => run.fontFace === "Cascadia Code")).toBe(true);
+    expect(new Set(codeRuns.map((run) => run.color)).size).toBeGreaterThan(1);
+    expect(codeAccent).toMatchObject({
+      shape: "roundedRect",
+      width: 4,
+      fill: expect.any(String),
+    });
     expect(slide.fallbacks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: "image", reason: "unsupported-image-format" }),
-        expect.objectContaining({ type: "code", reason: "code-block-rendered-as-artwork" }),
+        expect.objectContaining({
+          type: "effect",
+          reason: "native-code-approximates: box-shadow",
+        }),
         expect.objectContaining({ type: "html", reason: "arbitrary-html-rendered-as-artwork" }),
         expect.objectContaining({
           type: "effect",
@@ -384,15 +434,19 @@ test("collects native text, nested lists, links, tables, and raster images", asy
         }),
       ]),
     );
+    expect(slide.fallbacks.some((fallback) => fallback.type === "code")).toBe(false);
     const rotatedVisibility = await page.evaluate(() => {
       const paragraphs = [...document.querySelectorAll("#stage > .deck")[1].querySelectorAll("p")];
       const rotated = paragraphs.find((element) => element.textContent.includes("Rotated fallback"));
       const nested = paragraphs.find((element) => element.textContent.includes("effect fallback"));
+      const code = document.querySelectorAll("#stage > .deck")[1].querySelector("pre:not(.mermaid)");
       return {
         native: rotated?.hasAttribute("data-pptx-native") || false,
         color: rotated ? getComputedStyle(rotated).color : "",
         nestedNative: nested?.hasAttribute("data-pptx-native") || false,
         nestedColor: nested ? getComputedStyle(nested).color : "",
+        codeNative: code?.getAttribute("data-pptx-native") || "",
+        codeVisibility: code ? getComputedStyle(code).visibility : "",
         decorationCount: document
           .querySelectorAll("#stage > .deck")[1]
           .querySelectorAll(".pptx-effect-fallback").length,
@@ -402,7 +456,9 @@ test("collects native text, nested lists, links, tables, and raster images", asy
     expect(rotatedVisibility.color).not.toBe("rgba(0, 0, 0, 0)");
     expect(rotatedVisibility.nestedNative).toBe(false);
     expect(rotatedVisibility.nestedColor).not.toBe("rgba(0, 0, 0, 0)");
-    expect(rotatedVisibility.decorationCount).toBe(1);
+    expect(rotatedVisibility.codeNative).toBe("code");
+    expect(rotatedVisibility.codeVisibility).toBe("hidden");
+    expect(rotatedVisibility.decorationCount).toBe(2);
   } finally {
     await harness.close();
   }
@@ -539,7 +595,7 @@ test("exports Architecture objects from the DSL and keeps fallback artwork visib
       architectureFill: "rgba(0, 0, 0, 0)",
       iconOpacity: "0",
       mermaidVisible: true,
-      codeVisible: true,
+      codeVisible: false,
       unsupportedImageNative: false,
     });
   } finally {

@@ -656,6 +656,7 @@ body.pptx-artwork-mode [data-pptx-native="table"] *{
 }
 body.pptx-artwork-mode li[data-pptx-native="text"]::marker{color:transparent!important;}
 body.pptx-artwork-mode [data-pptx-native="table"]{visibility:hidden!important;}
+body.pptx-artwork-mode pre[data-pptx-native="code"]{visibility:hidden!important;}
 body.pptx-artwork-mode img[data-pptx-native="image"]{
   object-fit:none!important;
   object-position:99999px 99999px!important;

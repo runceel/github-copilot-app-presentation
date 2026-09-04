@@ -369,6 +369,23 @@ function bulletTextOffsetPx(paragraph, path) {
   return largestRunSize / HUNDREDTH_POINTS_PER_PIXEL;
 }
 
+function paragraphSpacingXml(paragraph, path) {
+  const entries = [
+    ["lineSpacing", "a:lnSpc", true],
+    ["spaceBefore", "a:spcBef", false],
+    ["spaceAfter", "a:spcAft", false],
+  ];
+  return entries
+    .map(([property, tag, positive]) => {
+      if (paragraph[property] === undefined) return "";
+      const value = positive
+        ? positiveNumber(paragraph[property], `${path}.${property}`)
+        : nonNegativeNumber(paragraph[property], `${path}.${property}`);
+      return `<${tag}><a:spcPts val="${Math.round(value * HUNDREDTH_POINTS_PER_PIXEL)}"/></${tag}>`;
+    })
+    .join("");
+}
+
 function paragraphXml(paragraph, path, relationships, leftMarginPx = 0) {
   if (!paragraph || typeof paragraph !== "object" || Array.isArray(paragraph)) {
     fail(`${path} must be an object`);
@@ -404,12 +421,13 @@ function paragraphXml(paragraph, path, relationships, leftMarginPx = 0) {
     .filter(Boolean)
     .join(" ");
   const indentationAttributes = indentation ? ` ${indentation}` : "";
+  const spacing = paragraphSpacingXml(paragraph, path);
   const runs = paragraph.runs
     .map((run, index) =>
       runXml(run, `${path}.runs[${index}]`, relationships),
     )
     .join("");
-  return `<a:p><a:pPr algn="${align}" lvl="${level}"${indentationAttributes}>${bullet}</a:pPr>${runs}<a:endParaRPr lang="en-US" noProof="1"><a:ea typeface="${JAPANESE_FONT_FACE}"/></a:endParaRPr></a:p>`;
+  return `<a:p><a:pPr algn="${align}" lvl="${level}"${indentationAttributes}>${spacing}${bullet}</a:pPr>${runs}<a:endParaRPr lang="en-US" noProof="1"><a:ea typeface="${JAPANESE_FONT_FACE}"/></a:endParaRPr></a:p>`;
 }
 
 function runXml(run, path, relationships) {

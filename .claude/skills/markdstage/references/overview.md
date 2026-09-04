@@ -89,11 +89,14 @@ The themed slide is displayed and updates automatically
   produces a 16:9 PDF with backgrounds, images, highlighted code, and Mermaid.
 - **Hybrid editable PowerPoint export is available from More controls > Export
   PowerPoint.** It
-  preserves supported text, lists, links, tables, raster images, and Architecture
-  DSL objects as native PowerPoint content. Architecture nodes, groups, and
-  connector-label pills are visible AutoShapes with integrated text; icons use a
-  transparent foreground picture layer. Mermaid and unsupported styling stay
-  visible as background artwork and are listed in the export report. Speaker
+  preserves supported text, lists, links, tables, fenced code blocks, raster
+  images, and Architecture DSL objects as native PowerPoint content. Code blocks
+  retain editable syntax-colored runs, whitespace, monospace typography, and
+  block decoration; unsupported effects such as shadows remain background
+  artwork. Architecture nodes, groups, and connector-label pills are visible
+  AutoShapes with integrated text; icons use a transparent foreground picture
+  layer. Mermaid and other unsupported styling stay visible as background
+  artwork and are listed in the export report. Speaker
   notes are converted from Markdown to readable plain text in the corresponding
   PowerPoint notes pane. AI may call `export_pptx` with another
   workspace-confined `.pptx` path.

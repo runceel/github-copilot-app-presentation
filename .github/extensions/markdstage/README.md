@@ -93,11 +93,14 @@ The themed slide is displayed and updates automatically
   produces a 16:9 PDF with backgrounds, images, highlighted code, and Mermaid.
 - **Hybrid editable PowerPoint export is available from More controls > Export
   PowerPoint.** It
-  preserves supported text, lists, links, tables, raster images, and Architecture
-  DSL objects as native PowerPoint content. Architecture nodes, groups, and
-  connector-label pills are visible AutoShapes with integrated text; icons use a
-  transparent foreground picture layer. Mermaid and unsupported styling stay
-  visible as background artwork and are listed in the export report. Speaker
+  preserves supported text, lists, links, tables, fenced code blocks, raster
+  images, and Architecture DSL objects as native PowerPoint content. Code blocks
+  retain editable syntax-colored runs, whitespace, monospace typography, and
+  block decoration; unsupported effects such as shadows remain background
+  artwork. Architecture nodes, groups, and connector-label pills are visible
+  AutoShapes with integrated text; icons use a transparent foreground picture
+  layer. Mermaid and other unsupported styling stay visible as background
+  artwork and are listed in the export report. Speaker
   notes are converted from Markdown to readable plain text in the corresponding
   PowerPoint notes pane. AI may call `export_pptx` with another
   workspace-confined `.pptx` path.
@@ -995,7 +998,7 @@ fails with `invalid_input`; pass the complete `slides` array or call
 | `inspect_layout` | `{ index?: number, includeFits?: boolean }`. Render the registered in-memory PDF snapshot with the fixed 1280×720 output layout; this does not inspect the source file on disk. Omit `index` for one preferred whole-deck inspection. Serialize targeted calls because PDF, layout, and PNG jobs are exclusive. By default, return only clipped pages; `includeFits` includes successful pages. Returns dimensions, issue counts, overflow measurements, nested scroll containers, and a bounded list of element hints. Requires Edge, Chrome, or Chromium. |
 | `capture_slides` | `{ indexes?: number[], outputDirectory?: string, theme?: "dark" | "light" | "microsoft" | "custom" }`. Generate PDF-equivalent 1280×720 PNGs for at most 10 zero-based indexes. When `indexes` is omitted, inspect the deck and capture only clipped pages. Paths stay inside the workspace; results contain paths and layout summaries, not image bytes. Requires Edge, Chrome, or Chromium. |
 | `export_pdf` | `{ outputPath?: string, theme?: "dark" | "light" | "microsoft" | "custom" }`. Export one 16:9 page per slide. Relative paths use workspace root; default is `markdstage.pdf`. Theme affects PDF only. Reject paths outside workspace and non-`.pdf` files. Temporary slide replacement and the automatic back cover are included. Returns `{ ok, path, total, theme, bytes }`. Requires Edge, Chrome, or Chromium. |
-| `export_pptx` | `{ outputPath?: string, theme?: "dark" | "light" | "microsoft" | "custom" }`. Export a hybrid editable 16:9 PowerPoint deck. Supported text, lists, links, tables, raster images, and Architecture DSL objects remain native. Speaker-note Markdown is exported as readable plain text in the corresponding PowerPoint notes pane. Architecture nodes, groups, and connector-label pills are visible AutoShapes with integrated text; icons are foreground pictures. Mermaid and unsupported visuals become reported background fallbacks. Relative paths use workspace root; default is `markdstage.pptx`. Reject paths outside workspace and non-`.pptx` files. Temporary slide replacement and the automatic back cover are included. Returns `{ ok, path, total, theme, bytes, format, fallbackCount, fallbacks }`. Requires Edge, Chrome, or Chromium. |
+| `export_pptx` | `{ outputPath?: string, theme?: "dark" | "light" | "microsoft" | "custom" }`. Export a hybrid editable 16:9 PowerPoint deck. Supported text, lists, links, tables, fenced code blocks, raster images, and Architecture DSL objects remain native. Code blocks preserve syntax-colored editable runs, whitespace, monospace typography, and block decoration; unsupported effects such as shadows remain reported background fallbacks. Speaker-note Markdown is exported as readable plain text in the corresponding PowerPoint notes pane. Architecture nodes, groups, and connector-label pills are visible AutoShapes with integrated text; icons are foreground pictures. Mermaid and unsupported visuals become reported background fallbacks. Relative paths use workspace root; default is `markdstage.pptx`. Reject paths outside workspace and non-`.pptx` files. Temporary slide replacement and the automatic back cover are included. Returns `{ ok, path, total, theme, bytes, format, fallbackCount, fallbacks }`. Requires Edge, Chrome, or Chromium. |
 | `edit_architecture` | `{ enabled: boolean }`. Toggle placement editing. Imported decks also write to the source fence; direct decks write to canvas state. Presenter/print omit UI. Mode is not persisted and `reset` disables it. Returns `{ ok, enabled, version }`. |
 | `reset` | No input. Clear deck/slide state, disable editing, and return to the waiting view. |
 
