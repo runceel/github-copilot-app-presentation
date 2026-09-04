@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="96" viewBox="0 0 420 96">
+  <rect width="96" height="96" rx="18" fill="#38bdf8"/>
+  <path d="M24 28h48v12H24zm0 28h48v12H24z" fill="#0f172a"/>
+  <text x="120" y="62" fill="#f8fafc" font-family="Arial, sans-serif" font-size="36" font-weight="700">ISSUE 111</text>
+</svg>

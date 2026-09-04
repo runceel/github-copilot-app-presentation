@@ -503,26 +503,77 @@ export async function runPptxOutputBrowser(browser, pageUrl, profileDir, job, to
       color: { r: 0, g: 0, b: 0, a: 0 },
     });
 
-    const slideArtworks = [];
-    for (let index = 0; index < total; index += 1) {
-      const screenshot = await cdp.send("Page.captureScreenshot", {
-        format: "png",
-        fromSurface: true,
-        captureBeyondViewport: true,
-        clip: {
-          x: 0,
-          y: index * 720,
-          width: 1280,
-          height: 720,
-          scale: 1,
-        },
-      });
-      if (typeof screenshot.data !== "string" || screenshot.data.length === 0) {
-        throw new Error(`Chromium did not return fallback artwork for slide ${index + 1}.`);
+    const slideFallbackImages = [];
+    for (const [slideIndex, slide] of model.slides.entries()) {
+      const images = [];
+      const fallbacks = Array.isArray(slide.fallbacks) ? slide.fallbacks : [];
+      for (const [fallbackIndex, fallback] of fallbacks.entries()) {
+        if (fallback?.artwork === false) continue;
+        if (typeof fallback?.captureId !== "string" || !fallback.captureId) {
+          throw new Error(
+            `PowerPoint fallback ${fallbackIndex + 1} on slide ${slideIndex + 1} is missing its capture id.`,
+          );
+        }
+        const left = Math.max(0, Number(fallback?.x));
+        const top = Math.max(0, Number(fallback?.y));
+        const right = Math.min(1280, Number(fallback?.x) + Number(fallback?.width));
+        const bottom = Math.min(720, Number(fallback?.y) + Number(fallback?.height));
+        if (
+          ![left, top, right, bottom].every(Number.isFinite) ||
+          right <= left ||
+          bottom <= top
+        ) {
+          throw new Error(
+            `PowerPoint fallback ${fallbackIndex + 1} on slide ${slideIndex + 1} has invalid bounds.`,
+          );
+        }
+        const bounds = {
+          x: left,
+          y: top,
+          width: right - left,
+          height: bottom - top,
+        };
+        await cdp.send("Runtime.evaluate", {
+          expression: `(() => {
+            const active = ${JSON.stringify(fallback.captureId)};
+            for (const element of document.querySelectorAll("[data-pptx-fallback-ids]")) {
+              const ids = (element.getAttribute("data-pptx-fallback-ids") || "").split(/\\s+/);
+              element.classList.toggle("pptx-fallback-hidden", !ids.includes(active));
+            }
+            return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          })()`,
+          awaitPromise: true,
+        });
+        const screenshot = await cdp.send("Page.captureScreenshot", {
+          format: "png",
+          fromSurface: true,
+          captureBeyondViewport: true,
+          clip: {
+            x: bounds.x,
+            y: slideIndex * 720 + bounds.y,
+            width: bounds.width,
+            height: bounds.height,
+            scale: 1,
+          },
+        });
+        if (typeof screenshot.data !== "string" || screenshot.data.length === 0) {
+          throw new Error(
+            `Chromium did not return fallback artwork ${fallbackIndex + 1} for slide ${slideIndex + 1}.`,
+          );
+        }
+        images.push({
+          fallbackIndex,
+          ...bounds,
+          data: Buffer.from(screenshot.data, "base64"),
+        });
       }
-      slideArtworks.push(Buffer.from(screenshot.data, "base64"));
+      slideFallbackImages.push(images);
     }
-    return { model, layoutArtworks, slideArtworks };
+    await cdp.send("Runtime.evaluate", {
+      expression:
+        'document.querySelectorAll(".pptx-fallback-hidden").forEach(element => element.classList.remove("pptx-fallback-hidden"));',
+    });
+    return { model, layoutArtworks, slideFallbackImages };
   } finally {
     await closeCdpOutputPage(cdp, child);
   }

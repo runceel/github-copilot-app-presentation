@@ -32,6 +32,11 @@ test("canvas exposes layout, PNG, PDF, and editable PowerPoint output", async ()
   assert.match(source, /targeted inspections must be serialized/);
   assert.match(browser, /runPptxOutputBrowser/);
   assert.match(browser, /window\.__presentationPptxModel/);
+  assert.match(browser, /const slideFallbackImages = \[\]/);
+  assert.match(browser, /fallbackIndex/);
+  assert.match(browser, /fallback\.captureId/);
+  assert.match(browser, /pptx-fallback-hidden/);
+  assert.match(browser, /width: bounds\.width/);
   assert.match(html, /id="navExportPptx"/);
 });
 

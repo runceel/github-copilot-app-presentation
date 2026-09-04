@@ -119,6 +119,7 @@ function samplePackage() {
             y: 150,
             width: 240,
             height: 160,
+            shape: "roundedRect",
           },
           {
             type: "shape",
@@ -226,6 +227,20 @@ test("writes theme-specific masters and five named layouts with shared artwork",
       name,
       theme,
       artworkAssetId: `${theme}-${name}`,
+      elements:
+        name === "title"
+          ? [
+              {
+                type: "image",
+                assetId: `${theme}-logo`,
+                name: "Cover logo",
+                x: 84,
+                y: 40,
+                width: 205,
+                height: 64,
+              },
+            ]
+          : [],
     })),
   );
   const buffer = buildPptxPackage({
@@ -241,17 +256,44 @@ test("writes theme-specific masters and five named layouts with shared artwork",
         contentType: "image/png",
         data: PNG,
       })),
+      ...themes.map((theme) => ({
+        id: `${theme}-logo`,
+        contentType: "image/png",
+        data: PNG,
+      })),
       { id: "slide-1", contentType: "image/png", data: PNG },
       { id: "slide-2", contentType: "image/png", data: PNG },
     ],
     slides: [
       {
         layoutId: "dark:title",
-        artworkAssetId: "slide-1",
         notes: "Layout notes",
-        elements: [],
+        elements: [
+          {
+            type: "image",
+            assetId: "slide-1",
+            name: "Mermaid artwork",
+            x: 320,
+            y: 180,
+            width: 640,
+            height: 280,
+          },
+        ],
       },
-      { layoutId: "light:center", artworkAssetId: "slide-2", elements: [] },
+      {
+        layoutId: "light:center",
+        elements: [
+          {
+            type: "image",
+            assetId: "slide-2",
+            name: "Footer artwork",
+            x: 84,
+            y: 640,
+            width: 1112,
+            height: 40,
+          },
+        ],
+      },
     ],
   });
   const files = readStoredZip(buffer);
@@ -275,7 +317,7 @@ test("writes theme-specific masters and five named layouts with shared artwork",
   );
   assert.match(
     xml(files, "ppt/slideLayouts/slideLayout1.xml"),
-    /matchingName="title"><p:cSld name="title">[\s\S]*name="Layout artwork"[\s\S]*<p:nvPr userDrawn="1"\/>/,
+    /matchingName="title"><p:cSld name="title">[\s\S]*name="Layout artwork"[\s\S]*name="Cover logo"[\s\S]*<p:nvPr userDrawn="1"\/>/,
   );
   assert.match(
     xml(files, "ppt/slideLayouts/slideLayout2.xml"),
@@ -283,13 +325,17 @@ test("writes theme-specific masters and five named layouts with shared artwork",
   );
   assert.match(
     xml(files, "ppt/slideLayouts/_rels/slideLayout1.xml.rels"),
-    /Type="[^"]*\/slideMaster" Target="\.\.\/slideMasters\/slideMaster1\.xml"[\s\S]*Type="[^"]*\/image"/,
+    /Type="[^"]*\/slideMaster" Target="\.\.\/slideMasters\/slideMaster1\.xml"[\s\S]*Type="[^"]*\/image"[\s\S]*Type="[^"]*\/image"/,
   );
   assert.match(
     xml(files, "ppt/slides/_rels/slide1.xml.rels"),
     /Type="[^"]*\/slideLayout" Target="\.\.\/slideLayouts\/slideLayout1\.xml"/,
   );
-  assert.match(xml(files, "ppt/slides/slide1.xml"), /name="Slide artwork"/);
+  assert.match(
+    xml(files, "ppt/slides/slide1.xml"),
+    /name="Mermaid artwork"[\s\S]*<a:off x="3048000" y="1714500"\/><a:ext cx="6096000" cy="2667000"\/>/,
+  );
+  assert.doesNotMatch(xml(files, "ppt/slides/slide1.xml"), /name="Slide artwork"/);
   assert.doesNotMatch(xml(files, "ppt/slides/slide1.xml"), /name="Layout artwork"/);
   assert.ok(files.has("ppt/theme/theme3.xml"));
   assert.match(
@@ -374,7 +420,7 @@ test("emits native text, hyperlinks, tables, images, shapes, and connector segme
   assert.match(rels, /Target="https:\/\/example\.com\/\?a=1&amp;b=2" TargetMode="External"/);
   assert.match(slide, /<a:tbl>/);
   assert.match(slide, /<a:t>A<\/a:t>/);
-  assert.match(slide, /<p:pic>/);
+  assert.match(slide, /<p:pic>[\s\S]*?<a:prstGeom prst="roundRect">/);
   assert.match(slide, /<a:prstGeom prst="roundRect">/);
   assert.match(slide, /<a:t>Editable shape<\/a:t>/);
   assert.equal((slide.match(/name="Connector \d+"/g) || []).length, 2);

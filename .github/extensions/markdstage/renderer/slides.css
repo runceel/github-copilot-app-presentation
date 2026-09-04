@@ -681,6 +681,8 @@ body.pptx-artwork-mode svg [data-pptx-native="table"]{
 }
 body.pptx-artwork-mode svg path[data-pptx-native="connector"]{marker-end:none!important;}
 body.pptx-artwork-mode svg [data-pptx-native="image"]{opacity:0!important;}
+body.pptx-artwork-mode [data-pptx-shadow-fallback]{box-shadow:none!important;}
+body.pptx-artwork-mode .pptx-fallback-hidden{visibility:hidden!important;}
 body.pptx-slide-artwork-mode .deck:not(.pptx-layout-template){
   background:transparent!important;
 }

@@ -96,15 +96,15 @@ The themed slide is displayed and updates automatically
   preserves supported text, lists, links, tables, fenced code blocks, raster
   images, and Architecture DSL objects as native PowerPoint content. Code blocks
   retain editable syntax-colored runs, whitespace, monospace typography, and
-  block decoration; unsupported effects such as shadows remain background
-  artwork. Architecture nodes, groups, and connector-label pills are visible
+  block decoration; unsupported effects such as shadows remain cropped fallback
+  pictures. Architecture nodes, groups, and connector-label pills are visible
   AutoShapes with integrated text; icons use a transparent foreground picture
-  layer. Mermaid and other unsupported styling stay visible as background
-  artwork and are listed in the export report. Each theme used in the deck gets
+  layer. Supported SVG files remain individual pictures. Mermaid, shadows, and
+  other unsupported styling stay visible as cropped, positioned fallback
+  pictures and are listed in the export report. Each theme used in the deck gets
   its own slide master with named `title`, `default`, `center`, `section`, and
-  `backcover` layouts. Common backgrounds, top bars, and theme logos are stored
-  on the layouts; slide-specific fallback artwork remains a transparent slide
-  layer. Speaker
+  `backcover` layouts. Common backgrounds and top bars are stored in layout
+  artwork; supported cover logos are separate layout pictures. Speaker
   notes are converted from Markdown to readable plain text in the corresponding
   PowerPoint notes pane. AI may call `export_pptx` with another
   workspace-confined `.pptx` path.

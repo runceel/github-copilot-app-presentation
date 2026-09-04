@@ -89,6 +89,8 @@ let customThemeMeta = null;
 // reveal a newer, still-rendering one.
 let renderToken = 0;
 let lastMermaidTheme = null;
+let pptxFallbackSequence = 0;
+const pptxFallbackCaptureElements = new Map();
 // Editing mode is available only in normal view, not presenter or print mode.
 // Print mode returns early in init, so presenterMode is the effective branch here.
 let architectureEditMode = false;
@@ -878,7 +880,7 @@ async function reportOutputStatus(token, status, error = "", layout = null) {
   if (!response.ok) throw new Error(`Could not report output status (${response.status}).`);
 }
 
-const PPTX_RASTER_IMAGE = /\.(?:png|jpe?g|gif)(?:$|[?#])/i;
+const PPTX_DIRECT_IMAGE = /\.(?:png|jpe?g|gif|svg)(?:$|[?#])/i;
 
 function normalizeCssColor(value) {
   const text = String(value || "").trim();
@@ -1000,13 +1002,13 @@ function singleLineTextLayout(element, deck, bounds, textInsets, alignment) {
   };
 }
 
-function rasterImageSupported(image) {
+function directImageSupported(image) {
   const source = image.currentSrc || image.getAttribute("src") || "";
   if (["cover", "none"].includes(getComputedStyle(image).objectFit)) return false;
-  if (/^data:image\/(?:png|jpeg|gif)[;,]/i.test(source)) return true;
+  if (/^data:image\/(?:png|jpeg|gif|svg\+xml)[;,]/i.test(source)) return true;
   try {
     const url = new URL(source, window.location.href);
-    return url.origin === window.location.origin && PPTX_RASTER_IMAGE.test(url.href);
+    return url.origin === window.location.origin && PPTX_DIRECT_IMAGE.test(url.href);
   } catch (_) {
     return false;
   }
@@ -1143,24 +1145,237 @@ function unsupportedEffects(element) {
   return effects;
 }
 
-function effectFallbackRoot(element) {
-  return element.closest(
-    "p, li, blockquote, table, img, h1, h2, h3, h4, h5, h6, .kicker, .slide-title, .theme-backcover-logo-text, .theme-backcover-copyright, .body, header, footer",
+function effectPaintPadding(element, effects) {
+  if (
+    !effects.some((effect) =>
+      ["text-shadow", "box-shadow", "filter", "backdrop-filter"].includes(effect),
+    )
+  ) {
+    return 0;
+  }
+  const style = getComputedStyle(element);
+  const values = [
+    effects.includes("text-shadow") ? style.textShadow : "",
+    effects.includes("box-shadow") ? style.boxShadow : "",
+    effects.includes("filter") ? style.filter : "",
+    effects.includes("backdrop-filter") ? style.backdropFilter : "",
+  ];
+  const lengths = values.flatMap((value) =>
+    [...String(value).matchAll(/-?\d+(?:\.\d+)?px/g)].map((match) =>
+      Math.abs(Number.parseFloat(match[0])),
+    ),
+  );
+  return Math.min(
+    256,
+    Math.max(32, Math.ceil(lengths.reduce((sum, value) => sum + value, 0) * 2)),
   );
 }
 
-function pptxFallback(type, element, deck, reason) {
+function subtreeEffectPaintPadding(element) {
+  return Math.max(
+    0,
+    ...[element, ...element.querySelectorAll("*")].map((candidate) => {
+      const effects = unsupportedEffects(candidate);
+      return effectPaintPadding(candidate, effects);
+    }),
+  );
+}
+
+function assignPptxPaintOrder(deck) {
+  const elements = [...deck.querySelectorAll("*")];
+  const entries = elements.map((element, domOrder) => {
+    const stacking = [];
+    const ancestors = [];
+    for (let current = element; current && current !== deck; current = current.parentElement) {
+      ancestors.push(current);
+    }
+    for (const current of ancestors.reverse()) {
+      const zIndex = getComputedStyle(current).zIndex;
+      if (zIndex !== "auto" && Number.isFinite(Number(zIndex))) {
+        stacking.push(Number(zIndex));
+      }
+    }
+    return { element, domOrder, stacking };
+  });
+  entries.sort((left, right) => {
+    const length = Math.max(left.stacking.length, right.stacking.length);
+    for (let index = 0; index < length; index += 1) {
+      const difference = (left.stacking[index] || 0) - (right.stacking[index] || 0);
+      if (difference) return difference;
+    }
+    return left.domOrder - right.domOrder;
+  });
+  entries.forEach(({ element }, zOrder) => {
+    element.dataset.pptxZOrder = String(zOrder);
+  });
+}
+
+function effectFallbackRoot(element) {
+  return element.closest(
+    "p, li, blockquote, table, img, h1, h2, h3, h4, h5, h6, div, section, article, aside, details, video, audio, iframe, canvas, object, embed, .kicker, .slide-title, .theme-backcover-logo-text, .theme-backcover-copyright, .body, header, footer",
+  );
+}
+
+function fallbackBounds(element, deck, padding = 0, includeDescendants = false) {
+  const candidates = (
+    includeDescendants ? [element, ...element.querySelectorAll("*")] : [element]
+  ).filter((candidate) => {
+    const style = getComputedStyle(candidate);
+    return style.display !== "none";
+  });
+  const slide = deck.getBoundingClientRect();
+  const relativeRect = (rect) => ({
+    x: rect.left - slide.left,
+    y: rect.top - slide.top,
+    width: rect.width,
+    height: rect.height,
+  });
+  const bounds = candidates.map((candidate) =>
+    relativeRect(candidate.getBoundingClientRect()),
+  );
+  for (const candidate of candidates) {
+    for (const node of candidate.childNodes) {
+      if (node.nodeType !== Node.TEXT_NODE || !node.textContent?.trim()) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      bounds.push(
+        ...[...range.getClientRects()]
+          .filter((rect) => rect.width > 0 && rect.height > 0)
+          .map(relativeRect),
+      );
+    }
+  }
+  const left = Math.min(
+    OUTPUT_WIDTH,
+    Math.max(0, Math.min(...bounds.map((candidate) => candidate.x)) - padding),
+  );
+  const top = Math.min(
+    OUTPUT_HEIGHT,
+    Math.max(0, Math.min(...bounds.map((candidate) => candidate.y)) - padding),
+  );
+  const right = Math.min(
+    OUTPUT_WIDTH,
+    Math.max(
+      0,
+      Math.max(...bounds.map((candidate) => candidate.x + candidate.width)) + padding,
+    ),
+  );
+  const bottom = Math.min(
+    OUTPUT_HEIGHT,
+    Math.max(
+      0,
+      Math.max(...bounds.map((candidate) => candidate.y + candidate.height)) + padding,
+    ),
+  );
+  return {
+    x: roundedMetric(left),
+    y: roundedMetric(top),
+    width: roundedMetric(Math.max(0, right - left)),
+    height: roundedMetric(Math.max(0, bottom - top)),
+  };
+}
+
+function pptxFallback(type, element, deck, reason, options = {}) {
+  const bounds = fallbackBounds(
+    element,
+    deck,
+    options.padding,
+    options.includeDescendants,
+  );
+  const artwork = options.artwork !== false && bounds.width > 0 && bounds.height > 0;
+  const captureElement = options.captureElement || element;
+  let captureId;
+  if (artwork) {
+    captureId = `pptx-fallback-${++pptxFallbackSequence}`;
+    const ids = new Set(
+      (captureElement.getAttribute("data-pptx-fallback-ids") || "")
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    ids.add(captureId);
+    captureElement.setAttribute("data-pptx-fallback-ids", [...ids].join(" "));
+    pptxFallbackCaptureElements.set(captureId, captureElement);
+  }
+  const sourceOrder = Number(element.dataset.pptxZOrder);
+  const zOrder = Number.isFinite(sourceOrder)
+    ? sourceOrder - (options.behindNative ? 0.25 : 0)
+    : undefined;
   return {
     type,
     path: elementPath(element, deck),
     reason,
-    ...relativeBounds(element, deck),
+    ...bounds,
+    ...(captureId ? { captureId } : {}),
+    ...(zOrder !== undefined ? { zOrder } : {}),
+    ...(!artwork ? { artwork: false } : {}),
   };
+}
+
+function styleHasVisualDecoration(style) {
+  const backgroundVisible =
+    style.backgroundImage !== "none" ||
+    !["transparent", "rgba(0, 0, 0, 0)"].includes(style.backgroundColor);
+  const borderVisible = ["Top", "Right", "Bottom", "Left"].some(
+    (side) =>
+      Number.parseFloat(style[`border${side}Width`]) > 0 &&
+      style[`border${side}Style`] !== "none" &&
+      !["transparent", "rgba(0, 0, 0, 0)"].includes(style[`border${side}Color`]),
+  );
+  return backgroundVisible || borderVisible;
+}
+
+function hasVisualDecoration(element) {
+  return styleHasVisualDecoration(getComputedStyle(element));
+}
+
+function hasVisiblePseudoElement(element) {
+  return ["::before", "::after"].some((pseudo) => {
+    const style = getComputedStyle(element, pseudo);
+    const contentVisible = !["none", "normal", '""', "''"].includes(style.content);
+    const paintedEmptyContent =
+      styleHasVisualDecoration(style) &&
+      Number.parseFloat(style.width) > 0 &&
+      Number.parseFloat(style.height) > 0;
+    return (
+      style.display !== "none" &&
+      style.visibility !== "hidden" &&
+      (contentVisible || paintedEmptyContent)
+    );
+  });
+}
+
+function collectPptxLayoutElements(deck) {
+  const elements = [];
+  for (const image of deck.querySelectorAll(":scope > .theme-cover-logo")) {
+    const style = getComputedStyle(image);
+    if (
+      !directImageSupported(image) ||
+      unsupportedEffects(image).length > 0 ||
+      Number.parseFloat(style.borderRadius) > 0
+    ) {
+      continue;
+    }
+    const opacity = Number(style.opacity);
+    elements.push({
+      type: "image",
+      path: elementPath(image, deck),
+      ...relativeBounds(image, deck),
+      src: image.currentSrc || image.src,
+      alt: image.alt || "",
+      fit: style.objectFit || "contain",
+      opacity: Number.isFinite(opacity) ? opacity : 1,
+      naturalWidth: image.naturalWidth,
+      naturalHeight: image.naturalHeight,
+    });
+    image.setAttribute("data-pptx-native", "image");
+  }
+  return elements;
 }
 
 function preserveBoxShadow(element, deck) {
   const style = getComputedStyle(element);
-  if (!style.boxShadow || style.boxShadow === "none") return;
+  if (!style.boxShadow || style.boxShadow === "none") return null;
+  element.setAttribute("data-pptx-shadow-fallback", "true");
   const bounds = relativeBounds(element, deck);
   const decoration = document.createElement("div");
   decoration.className = "pptx-effect-fallback";
@@ -1176,6 +1391,7 @@ function preserveBoxShadow(element, deck) {
   });
   decoration.setAttribute("aria-hidden", "true");
   deck.appendChild(decoration);
+  return decoration;
 }
 
 function blobDataUrl(blob) {
@@ -1455,6 +1671,7 @@ async function collectArchitectureObjects(wrapper, deck, blockIndex) {
         wrapper,
         deck,
         `foreground-picture-failed: ${error?.message || "unknown error"}`,
+        { artwork: false },
       ),
     );
   }
@@ -1522,6 +1739,7 @@ async function collectArchitectureObjects(wrapper, deck, blockIndex) {
           ? "architecture-image-rendered-as-foreground-picture"
           : "architecture-image-rendered-as-artwork",
         ...mapBounds(sourceObject),
+        ...(foregroundReady && layer ? { artwork: false } : {}),
       });
       if (foregroundReady && layer) elements.push(foregroundElement(layer));
       continue;
@@ -1542,6 +1760,7 @@ async function collectArchitectureObjects(wrapper, deck, blockIndex) {
         : "icon-rendered-as-artwork",
       icon: icon.icon,
       ...mapBounds(icon),
+      ...(foregroundReady && layer ? { artwork: false } : {}),
     });
   }
   for (const sourceObject of snapshot.objects) {
@@ -1599,34 +1818,76 @@ async function collectArchitectureObjects(wrapper, deck, blockIndex) {
 
 async function collectPptxSlide(slide, index) {
   const { deck } = slide;
+  assignPptxPaintOrder(deck);
   const elements = [];
   const fallbacks = [];
   const fallbackRoots = new Set();
-  const addFallback = (type, element, reason) => {
+  const fallbackByRoot = new Map();
+  const removeFallback = (root) => {
+    const fallback = fallbackByRoot.get(root);
+    if (!fallback) return;
+    fallbackByRoot.delete(root);
+    fallbackRoots.delete(root);
+    const index = fallbacks.indexOf(fallback);
+    if (index >= 0) fallbacks.splice(index, 1);
+    if (!fallback.captureId) return;
+    const captureElement = pptxFallbackCaptureElements.get(fallback.captureId);
+    pptxFallbackCaptureElements.delete(fallback.captureId);
+    if (!captureElement) return;
+    const ids = (captureElement.getAttribute("data-pptx-fallback-ids") || "")
+      .split(/\s+/)
+      .filter((id) => id && id !== fallback.captureId);
+    if (ids.length) captureElement.setAttribute("data-pptx-fallback-ids", ids.join(" "));
+    else captureElement.removeAttribute("data-pptx-fallback-ids");
+  };
+  const addFallback = (type, element, reason, options) => {
     if (fallbackRoots.has(element)) return;
+    if ([...fallbackRoots].some((root) => root.contains(element))) return;
+    [...fallbackRoots]
+      .filter((root) => element.contains(root))
+      .forEach(removeFallback);
     fallbackRoots.add(element);
-    fallbacks.push(pptxFallback(type, element, deck, reason));
+    const fallback = pptxFallback(type, element, deck, reason, options);
+    fallbackByRoot.set(element, fallback);
+    fallbacks.push(fallback);
   };
 
+  const effectFallbacks = new Map();
+  const genericShadowElements = new Map();
   for (const element of deck.querySelectorAll("header *, .body, .body *, footer *")) {
     if (element.closest("pre, .architecture-diagram, .architecture-error")) continue;
-    const effects = unsupportedEffects(element).filter((effect) => effect !== "box-shadow");
+    const allEffects = unsupportedEffects(element);
+    if (
+      allEffects.includes("box-shadow") &&
+      !element.closest("table, img")
+    ) {
+      genericShadowElements.set(
+        element,
+        effectPaintPadding(element, ["box-shadow"]),
+      );
+    }
+    const effects = allEffects.filter((effect) => effect !== "box-shadow");
     if (!effects.length) continue;
     const root = effectFallbackRoot(element);
     if (root) {
-      addFallback(
-        "effect",
-        root,
-        `element-rendered-as-artwork: ${effects.join(", ")}`,
-      );
+      const pending = effectFallbacks.get(root) || { effects: new Set(), padding: 0 };
+      effects.forEach((effect) => pending.effects.add(effect));
+      pending.padding = Math.max(pending.padding, effectPaintPadding(element, allEffects));
+      effectFallbacks.set(root, pending);
     }
   }
+  for (const [root, pending] of effectFallbacks) {
+    addFallback(
+      "effect",
+      root,
+      `element-rendered-as-artwork: ${[...pending.effects].join(", ")}`,
+      { padding: pending.padding, includeDescendants: true },
+    );
+  }
 
-  deck.querySelectorAll("pre.mermaid").forEach((element) =>
-    addFallback("mermaid", element, "mermaid-rendered-as-artwork"),
-  );
   deck.querySelectorAll("pre:not(.mermaid)").forEach((element) => {
-    const artworkEffects = unsupportedEffects(element).filter(
+    const effects = unsupportedEffects(element);
+    const artworkEffects = effects.filter(
       (effect) => effect !== "box-shadow",
     );
     if (artworkEffects.length) {
@@ -1634,6 +1895,10 @@ async function collectPptxSlide(slide, index) {
         "code",
         element,
         `code-block-rendered-as-artwork: ${artworkEffects.join(", ")}`,
+        {
+          padding: effectPaintPadding(element, effects),
+          includeDescendants: true,
+        },
       );
     }
   });
@@ -1645,10 +1910,20 @@ async function collectPptxSlide(slide, index) {
       ".body div:not(.architecture-diagram):not(.architecture-error):not(.architecture-routing-warning), .body section, .body article, .body aside, .body details, .body video, .body audio, .body iframe, .body canvas, .body object, .body embed",
     )
     .forEach((element) => {
-      if (!element.closest(".architecture-diagram")) {
-        addFallback("html", element, "arbitrary-html-rendered-as-artwork");
+      const covered = [...fallbackRoots].some(
+        (root) => root === element || root.contains(element),
+      );
+      if (!element.closest("pre, .architecture-diagram") && !covered) {
+        addFallback("html", element, "arbitrary-html-rendered-as-artwork", {
+          includeDescendants: true,
+          padding: subtreeEffectPaintPadding(element),
+        });
       }
     });
+  deck.querySelectorAll("pre.mermaid").forEach((element) => {
+    const covered = [...fallbackRoots].some((root) => root === element || root.contains(element));
+    if (!covered) addFallback("mermaid", element, "mermaid-rendered-as-artwork");
+  });
 
   const insideFallback = (element) =>
     [...fallbackRoots].some((root) => root === element || root.contains(element));
@@ -1710,12 +1985,65 @@ async function collectPptxSlide(slide, index) {
       type: "text",
       path: elementPath(element, deck),
       ...bounds,
+      zOrder: Number(element.dataset.pptxZOrder),
       paragraphs: [paragraph],
       opacity: Number(getComputedStyle(element).opacity) || 1,
       ...(fittedTextInsets ? { textInsets: fittedTextInsets } : {}),
       ...(disableTextWrap ? { textWrap: "none" } : {}),
     });
     element.setAttribute("data-pptx-native", "text");
+  }
+  for (const element of textCandidates) {
+    const pseudoElementVisible = hasVisiblePseudoElement(element);
+    if (
+      element.closest("footer") ||
+      element.classList.contains("kicker") ||
+      (!hasVisualDecoration(element) && !pseudoElementVisible)
+    ) {
+      continue;
+    }
+    fallbacks.push(
+      pptxFallback(
+        "decoration",
+        element,
+        deck,
+        "native-text-decoration-rendered-as-artwork",
+        { behindNative: true, padding: pseudoElementVisible ? 32 : 0 },
+      ),
+    );
+  }
+  deck.querySelectorAll(".kicker").forEach((element) => {
+    if (insideFallback(element)) return;
+    fallbacks.push(
+      pptxFallback("decoration", element, deck, "kicker-mark-rendered-as-artwork", {
+        behindNative: true,
+      }),
+    );
+  });
+  deck.querySelectorAll("footer").forEach((element) => {
+    if (insideFallback(element)) return;
+    fallbacks.push(
+      pptxFallback("decoration", element, deck, "footer-decoration-rendered-as-artwork", {
+        behindNative: true,
+      }),
+    );
+  });
+  deck.querySelectorAll(".body hr").forEach((element) => {
+    if (insideFallback(element)) return;
+    fallbacks.push(
+      pptxFallback("decoration", element, deck, "horizontal-rule-rendered-as-artwork"),
+    );
+  });
+  for (const [element, padding] of genericShadowElements) {
+    if (insideFallback(element)) continue;
+    const decoration = preserveBoxShadow(element, deck);
+    fallbacks.push(
+      pptxFallback("effect", element, deck, "native-element-approximates: box-shadow", {
+        padding,
+        behindNative: true,
+        captureElement: decoration || element,
+      }),
+    );
   }
 
   for (const pre of deck.querySelectorAll("pre:not(.mermaid)")) {
@@ -1731,6 +2059,7 @@ async function collectPptxSlide(slide, index) {
       path: elementPath(pre, deck),
       shape: borderRadius > 0 ? "roundedRect" : "rect",
       ...bounds,
+      zOrder: Number(pre.dataset.pptxZOrder),
       fill: normalizeCssColor(style.backgroundColor),
       stroke: normalizeCssColor(style.borderTopColor),
       strokeWidth: borderWidth || 1,
@@ -1754,18 +2083,24 @@ async function collectPptxSlide(slide, index) {
         height: bounds.height - accentInset * 2,
         fill: accentColor,
         stroke: null,
+        zOrder: Number(pre.dataset.pptxZOrder) + 0.01,
       });
     }
     if (style.boxShadow && style.boxShadow !== "none") {
+      const decoration = preserveBoxShadow(pre, deck);
       fallbacks.push(
         pptxFallback(
           "effect",
           pre,
           deck,
           "native-code-approximates: box-shadow",
+          {
+            padding: effectPaintPadding(pre, ["box-shadow"]),
+            behindNative: true,
+            captureElement: decoration || pre,
+          },
         ),
       );
-      preserveBoxShadow(pre, deck);
     }
     pre.setAttribute("data-pptx-native", "code");
   }
@@ -1832,18 +2167,24 @@ async function collectPptxSlide(slide, index) {
       type: "table",
       path: elementPath(table, deck),
       ...relativeBounds(table, deck),
+      zOrder: Number(table.dataset.pptxZOrder),
       rows,
     });
     if (effects.length) {
+      const decoration = effects.includes("box-shadow") ? preserveBoxShadow(table, deck) : null;
       fallbacks.push(
         pptxFallback(
           "effect",
           table,
           deck,
           `native-table-approximates: ${effects.join(", ")}`,
+          {
+            padding: effectPaintPadding(table, effects),
+            behindNative: true,
+            captureElement: decoration || table,
+          },
         ),
       );
-      if (effects.includes("box-shadow")) preserveBoxShadow(table, deck);
     }
     table.setAttribute("data-pptx-native", "table");
   }
@@ -1857,21 +2198,24 @@ async function collectPptxSlide(slide, index) {
     ) {
       continue;
     }
-    if (!rasterImageSupported(image)) {
+    if (!directImageSupported(image)) {
       const fit = getComputedStyle(image).objectFit;
+      const effects = unsupportedEffects(image);
       addFallback(
         "image",
         image,
         ["cover", "none"].includes(fit) ? "unsupported-image-fit" : "unsupported-image-format",
+        {
+          padding: effectPaintPadding(image, effects),
+          includeDescendants: true,
+        },
       );
       continue;
     }
     const style = getComputedStyle(image);
     const effects = unsupportedEffects(image);
-    if (parseFloat(style.borderRadius) > 0) effects.push("border-radius");
-    const artworkEffects = effects.filter(
-      (effect) => effect !== "box-shadow" && effect !== "border-radius",
-    );
+    const borderRadius = parseFloat(style.borderRadius);
+    const artworkEffects = effects.filter((effect) => effect !== "box-shadow");
     if (artworkEffects.length) {
       addFallback(
         "effect",
@@ -1884,10 +2228,12 @@ async function collectPptxSlide(slide, index) {
       type: "image",
       path: elementPath(image, deck),
       ...relativeBounds(image, deck),
+      zOrder: Number(image.dataset.pptxZOrder),
       src: image.currentSrc || image.src,
       alt: image.alt || "",
       fit: style.objectFit || "contain",
       opacity: Number(style.opacity) || 1,
+      shape: borderRadius > 0 ? "roundedRect" : "rect",
       naturalWidth: image.naturalWidth,
       naturalHeight: image.naturalHeight,
     });
@@ -1899,6 +2245,10 @@ async function collectPptxSlide(slide, index) {
           image,
           deck,
           `native-image-approximates: ${effects.join(", ")}`,
+          {
+            padding: effectPaintPadding(image, effects),
+            behindNative: true,
+          },
         ),
       );
     }
@@ -1908,7 +2258,13 @@ async function collectPptxSlide(slide, index) {
   for (const [blockIndex, wrapper] of architectureWrappers.entries()) {
     if (insideFallback(wrapper)) continue;
     const architecture = await collectArchitectureObjects(wrapper, deck, blockIndex);
-    elements.push(...architecture.elements);
+    const zOrder = Number(wrapper.dataset.pptxZOrder);
+    elements.push(
+      ...architecture.elements.map((element, elementIndex) => ({
+        ...element,
+        zOrder: zOrder + elementIndex / 1000,
+      })),
+    );
     fallbacks.push(...architecture.fallbacks);
   }
 
@@ -1967,6 +2323,8 @@ async function renderPptxDeck(
   applyCustomThemeCss(customCss);
   document.documentElement.setAttribute("data-theme", deckTheme);
   document.body.classList.add("pptx-mode", "fixed-output-mode", "mermaid-loading");
+  pptxFallbackSequence = 0;
+  pptxFallbackCaptureElements.clear();
   const rendered = slides.map((markdown) => createSlide(markdown, deckTheme));
   const stage = document.getElementById("stage");
   stage.replaceChildren(...rendered.map((slide) => slide.deck));
@@ -2007,6 +2365,13 @@ async function renderPptxDeck(
   stage.append(...layoutTemplates.map((layout) => layout.slide.deck));
   await waitForImages(stage);
   await afterLayout();
+  const pptxLayouts = layoutTemplates.map(({ id, name, theme: slideTheme, slide }, index) => ({
+    id,
+    name,
+    theme: slideTheme,
+    captureIndex: rendered.length + index,
+    elements: collectPptxLayoutElements(slide.deck),
+  }));
   const model = {
     version: 1,
     width: OUTPUT_WIDTH,
@@ -2016,12 +2381,7 @@ async function renderPptxDeck(
       theme: slideTheme,
       layoutIds: PPTX_LAYOUT_NAMES.map((layout) => `${slideTheme}:${layout}`),
     })),
-    layouts: layoutTemplates.map(({ id, name, theme: slideTheme }, index) => ({
-      id,
-      name,
-      theme: slideTheme,
-      captureIndex: rendered.length + index,
-    })),
+    layouts: pptxLayouts,
     slides: pptxSlides,
   };
   window.__presentationPptxModel = JSON.parse(JSON.stringify(model));

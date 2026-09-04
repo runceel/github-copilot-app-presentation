@@ -9,7 +9,7 @@
 import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { basename, extname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { getOutputSnapshotSlides } from "../deck-state.mjs";
 import { normalizeTheme } from "../renderer/theme.mjs";
 import { MarkdStageError } from "./errors.mjs";
@@ -81,13 +81,21 @@ export function createOutputJob(snapshot, kind) {
 }
 
 function decodeDataImage(source) {
-  const match = /^data:(image\/(?:png|jpeg|gif))(;base64)?,([\s\S]*)$/i.exec(source);
+  const match = /^data:(image\/(?:png|jpeg|gif|svg\+xml))((?:;[^,]*)*),([\s\S]*)$/i.exec(source);
   if (!match) {
-    throw new Error("Only PNG, JPEG, or GIF data URLs can be embedded in PowerPoint.");
+    throw new Error("Only PNG, JPEG, GIF, or SVG data URLs can be embedded in PowerPoint.");
   }
-  const data = match[2]
+  const parameters = match[2]
+    .split(";")
+    .map((parameter) => parameter.trim().toLowerCase())
+    .filter(Boolean);
+  const base64 = parameters.includes("base64");
+  const data = base64
     ? Buffer.from(match[3], "base64")
-    : Buffer.from(decodeURIComponent(match[3]), "binary");
+    : Buffer.from(
+        decodeURIComponent(match[3]),
+        match[1].toLowerCase() === "image/svg+xml" ? "utf8" : "binary",
+      );
   return { data, contentType: match[1].toLowerCase() };
 }
 
@@ -126,7 +134,7 @@ async function loadPptxImage(inst, source, fetchImpl, currentTotal) {
   const data = Buffer.from(await response.arrayBuffer());
   ensurePptxAssetSize(data, source, currentTotal);
   const responseType = response.headers.get("content-type")?.split(";")[0].trim().toLowerCase();
-  const contentType = ["image/png", "image/jpeg", "image/gif"].includes(responseType)
+  const contentType = ["image/png", "image/jpeg", "image/gif", "image/svg+xml"].includes(responseType)
     ? responseType
     : undefined;
   return { data, contentType };
@@ -136,7 +144,7 @@ export async function preparePptxPackageModel(
   inst,
   model,
   layoutArtworks,
-  slideArtworks,
+  slideFallbackImages,
   fetchImpl = fetch,
 ) {
   if (
@@ -156,17 +164,25 @@ export async function preparePptxPackageModel(
   if (!Array.isArray(layoutArtworks) || layoutArtworks.length !== model.layouts.length) {
     throw new Error("PowerPoint layout artwork does not match the layout count.");
   }
-  if (!Array.isArray(slideArtworks) || slideArtworks.length !== model.slides.length) {
-    throw new Error("PowerPoint fallback artwork does not match the slide count.");
+  if (
+    !Array.isArray(slideFallbackImages) ||
+    slideFallbackImages.length !== model.slides.length ||
+    slideFallbackImages.some((images) => !Array.isArray(images))
+  ) {
+    throw new Error("PowerPoint fallback images do not match the slide count.");
   }
 
   const assets = [];
   const sourceAssets = new Map();
+  const pngAssets = new Map();
   let totalAssetBytes = 0;
   const addPngAsset = (id, data, label) => {
     if (!Buffer.isBuffer(data)) {
       throw new Error(`${label} is invalid.`);
     }
+    const key = createHash("sha256").update(data).digest("hex");
+    const existing = pngAssets.get(key);
+    if (existing) return existing;
     ensurePptxAssetSize(data, label, totalAssetBytes);
     totalAssetBytes += data.length;
     assets.push({
@@ -174,6 +190,38 @@ export async function preparePptxPackageModel(
       contentType: "image/png",
       data,
     });
+    pngAssets.set(key, id);
+    return id;
+  };
+  const prepareImage = async (sourceElement) => {
+    const source = sourceElement.src;
+    let assetId = sourceAssets.get(source);
+    if (!assetId) {
+      const loaded = await loadPptxImage(inst, source, fetchImpl, totalAssetBytes);
+      totalAssetBytes += loaded.data.length;
+      assetId = `markdstage-image-${sourceAssets.size + 1}`;
+      sourceAssets.set(source, assetId);
+      assets.push({ id: assetId, ...loaded });
+    }
+    const { src: _src, source: _source, ...image } = sourceElement;
+    if (
+      (image.fit === "contain" || image.fit === "scale-down") &&
+      image.naturalWidth > 0 &&
+      image.naturalHeight > 0
+    ) {
+      const scale = Math.min(
+        image.width / image.naturalWidth,
+        image.height / image.naturalHeight,
+        image.fit === "scale-down" ? 1 : Number.POSITIVE_INFINITY,
+      );
+      const width = image.naturalWidth * scale;
+      const height = image.naturalHeight * scale;
+      image.x += (image.width - width) / 2;
+      image.y += (image.height - height) / 2;
+      image.width = width;
+      image.height = height;
+    }
+    return { ...image, assetId };
   };
 
   const layouts = [];
@@ -193,17 +241,25 @@ export async function preparePptxPackageModel(
     if (layoutById.has(sourceLayout.id)) {
       throw new Error(`PowerPoint layout id is duplicated: ${sourceLayout.id}`);
     }
-    const artworkAssetId = `markdstage-layout-${index + 1}`;
-    addPngAsset(
-      artworkAssetId,
+    const artworkAssetId = addPngAsset(
+      `markdstage-layout-${index + 1}`,
       layoutArtworks[index],
       `PowerPoint artwork for layout ${sourceLayout.id}`,
     );
+    const sourceElements = sourceLayout.elements ?? [];
+    if (!Array.isArray(sourceElements) || sourceElements.some((element) => element?.type !== "image")) {
+      throw new Error(`PowerPoint layout ${sourceLayout.id} has an invalid element list.`);
+    }
+    const elements = [];
+    for (const sourceElement of sourceElements) {
+      elements.push(await prepareImage(sourceElement));
+    }
     const layout = {
       id: sourceLayout.id,
       name: sourceLayout.name,
       theme: sourceLayout.theme,
       artworkAssetId,
+      elements,
     };
     layoutById.set(layout.id, layout);
     layouts.push(layout);
@@ -254,52 +310,78 @@ export async function preparePptxPackageModel(
     if (sourceSlide.notes !== undefined && typeof sourceSlide.notes !== "string") {
       throw new Error(`PowerPoint slide ${slideIndex + 1} has invalid speaker notes.`);
     }
-    const artworkAssetId = `markdstage-slide-artwork-${slideIndex + 1}`;
-    addPngAsset(
-      artworkAssetId,
-      slideArtworks[slideIndex],
-      `PowerPoint fallback artwork for slide ${slideIndex + 1}`,
-    );
     const elements = [];
     for (const sourceElement of sourceSlide.elements) {
       if (sourceElement?.type !== "image") {
         elements.push(sourceElement);
         continue;
       }
-      const source = sourceElement.src;
-      let assetId = sourceAssets.get(source);
-      if (!assetId) {
-        const loaded = await loadPptxImage(inst, source, fetchImpl, totalAssetBytes);
-        totalAssetBytes += loaded.data.length;
-        assetId = `markdstage-image-${sourceAssets.size + 1}`;
-        sourceAssets.set(source, assetId);
-        assets.push({ id: assetId, ...loaded });
-      }
-      const { src: _src, source: _source, ...image } = sourceElement;
-      if (
-        (image.fit === "contain" || image.fit === "scale-down") &&
-        image.naturalWidth > 0 &&
-        image.naturalHeight > 0
-      ) {
-        const scale = Math.min(
-          image.width / image.naturalWidth,
-          image.height / image.naturalHeight,
-          image.fit === "scale-down" ? 1 : Number.POSITIVE_INFINITY,
-        );
-        const width = image.naturalWidth * scale;
-        const height = image.naturalHeight * scale;
-        image.x += (image.width - width) / 2;
-        image.y += (image.height - height) / 2;
-        image.width = width;
-        image.height = height;
-      }
-      elements.push({ ...image, assetId });
+      elements.push(await prepareImage(sourceElement));
     }
+    const fallbacks = Array.isArray(sourceSlide.fallbacks) ? sourceSlide.fallbacks : [];
+    const expectedFallbackIndexes = fallbacks
+      .map((fallback, fallbackIndex) => ({ fallback, fallbackIndex }))
+      .filter(({ fallback }) => fallback?.artwork !== false);
+    const captures = slideFallbackImages[slideIndex];
+    if (captures.length !== expectedFallbackIndexes.length) {
+      throw new Error(
+        `PowerPoint fallback images do not match slide ${slideIndex + 1}.`,
+      );
+    }
+    const captureByFallback = new Map();
+    for (const capture of captures) {
+      if (
+        !capture ||
+        !Number.isInteger(capture.fallbackIndex) ||
+        captureByFallback.has(capture.fallbackIndex)
+      ) {
+        throw new Error(`PowerPoint fallback image for slide ${slideIndex + 1} is invalid.`);
+      }
+      captureByFallback.set(capture.fallbackIndex, capture);
+    }
+    const fallbackElements = [];
+    for (const { fallback, fallbackIndex } of expectedFallbackIndexes) {
+      const capture = captureByFallback.get(fallbackIndex);
+      if (!capture) {
+        throw new Error(
+          `PowerPoint fallback image ${fallbackIndex + 1} for slide ${slideIndex + 1} is missing.`,
+        );
+      }
+      const assetId = addPngAsset(
+        `markdstage-slide-${slideIndex + 1}-fallback-${fallbackIndex + 1}`,
+        capture.data,
+        `PowerPoint fallback image ${fallbackIndex + 1} for slide ${slideIndex + 1}`,
+      );
+      fallbackElements.push({
+        type: "image",
+        path: fallback.path,
+        name: `${fallback.type || "Fallback"} artwork`,
+        x: capture.x,
+        y: capture.y,
+        width: capture.width,
+        height: capture.height,
+        fit: "fill",
+        opacity: 1,
+        ...(Number.isFinite(fallback.zOrder) ? { zOrder: fallback.zOrder } : {}),
+        assetId,
+      });
+    }
+    const orderedElements = [...fallbackElements, ...elements]
+      .map((element, elementIndex) => ({ element, elementIndex }))
+      .sort((left, right) => {
+        const leftOrder = Number.isFinite(left.element.zOrder)
+          ? left.element.zOrder
+          : Number.POSITIVE_INFINITY;
+        const rightOrder = Number.isFinite(right.element.zOrder)
+          ? right.element.zOrder
+          : Number.POSITIVE_INFINITY;
+        return leftOrder - rightOrder || left.elementIndex - right.elementIndex;
+      })
+      .map(({ element }) => element);
     slides.push({
       layoutId: sourceSlide.layoutId,
-      artworkAssetId,
       ...(sourceSlide.notes ? { notes: sourceSlide.notes } : {}),
-      elements,
+      elements: orderedElements,
     });
   }
   return { masters, layouts, slides, assets };
@@ -670,7 +752,7 @@ export async function exportPptx(
       inst.exportJobs.set(token, job);
 
       const pageUrl = pageUrlFor(inst, { pptx: 1, token });
-      const { model, layoutArtworks, slideArtworks } = await runBrowser(
+      const { model, layoutArtworks, slideFallbackImages } = await runBrowser(
         browser,
         pageUrl,
         profileDir,
@@ -681,7 +763,7 @@ export async function exportPptx(
         inst,
         model,
         layoutArtworks,
-        slideArtworks,
+        slideFallbackImages,
       );
       const buffer = buildPackage({
         title: model.slides[0]?.title || outputBase,
@@ -707,11 +789,19 @@ export async function exportPptx(
       await rename(temporaryOutputPath, outputPath);
       temporaryOutputPath = "";
       const fallbacks = model.slides.flatMap((slide, slideIndex) =>
-        (Array.isArray(slide.fallbacks) ? slide.fallbacks : []).map((fallback) => ({
-          slideIndex,
-          page: slideIndex + 1,
-          ...fallback,
-        })),
+        (Array.isArray(slide.fallbacks) ? slide.fallbacks : []).map((fallback) => {
+          const {
+            artwork: _artwork,
+            captureId: _captureId,
+            zOrder: _zOrder,
+            ...reportedFallback
+          } = fallback;
+          return {
+            slideIndex,
+            page: slideIndex + 1,
+            ...reportedFallback,
+          };
+        }),
       );
       logFor(
         inst,
