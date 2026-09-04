@@ -453,7 +453,13 @@ export async function runPptxOutputBrowser(browser, pageUrl, profileDir, job, to
       );
     }
     const model = evaluated.result?.value;
-    if (!model || !Array.isArray(model.slides) || model.slides.length !== total) {
+    if (
+      !model ||
+      !Array.isArray(model.masters) ||
+      !Array.isArray(model.layouts) ||
+      !Array.isArray(model.slides) ||
+      model.slides.length !== total
+    ) {
       throw new Error("The renderer returned an invalid PowerPoint export model.");
     }
 
@@ -463,7 +469,41 @@ export async function runPptxOutputBrowser(browser, pageUrl, profileDir, job, to
       awaitPromise: true,
     });
 
-    const backgrounds = [];
+    const layoutArtworks = [];
+    for (const [index, layout] of model.layouts.entries()) {
+      const captureIndex = Number.isInteger(layout.captureIndex)
+        ? layout.captureIndex
+        : total + index;
+      const screenshot = await cdp.send("Page.captureScreenshot", {
+        format: "png",
+        fromSurface: true,
+        captureBeyondViewport: true,
+        clip: {
+          x: 0,
+          y: captureIndex * 720,
+          width: 1280,
+          height: 720,
+          scale: 1,
+        },
+      });
+      if (typeof screenshot.data !== "string" || screenshot.data.length === 0) {
+        throw new Error(`Chromium did not return artwork for PowerPoint layout ${layout.id}.`);
+      }
+      layoutArtworks.push(Buffer.from(screenshot.data, "base64"));
+    }
+
+    await cdp.send("Runtime.evaluate", {
+      expression:
+        "document.body.classList.remove('pptx-layout-artwork-mode');" +
+        "document.body.classList.add('pptx-slide-artwork-mode');" +
+        "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))",
+      awaitPromise: true,
+    });
+    await cdp.send("Emulation.setDefaultBackgroundColorOverride", {
+      color: { r: 0, g: 0, b: 0, a: 0 },
+    });
+
+    const slideArtworks = [];
     for (let index = 0; index < total; index += 1) {
       const screenshot = await cdp.send("Page.captureScreenshot", {
         format: "png",
@@ -480,9 +520,9 @@ export async function runPptxOutputBrowser(browser, pageUrl, profileDir, job, to
       if (typeof screenshot.data !== "string" || screenshot.data.length === 0) {
         throw new Error(`Chromium did not return fallback artwork for slide ${index + 1}.`);
       }
-      backgrounds.push(Buffer.from(screenshot.data, "base64"));
+      slideArtworks.push(Buffer.from(screenshot.data, "base64"));
     }
-    return { model, backgrounds };
+    return { model, layoutArtworks, slideArtworks };
   } finally {
     await closeCdpOutputPage(cdp, child);
   }

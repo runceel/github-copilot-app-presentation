@@ -145,11 +145,61 @@ test("collects a serializable hybrid model for every layout and theme", async ({
     expect(model.slides.map((slide) => slide.index)).toEqual([0, 1, 2, 3, 4]);
     expect(model.slides.map((slide) => slide.layout)).toEqual([
       "title",
-      "standard",
+      "default",
       "center",
       "section",
       "backcover",
     ]);
+    expect(model.slides.map((slide) => slide.layoutId)).toEqual([
+      "light:title",
+      "microsoft:default",
+      "dark:center",
+      "dark:section",
+      "dark:backcover",
+    ]);
+    expect(model.masters).toEqual([
+      {
+        id: "light",
+        theme: "light",
+        layoutIds: [
+          "light:title",
+          "light:default",
+          "light:center",
+          "light:section",
+          "light:backcover",
+        ],
+      },
+      {
+        id: "microsoft",
+        theme: "microsoft",
+        layoutIds: [
+          "microsoft:title",
+          "microsoft:default",
+          "microsoft:center",
+          "microsoft:section",
+          "microsoft:backcover",
+        ],
+      },
+      {
+        id: "dark",
+        theme: "dark",
+        layoutIds: [
+          "dark:title",
+          "dark:default",
+          "dark:center",
+          "dark:section",
+          "dark:backcover",
+        ],
+      },
+    ]);
+    expect(model.layouts).toHaveLength(15);
+    for (const master of model.masters) {
+      expect(
+        model.layouts
+          .filter((layout) => layout.theme === master.theme)
+          .map((layout) => layout.name),
+      ).toEqual(["title", "default", "center", "section", "backcover"]);
+    }
     expect(model.slides.map((slide) => slide.theme)).toEqual([
       "light",
       "microsoft",
@@ -300,6 +350,18 @@ title: Custom theme
 # Custom theme
 
 Branded export`,
+      `---
+layout: backcover
+title: Override back cover
+logo: Slide logo
+copyright: Slide copyright
+---
+# Override back cover`,
+      `---
+layout: backcover
+title: Theme back cover
+---
+# Theme back cover`,
     ],
     theme: "custom",
     customThemeCss:
@@ -312,6 +374,13 @@ Branded export`,
           alt: "Custom logo",
         },
       },
+      backcover: {
+        logo: {
+          image: "/assets/readme/simple-slide.png",
+          alt: "Custom back cover logo",
+        },
+        copyright: "Theme copyright",
+      },
     },
   });
   try {
@@ -320,7 +389,6 @@ Branded export`,
     const runs = slide.elements
       .filter((element) => element.type === "text")
       .flatMap((element) => element.paragraphs.flatMap((paragraph) => paragraph.runs));
-    const logo = slide.elements.find((element) => element.type === "image");
     const title = slide.elements.find(
       (element) =>
         element.type === "text" &&
@@ -332,8 +400,69 @@ Branded export`,
     expect(slide.theme).toBe("custom");
     expect(runs.some((run) => run.color === "#FEFEFE")).toBe(true);
     expect(title.textWrap).toBe("none");
-    expect(logo.src).toMatch(/simple-slide\.png$/);
-    expect(logo.alt).toBe("Custom logo");
+    expect(slide.elements.some((element) => element.type === "image")).toBe(false);
+    const layoutLogo = await page.evaluate(() => {
+      const layout = [...document.querySelectorAll(".pptx-layout-template")].find(
+        (candidate) => candidate.dataset.pptxLayoutId === "custom:title",
+      );
+      const logo = layout?.querySelector(".theme-cover-logo");
+      return logo
+        ? {
+            src: logo.getAttribute("src"),
+            alt: logo.getAttribute("alt"),
+          }
+        : null;
+    });
+    expect(layoutLogo?.src).toMatch(/simple-slide\.png$/);
+    expect(layoutLogo?.alt).toBe("Custom logo");
+    const backcovers = model.slides.slice(1);
+    const textOf = (element) =>
+      element.paragraphs.flatMap((paragraph) => paragraph.runs).map((run) => run.text).join("");
+    expect(
+      backcovers[0].elements
+        .filter((element) => element.type === "text")
+        .map(textOf),
+    ).toEqual(expect.arrayContaining(["Slide logo", "Override back cover", "Slide copyright"]));
+    expect(backcovers[0].elements.some((element) => element.type === "image")).toBe(false);
+    expect(
+      backcovers[1].elements
+        .filter((element) => element.type === "text")
+        .map(textOf),
+    ).toEqual(expect.arrayContaining(["Theme back cover", "Theme copyright"]));
+    expect(
+      backcovers[1].elements.find((element) => element.type === "image")?.alt,
+    ).toBe("Custom back cover logo");
+    const backcoverLayoutBranding = await page.evaluate(() => {
+      const layout = [...document.querySelectorAll(".pptx-layout-template")].find(
+        (candidate) => candidate.dataset.pptxLayoutId === "custom:backcover",
+      );
+      return layout?.querySelectorAll(
+        ".theme-backcover-logo, .theme-backcover-copyright",
+      ).length;
+    });
+    expect(backcoverLayoutBranding).toBe(0);
+    const separatedArtwork = await page.evaluate(() => {
+      document.body.classList.remove("pptx-layout-artwork-mode");
+      document.body.classList.add("pptx-slide-artwork-mode");
+      const actual = document.querySelector("#stage > .deck:not(.pptx-layout-template)");
+      const layout = [...document.querySelectorAll(".pptx-layout-template")].find(
+        (candidate) => candidate.dataset.pptxLayoutId === "custom:title",
+      );
+      return {
+        actualBackground: getComputedStyle(actual).backgroundColor,
+        actualTopbar: getComputedStyle(actual, "::before").display,
+        actualLogo: getComputedStyle(actual.querySelector(".theme-cover-logo")).visibility,
+        layoutBackground: getComputedStyle(layout).backgroundColor,
+        layoutLogo: getComputedStyle(layout.querySelector(".theme-cover-logo")).visibility,
+      };
+    });
+    expect(separatedArtwork).toEqual({
+      actualBackground: "rgba(0, 0, 0, 0)",
+      actualTopbar: "none",
+      actualLogo: "hidden",
+      layoutBackground: "rgb(16, 32, 48)",
+      layoutLogo: "visible",
+    });
   } finally {
     await harness.close();
   }

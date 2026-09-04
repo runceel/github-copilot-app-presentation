@@ -16,10 +16,25 @@ function model(elements, notes) {
     version: 1,
     width: 1280,
     height: 720,
+    masters: [
+      {
+        id: "dark",
+        theme: "dark",
+        layoutIds: ["dark:default"],
+      },
+    ],
+    layouts: [
+      {
+        id: "dark:default",
+        name: "default",
+        theme: "dark",
+      },
+    ],
     slides: [
       {
         index: 0,
-        layout: "standard",
+        layout: "default",
+        layoutId: "dark:default",
         theme: "dark",
         title: "Test",
         width: 1280,
@@ -62,6 +77,7 @@ test("prepares fallback artwork, notes, and deduplicated native images", async (
       "Explain the editable image.",
     ),
     [PNG],
+    [PNG],
     async () => {
       requests += 1;
       return new Response(PNG, { headers: { "content-type": "image/png" } });
@@ -69,8 +85,20 @@ test("prepares fallback artwork, notes, and deduplicated native images", async (
   );
 
   assert.equal(requests, 1);
-  assert.equal(prepared.assets.length, 2);
-  assert.equal(prepared.slides[0].backgroundAssetId, "markdstage-background-1");
+  assert.equal(prepared.assets.length, 3);
+  assert.deepEqual(prepared.masters, [
+    { id: "dark", theme: "dark", layoutIds: ["dark:default"] },
+  ]);
+  assert.deepEqual(prepared.layouts, [
+    {
+      id: "dark:default",
+      name: "default",
+      theme: "dark",
+      artworkAssetId: "markdstage-layout-1",
+    },
+  ]);
+  assert.equal(prepared.slides[0].layoutId, "dark:default");
+  assert.equal(prepared.slides[0].artworkAssetId, "markdstage-slide-artwork-1");
   assert.equal(prepared.slides[0].notes, "Explain the editable image.");
   assert.equal(prepared.slides[0].elements[0].assetId, "markdstage-image-1");
   assert.equal(prepared.slides[0].elements[1].assetId, "markdstage-image-1");
@@ -90,6 +118,7 @@ test("rejects mismatched artwork and non-workspace image URLs", async () => {
     preparePptxPackageModel(
       { url: "http://127.0.0.1:4321/token/" },
       model([]),
+      [PNG],
       [],
     ),
     /does not match the slide count/,
@@ -98,6 +127,7 @@ test("rejects mismatched artwork and non-workspace image URLs", async () => {
     preparePptxPackageModel(
       { url: "http://127.0.0.1:4321/token/" },
       model([], 42),
+      [PNG],
       [PNG],
     ),
     /invalid speaker notes/,
@@ -115,6 +145,7 @@ test("rejects mismatched artwork and non-workspace image URLs", async () => {
           height: 10,
         },
       ]),
+      [PNG],
       [PNG],
     ),
     /must be served by the MarkdStage workspace/,

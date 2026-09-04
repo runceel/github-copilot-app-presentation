@@ -18,6 +18,7 @@ const NS_REL =
   "http://schemas.openxmlformats.org/package/2006/relationships";
 const JAPANESE_FONT_FACE = "Yu Gothic";
 const HUNDREDTH_POINTS_PER_PIXEL = 75;
+const SLIDE_LAYOUT_ID_BASE = 2147500000;
 
 const REL = {
   officeDocument: `${NS_R}/officeDocument`,
@@ -618,8 +619,15 @@ function nativeShapeXml(element, path, id, relationships) {
   return `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Shape ${id}"/><p:cNvSpPr txBox="0"/><p:nvPr/></p:nvSpPr><p:spPr>${properties}</p:spPr>${text}</p:sp>`;
 }
 
-function pictureXml(asset, bounds, id, relationshipId, name = `Image ${id}`) {
-  return `<p:pic><p:nvPicPr><p:cNvPr id="${id}" name="${xmlEscape(name)}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed="${relationshipId}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrmXml(bounds)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
+function pictureXml(
+  asset,
+  bounds,
+  id,
+  relationshipId,
+  name = `Image ${id}`,
+  userDrawn = false,
+) {
+  return `<p:pic><p:nvPicPr><p:cNvPr id="${id}" name="${xmlEscape(name)}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr${userDrawn ? ' userDrawn="1"' : ""}/></p:nvPicPr><p:blipFill><a:blip r:embed="${relationshipId}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrmXml(bounds)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
 }
 
 function tableXml(element, path, id, relationships) {
@@ -765,12 +773,12 @@ function connectorXml(element, path, nextId, relationships) {
   return shapes.join("");
 }
 
-function relationshipRegistry(notesSlideNumber = null) {
+function relationshipRegistry(layoutNumber, notesSlideNumber = null) {
   const entries = [
     {
       id: "rId1",
       type: REL.slideLayout,
-      target: "../slideLayouts/slideLayout1.xml",
+      target: `../slideLayouts/slideLayout${layoutNumber}.xml`,
       external: false,
     },
   ];
@@ -815,24 +823,33 @@ function baseShapeTree() {
   return '<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/><a:chOff x="0" y="0"/><a:chExt cx="0" cy="0"/></a:xfrm></p:grpSpPr>';
 }
 
-function buildSlide(slide, slideIndex, assets, notesSlideNumber = null) {
+function buildSlide(
+  slide,
+  slideIndex,
+  assets,
+  layoutNumber,
+  notesSlideNumber = null,
+) {
   const path = `slides[${slideIndex}]`;
   if (!slide || typeof slide !== "object" || Array.isArray(slide)) {
     fail(`${path} must be an object`);
   }
   if (!Array.isArray(slide.elements)) fail(`${path}.elements must be an array`);
-  const relationships = relationshipRegistry(notesSlideNumber);
+  const relationships = relationshipRegistry(layoutNumber, notesSlideNumber);
   let shapeId = 2;
   const nextId = () => shapeId++;
   const shapes = [];
-  if (slide.backgroundAssetId !== undefined) {
+  const artworkAssetId = slide.artworkAssetId ?? slide.backgroundAssetId;
+  if (artworkAssetId !== undefined) {
     const asset = requireAsset(
       assets,
-      slide.backgroundAssetId,
-      `${path}.backgroundAssetId`,
+      artworkAssetId,
+      slide.artworkAssetId !== undefined
+        ? `${path}.artworkAssetId`
+        : `${path}.backgroundAssetId`,
     );
     if (asset.contentType !== "image/png") {
-      fail(`${path}.backgroundAssetId must reference a PNG asset`);
+      fail(`${path}.artworkAssetId must reference a PNG asset`);
     }
     const id = nextId();
     shapes.push(
@@ -846,7 +863,7 @@ function buildSlide(slide, slideIndex, assets, notesSlideNumber = null) {
         },
         id,
         relationships.image(asset),
-        "Slide background",
+        slide.artworkAssetId !== undefined ? "Slide artwork" : "Slide background",
       ),
     );
   }
@@ -895,7 +912,13 @@ function relationshipsXml(entries) {
     .join("")}</Relationships>`;
 }
 
-function contentTypesXml(slideCount, assets, notesCount) {
+function contentTypesXml(
+  slideCount,
+  assets,
+  notesCount,
+  masterCount,
+  layoutCount,
+) {
   const imageTypes = new Map();
   for (const asset of assets.values()) {
     imageTypes.set(asset.extension, asset.contentType);
@@ -922,40 +945,55 @@ function contentTypesXml(slideCount, assets, notesCount) {
       : "";
   const notesTheme =
     notesCount > 0
-      ? '<Override PartName="/ppt/theme/theme2.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>'
+      ? `<Override PartName="/ppt/theme/theme${masterCount + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>`
       : "";
-  return `${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${defaults}<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/><Override PartName="/ppt/slideMasters/slideMaster1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/slideLayouts/slideLayout1.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/><Override PartName="/ppt/theme/theme1.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>${notesTheme}${slides}${notesMaster}${notes}</Types>`;
+  const masters = Array.from(
+    { length: masterCount },
+    (_, index) =>
+      `<Override PartName="/ppt/slideMasters/slideMaster${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/><Override PartName="/ppt/theme/theme${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>`,
+  ).join("");
+  const layouts = Array.from(
+    { length: layoutCount },
+    (_, index) =>
+      `<Override PartName="/ppt/slideLayouts/slideLayout${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>`,
+  ).join("");
+  return `${XML}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/>${defaults}<Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/><Override PartName="/docProps/app.xml" ContentType="application/vnd.openxmlformats-officedocument.extended-properties+xml"/><Override PartName="/ppt/presentation.xml" ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>${masters}${layouts}${notesTheme}${slides}${notesMaster}${notes}</Types>`;
 }
 
-function presentationXml(slideCount, notesCount) {
+function presentationXml(masterCount, slideCount, notesCount) {
+  const masters = Array.from(
+    { length: masterCount },
+    (_, index) =>
+      `<p:sldMasterId id="${2147483648 + index}" r:id="rId${index + 1}"/>`,
+  ).join("");
   const slides = Array.from(
     { length: slideCount },
     (_, index) =>
-      `<p:sldId id="${256 + index}" r:id="rId${index + 2}"/>`,
+      `<p:sldId id="${256 + index}" r:id="rId${masterCount + index + 1}"/>`,
   ).join("");
   const notesMaster =
     notesCount > 0
-      ? `<p:notesMasterIdLst><p:notesMasterId r:id="rId${slideCount + 2}"/></p:notesMasterIdLst>`
+      ? `<p:notesMasterIdLst><p:notesMasterId r:id="rId${masterCount + slideCount + 1}"/></p:notesMasterIdLst>`
       : "";
-  return `${XML}<p:presentation xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}"><p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>${notesMaster}<p:sldIdLst>${slides}</p:sldIdLst><p:sldSz cx="${PPTX_DIMENSIONS.widthEmu}" cy="${PPTX_DIMENSIONS.heightEmu}" type="screen16x9"/><p:notesSz cx="6858000" cy="9144000"/><p:defaultTextStyle/></p:presentation>`;
+  return `${XML}<p:presentation xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}"><p:sldMasterIdLst>${masters}</p:sldMasterIdLst>${notesMaster}<p:sldIdLst>${slides}</p:sldIdLst><p:sldSz cx="${PPTX_DIMENSIONS.widthEmu}" cy="${PPTX_DIMENSIONS.heightEmu}" type="screen16x9"/><p:notesSz cx="6858000" cy="9144000"/><p:defaultTextStyle/></p:presentation>`;
 }
 
-function presentationRelsXml(slideCount, notesCount) {
+function presentationRelsXml(masterCount, slideCount, notesCount) {
   const entries = [
-    {
-      id: "rId1",
+    ...Array.from({ length: masterCount }, (_, index) => ({
+      id: `rId${index + 1}`,
       type: REL.slideMaster,
-      target: "slideMasters/slideMaster1.xml",
-    },
+      target: `slideMasters/slideMaster${index + 1}.xml`,
+    })),
     ...Array.from({ length: slideCount }, (_, index) => ({
-      id: `rId${index + 2}`,
+      id: `rId${masterCount + index + 1}`,
       type: REL.slide,
       target: `slides/slide${index + 1}.xml`,
     })),
   ];
   if (notesCount > 0) {
     entries.push({
-      id: `rId${slideCount + 2}`,
+      id: `rId${masterCount + slideCount + 1}`,
       type: REL.notesMaster,
       target: "notesMasters/notesMaster1.xml",
     });
@@ -971,16 +1009,50 @@ function appXml(slideCount, notesCount) {
   return `${XML}<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"><Application>MarkdStage</Application><PresentationFormat>On-screen Show (16:9)</PresentationFormat><Slides>${slideCount}</Slides><Notes>${notesCount}</Notes><HiddenSlides>0</HiddenSlides><MMClips>0</MMClips><ScaleCrop>false</ScaleCrop><Company/><LinksUpToDate>false</LinksUpToDate><SharedDoc>false</SharedDoc><HyperlinksChanged>false</HyperlinksChanged><AppVersion>1.0</AppVersion></Properties>`;
 }
 
-function themeXml() {
-  return `${XML}<a:theme xmlns:a="${NS_A}" name="MarkdStage"><a:themeElements><a:clrScheme name="MarkdStage"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F1F1F"/></a:dk2><a:lt2><a:srgbClr val="F2F2F2"/></a:lt2><a:accent1><a:srgbClr val="4472C4"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2><a:accent3><a:srgbClr val="A5A5A5"/></a:accent3><a:accent4><a:srgbClr val="FFC000"/></a:accent4><a:accent5><a:srgbClr val="5B9BD5"/></a:accent5><a:accent6><a:srgbClr val="70AD47"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme><a:fontScheme name="MarkdStage"><a:majorFont><a:latin typeface="Aptos Display"/><a:ea typeface="${JAPANESE_FONT_FACE}"/><a:cs typeface=""/><a:font script="Jpan" typeface="${JAPANESE_FONT_FACE}"/></a:majorFont><a:minorFont><a:latin typeface="Aptos"/><a:ea typeface="${JAPANESE_FONT_FACE}"/><a:cs typeface=""/><a:font script="Jpan" typeface="${JAPANESE_FONT_FACE}"/></a:minorFont></a:fontScheme><a:fmtScheme name="MarkdStage"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="accent1"/></a:solidFill><a:solidFill><a:schemeClr val="accent2"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="19050"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="28575"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill><a:solidFill><a:schemeClr val="lt2"/></a:solidFill><a:solidFill><a:schemeClr val="dk1"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`;
+function themeXml(name = "MarkdStage") {
+  const themeName = xmlEscape(name);
+  return `${XML}<a:theme xmlns:a="${NS_A}" name="${themeName}"><a:themeElements><a:clrScheme name="${themeName}"><a:dk1><a:sysClr val="windowText" lastClr="000000"/></a:dk1><a:lt1><a:sysClr val="window" lastClr="FFFFFF"/></a:lt1><a:dk2><a:srgbClr val="1F1F1F"/></a:dk2><a:lt2><a:srgbClr val="F2F2F2"/></a:lt2><a:accent1><a:srgbClr val="4472C4"/></a:accent1><a:accent2><a:srgbClr val="ED7D31"/></a:accent2><a:accent3><a:srgbClr val="A5A5A5"/></a:accent3><a:accent4><a:srgbClr val="FFC000"/></a:accent4><a:accent5><a:srgbClr val="5B9BD5"/></a:accent5><a:accent6><a:srgbClr val="70AD47"/></a:accent6><a:hlink><a:srgbClr val="0563C1"/></a:hlink><a:folHlink><a:srgbClr val="954F72"/></a:folHlink></a:clrScheme><a:fontScheme name="${themeName}"><a:majorFont><a:latin typeface="Aptos Display"/><a:ea typeface="${JAPANESE_FONT_FACE}"/><a:cs typeface=""/><a:font script="Jpan" typeface="${JAPANESE_FONT_FACE}"/></a:majorFont><a:minorFont><a:latin typeface="Aptos"/><a:ea typeface="${JAPANESE_FONT_FACE}"/><a:cs typeface=""/><a:font script="Jpan" typeface="${JAPANESE_FONT_FACE}"/></a:minorFont></a:fontScheme><a:fmtScheme name="${themeName}"><a:fillStyleLst><a:solidFill><a:schemeClr val="phClr"/></a:solidFill><a:solidFill><a:schemeClr val="accent1"/></a:solidFill><a:solidFill><a:schemeClr val="accent2"/></a:solidFill></a:fillStyleLst><a:lnStyleLst><a:ln w="9525"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="19050"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln><a:ln w="28575"><a:solidFill><a:schemeClr val="phClr"/></a:solidFill></a:ln></a:lnStyleLst><a:effectStyleLst><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle><a:effectStyle><a:effectLst/></a:effectStyle></a:effectStyleLst><a:bgFillStyleLst><a:solidFill><a:schemeClr val="lt1"/></a:solidFill><a:solidFill><a:schemeClr val="lt2"/></a:solidFill><a:solidFill><a:schemeClr val="dk1"/></a:solidFill></a:bgFillStyleLst></a:fmtScheme></a:themeElements></a:theme>`;
 }
 
-function slideMasterXml() {
-  return `${XML}<p:sldMaster xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}"><p:cSld name="MarkdStage"><p:spTree>${baseShapeTree()}</p:spTree></p:cSld><p:clrMap accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" bg1="lt1" bg2="lt2" folHlink="folHlink" hlink="hlink" tx1="dk1" tx2="dk2"/><p:sldLayoutIdLst><p:sldLayoutId id="2147483649" r:id="rId1"/></p:sldLayoutIdLst><p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles></p:sldMaster>`;
+function slideMasterXml(master, layoutNumbers) {
+  const layouts = layoutNumbers
+    .map(
+      (layoutNumber, index) =>
+        `<p:sldLayoutId id="${SLIDE_LAYOUT_ID_BASE + layoutNumber}" r:id="rId${index + 1}"/>`,
+    )
+    .join("");
+  return `${XML}<p:sldMaster xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}"><p:cSld name="${xmlEscape(`MarkdStage ${master.theme}`)}"><p:spTree>${baseShapeTree()}</p:spTree></p:cSld><p:clrMap accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" bg1="lt1" bg2="lt2" folHlink="folHlink" hlink="hlink" tx1="dk1" tx2="dk2"/><p:sldLayoutIdLst>${layouts}</p:sldLayoutIdLst><p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles></p:sldMaster>`;
 }
 
-function slideLayoutXml() {
-  return `${XML}<p:sldLayout xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}" type="blank" preserve="1"><p:cSld name="Blank"><p:spTree>${baseShapeTree()}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`;
+function slideLayoutXml(layout, layoutIndex, assets) {
+  const path = `layouts[${layoutIndex}]`;
+  const shapes = [];
+  if (layout.artworkAssetId !== undefined) {
+    const asset = requireAsset(
+      assets,
+      layout.artworkAssetId,
+      `${path}.artworkAssetId`,
+    );
+    if (asset.contentType !== "image/png") {
+      fail(`${path}.artworkAssetId must reference a PNG asset`);
+    }
+    shapes.push(
+      pictureXml(
+        asset,
+        {
+          x: 0,
+          y: 0,
+          width: PPTX_DIMENSIONS.widthPx,
+          height: PPTX_DIMENSIONS.heightPx,
+        },
+        2,
+        "rId2",
+        "Layout artwork",
+        true,
+      ),
+    );
+  }
+  return `${XML}<p:sldLayout xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}" type="blank" preserve="1" matchingName="${xmlEscape(layout.name)}"><p:cSld name="${xmlEscape(layout.name)}"><p:spTree>${baseShapeTree()}${shapes.join("")}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`;
 }
 
 function notesPlaceholderXml({ id, name, type, idx, x, y, cx, cy, paragraphs = "" }) {
@@ -1211,18 +1283,142 @@ function packageEntries(buffer) {
   return files;
 }
 
-export function buildPptxPackage({ title = "Presentation", slides, assets = [] } = {}) {
+function normalizePresentationStructure(masters, layouts, slides) {
+  let normalizedMasters = masters;
+  let normalizedLayouts = layouts;
+  let normalizedSlides = slides;
+  if (normalizedMasters === undefined && normalizedLayouts === undefined) {
+    normalizedMasters = [
+      {
+        id: "default",
+        theme: "default",
+        layoutIds: ["default"],
+      },
+    ];
+    normalizedLayouts = [
+      {
+        id: "default",
+        name: "default",
+        theme: "default",
+      },
+    ];
+    normalizedSlides = slides.map((slide) => ({
+      ...slide,
+      layoutId: slide.layoutId ?? "default",
+    }));
+  }
+  if (!Array.isArray(normalizedMasters) || normalizedMasters.length === 0) {
+    fail("masters must be a non-empty array");
+  }
+  if (!Array.isArray(normalizedLayouts) || normalizedLayouts.length === 0) {
+    fail("layouts must be a non-empty array");
+  }
+
+  const layoutById = new Map();
+  normalizedLayouts.forEach((layout, index) => {
+    const path = `layouts[${index}]`;
+    if (!layout || typeof layout !== "object" || Array.isArray(layout)) {
+      fail(`${path} must be an object`);
+    }
+    if (typeof layout.id !== "string" || !layout.id) {
+      fail(`${path}.id must be a non-empty string`);
+    }
+    if (layoutById.has(layout.id)) fail(`duplicate layout id "${layout.id}"`);
+    if (typeof layout.name !== "string" || !layout.name) {
+      fail(`${path}.name must be a non-empty string`);
+    }
+    if (typeof layout.theme !== "string" || !layout.theme) {
+      fail(`${path}.theme must be a non-empty string`);
+    }
+    layoutById.set(layout.id, {
+      ...layout,
+      number: index + 1,
+      masterNumber: 0,
+    });
+  });
+
+  const masterIds = new Set();
+  const assignedLayouts = new Set();
+  const preparedMasters = normalizedMasters.map((master, index) => {
+    const path = `masters[${index}]`;
+    if (!master || typeof master !== "object" || Array.isArray(master)) {
+      fail(`${path} must be an object`);
+    }
+    if (typeof master.id !== "string" || !master.id) {
+      fail(`${path}.id must be a non-empty string`);
+    }
+    if (masterIds.has(master.id)) fail(`duplicate master id "${master.id}"`);
+    masterIds.add(master.id);
+    if (typeof master.theme !== "string" || !master.theme) {
+      fail(`${path}.theme must be a non-empty string`);
+    }
+    if (!Array.isArray(master.layoutIds) || master.layoutIds.length === 0) {
+      fail(`${path}.layoutIds must be a non-empty array`);
+    }
+    const layoutNumbers = master.layoutIds.map((layoutId, layoutIndex) => {
+      if (typeof layoutId !== "string" || !layoutId) {
+        fail(`${path}.layoutIds[${layoutIndex}] must be a non-empty string`);
+      }
+      const layout = layoutById.get(layoutId);
+      if (!layout) fail(`${path} references missing layout "${layoutId}"`);
+      if (assignedLayouts.has(layoutId)) {
+        fail(`layout "${layoutId}" belongs to more than one master`);
+      }
+      if (layout.theme !== master.theme) {
+        fail(`layout "${layoutId}" does not match master theme "${master.theme}"`);
+      }
+      assignedLayouts.add(layoutId);
+      layout.masterNumber = index + 1;
+      return layout.number;
+    });
+    return { ...master, number: index + 1, layoutNumbers };
+  });
+  if (assignedLayouts.size !== normalizedLayouts.length) {
+    fail("every layout must belong to exactly one master");
+  }
+
+  const preparedSlides = normalizedSlides.map((slide, index) => {
+    const layoutId = slide?.layoutId;
+    if (typeof layoutId !== "string" || !layoutId) {
+      fail(`slides[${index}].layoutId must be a non-empty string`);
+    }
+    const layout = layoutById.get(layoutId);
+    if (!layout) fail(`slides[${index}] references missing layout "${layoutId}"`);
+    return { slide, layoutNumber: layout.number };
+  });
+
+  return {
+    masters: preparedMasters,
+    layouts: [...layoutById.values()],
+    slides: preparedSlides,
+  };
+}
+
+export function buildPptxPackage({
+  title = "Presentation",
+  masters,
+  layouts,
+  slides,
+  assets = [],
+} = {}) {
   if (typeof title !== "string") fail("title must be a string");
   if (!Array.isArray(slides) || slides.length === 0) {
     fail("slides must be a non-empty array");
   }
   if (slides.length > 0x7ffffeff) fail("slides contains too many items");
   const normalizedAssets = normalizeAssets(assets);
+  const structure = normalizePresentationStructure(masters, layouts, slides);
   const notesSlides = [];
-  const builtSlides = slides.map((slide, index) => {
+  const builtSlides = structure.slides.map(({ slide, layoutNumber }, index) => {
     const notes = normalizedNotes(slide, index);
     const notesSlideNumber = notes ? notesSlides.length + 1 : null;
-    const built = buildSlide(slide, index, normalizedAssets, notesSlideNumber);
+    const built = buildSlide(
+      slide,
+      index,
+      normalizedAssets,
+      layoutNumber,
+      notesSlideNumber,
+    );
     if (notes) {
       notesSlides.push({
         notes,
@@ -1235,7 +1431,13 @@ export function buildPptxPackage({ title = "Presentation", slides, assets = [] }
   const entries = [
     {
       name: "[Content_Types].xml",
-      data: contentTypesXml(slides.length, normalizedAssets, notesSlides.length),
+      data: contentTypesXml(
+        slides.length,
+        normalizedAssets,
+        notesSlides.length,
+        structure.masters.length,
+        structure.layouts.length,
+      ),
     },
     {
       name: "_rels/.rels",
@@ -1249,44 +1451,91 @@ export function buildPptxPackage({ title = "Presentation", slides, assets = [] }
     { name: "docProps/app.xml", data: appXml(slides.length, notesSlides.length) },
     {
       name: "ppt/presentation.xml",
-      data: presentationXml(slides.length, notesSlides.length),
+      data: presentationXml(
+        structure.masters.length,
+        slides.length,
+        notesSlides.length,
+      ),
     },
     {
       name: "ppt/_rels/presentation.xml.rels",
-      data: presentationRelsXml(slides.length, notesSlides.length),
+      data: presentationRelsXml(
+        structure.masters.length,
+        slides.length,
+        notesSlides.length,
+      ),
     },
-    { name: "ppt/theme/theme1.xml", data: themeXml() },
-    { name: "ppt/slideMasters/slideMaster1.xml", data: slideMasterXml() },
-    {
-      name: "ppt/slideMasters/_rels/slideMaster1.xml.rels",
-      data: relationshipsXml([
-        {
-          id: "rId1",
-          type: REL.slideLayout,
-          target: "../slideLayouts/slideLayout1.xml",
-        },
-        { id: "rId2", type: REL.theme, target: "../theme/theme1.xml" },
-      ]),
-    },
-    { name: "ppt/slideLayouts/slideLayout1.xml", data: slideLayoutXml() },
-    {
-      name: "ppt/slideLayouts/_rels/slideLayout1.xml.rels",
-      data: relationshipsXml([
+    ...structure.masters.flatMap((master) => [
+      {
+        name: `ppt/theme/theme${master.number}.xml`,
+        data: themeXml(`MarkdStage ${master.theme}`),
+      },
+      {
+        name: `ppt/slideMasters/slideMaster${master.number}.xml`,
+        data: slideMasterXml(master, master.layoutNumbers),
+      },
+      {
+        name: `ppt/slideMasters/_rels/slideMaster${master.number}.xml.rels`,
+        data: relationshipsXml([
+          ...master.layoutNumbers.map((layoutNumber, index) => ({
+            id: `rId${index + 1}`,
+            type: REL.slideLayout,
+            target: `../slideLayouts/slideLayout${layoutNumber}.xml`,
+          })),
+          {
+            id: `rId${master.layoutNumbers.length + 1}`,
+            type: REL.theme,
+            target: `../theme/theme${master.number}.xml`,
+          },
+        ]),
+      },
+    ]),
+    ...structure.layouts.flatMap((layout, index) => {
+      const entries = [
         {
           id: "rId1",
           type: REL.slideMaster,
-          target: "../slideMasters/slideMaster1.xml",
+          target: `../slideMasters/slideMaster${layout.masterNumber}.xml`,
         },
-      ]),
-    },
+      ];
+      if (layout.artworkAssetId !== undefined) {
+        const asset = requireAsset(
+          normalizedAssets,
+          layout.artworkAssetId,
+          `layouts[${index}].artworkAssetId`,
+        );
+        entries.push({
+          id: "rId2",
+          type: REL.image,
+          target: `../media/${asset.mediaPath.split("/").at(-1)}`,
+        });
+      }
+      return [
+        {
+          name: `ppt/slideLayouts/slideLayout${layout.number}.xml`,
+          data: slideLayoutXml(layout, index, normalizedAssets),
+        },
+        {
+          name: `ppt/slideLayouts/_rels/slideLayout${layout.number}.xml.rels`,
+          data: relationshipsXml(entries),
+        },
+      ];
+    }),
     ...(notesSlides.length
       ? [
-          { name: "ppt/theme/theme2.xml", data: themeXml() },
+          {
+            name: `ppt/theme/theme${structure.masters.length + 1}.xml`,
+            data: themeXml("MarkdStage Notes"),
+          },
           { name: "ppt/notesMasters/notesMaster1.xml", data: notesMasterXml() },
           {
             name: "ppt/notesMasters/_rels/notesMaster1.xml.rels",
             data: relationshipsXml([
-              { id: "rId1", type: REL.theme, target: "../theme/theme2.xml" },
+              {
+                id: "rId1",
+                type: REL.theme,
+                target: `../theme/theme${structure.masters.length + 1}.xml`,
+              },
             ]),
           },
         ]
@@ -1333,6 +1582,27 @@ export function inspectPptxPackage(buffer) {
   const notesNames = [...files.keys()].filter((name) =>
     /^ppt\/notesSlides\/notesSlide\d+\.xml$/.test(name),
   );
+  const masterNames = [...files.keys()].filter((name) =>
+    /^ppt\/slideMasters\/slideMaster\d+\.xml$/.test(name),
+  );
+  const layoutNames = [...files.keys()].filter((name) =>
+    /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(name),
+  );
+  const slideLayoutTargets = slideNames.map((name) => {
+    const number = Number(/\d+/.exec(name)[0]);
+    const relationships = files
+      .get(`ppt/slides/_rels/slide${number}.xml.rels`)
+      ?.data.toString("utf8");
+    const target =
+      relationships &&
+      /<Relationship\b[^>]*Type="[^"]*\/slideLayout"[^>]*Target="\.\.\/slideLayouts\/(slideLayout\d+\.xml)"/.exec(
+        relationships,
+      )?.[1];
+    if (!target || !files.has(`ppt/slideLayouts/${target}`)) {
+      throw new Error(`Invalid PowerPoint package: slide ${number} layout is missing`);
+    }
+    return target;
+  });
   const core = files.get("docProps/core.xml")?.data.toString("utf8") || "";
   const title = /<dc:title>([\s\S]*?)<\/dc:title>/.exec(core);
   return {
@@ -1345,6 +1615,9 @@ export function inspectPptxPackage(buffer) {
     })),
     slideCount: slideNames.length,
     notesCount: notesNames.length,
+    masterCount: masterNames.length,
+    layoutCount: layoutNames.length,
+    slideLayoutTargets,
     mediaCount: [...files.keys()].filter((name) => name.startsWith("ppt/media/"))
       .length,
     dimensions: {

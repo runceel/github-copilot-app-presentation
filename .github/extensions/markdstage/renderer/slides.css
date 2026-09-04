@@ -675,6 +675,16 @@ body.pptx-artwork-mode svg [data-pptx-native="table"]{
 }
 body.pptx-artwork-mode svg path[data-pptx-native="connector"]{marker-end:none!important;}
 body.pptx-artwork-mode svg [data-pptx-native="image"]{opacity:0!important;}
+body.pptx-slide-artwork-mode .deck:not(.pptx-layout-template){
+  background:transparent!important;
+}
+body.pptx-slide-artwork-mode .deck:not(.pptx-layout-template)::before{
+  display:none!important;
+}
+body.pptx-slide-artwork-mode .deck:not(.pptx-layout-template)>.theme-cover-background,
+body.pptx-slide-artwork-mode .deck:not(.pptx-layout-template)>.theme-cover-logo{
+  visibility:hidden!important;
+}
 
 /* ===== Headless PDF export ===== */
 @page{size:13.333333in 7.5in;margin:0;}

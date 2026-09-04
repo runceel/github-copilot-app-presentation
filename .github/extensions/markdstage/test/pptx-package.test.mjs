@@ -213,7 +213,88 @@ test("writes a valid stored ZIP with the required editable PowerPoint parts", ()
   );
   assert.match(
     xml(files, "ppt/slideMasters/slideMaster1.xml"),
-    /<p:sldLayoutId id="2147483649" r:id="rId1"\/>/,
+    /<p:sldLayoutId id="2147500001" r:id="rId1"\/>/,
+  );
+});
+
+test("writes theme-specific masters and five named layouts with shared artwork", () => {
+  const names = ["title", "default", "center", "section", "backcover"];
+  const themes = ["dark", "light"];
+  const layouts = themes.flatMap((theme) =>
+    names.map((name) => ({
+      id: `${theme}:${name}`,
+      name,
+      theme,
+      artworkAssetId: `${theme}-${name}`,
+    })),
+  );
+  const buffer = buildPptxPackage({
+    masters: themes.map((theme) => ({
+      id: theme,
+      theme,
+      layoutIds: names.map((name) => `${theme}:${name}`),
+    })),
+    layouts,
+    assets: [
+      ...layouts.map((layout) => ({
+        id: layout.artworkAssetId,
+        contentType: "image/png",
+        data: PNG,
+      })),
+      { id: "slide-1", contentType: "image/png", data: PNG },
+      { id: "slide-2", contentType: "image/png", data: PNG },
+    ],
+    slides: [
+      {
+        layoutId: "dark:title",
+        artworkAssetId: "slide-1",
+        notes: "Layout notes",
+        elements: [],
+      },
+      { layoutId: "light:center", artworkAssetId: "slide-2", elements: [] },
+    ],
+  });
+  const files = readStoredZip(buffer);
+  const summary = inspectPptxPackage(buffer);
+
+  assert.equal(summary.masterCount, 2);
+  assert.equal(summary.layoutCount, 10);
+  assert.equal(summary.notesCount, 1);
+  assert.deepEqual(summary.slideLayoutTargets, [
+    "slideLayout1.xml",
+    "slideLayout8.xml",
+  ]);
+  assert.match(
+    xml(files, "ppt/presentation.xml"),
+    /<p:sldMasterId id="2147483648" r:id="rId1"\/><p:sldMasterId id="2147483649" r:id="rId2"\/>/,
+  );
+  assert.equal(
+    (xml(files, "ppt/slideMasters/slideMaster1.xml").match(/<p:sldLayoutId /g) || [])
+      .length,
+    5,
+  );
+  assert.match(
+    xml(files, "ppt/slideLayouts/slideLayout1.xml"),
+    /matchingName="title"><p:cSld name="title">[\s\S]*name="Layout artwork"[\s\S]*<p:nvPr userDrawn="1"\/>/,
+  );
+  assert.match(
+    xml(files, "ppt/slideLayouts/slideLayout2.xml"),
+    /matchingName="default"><p:cSld name="default">/,
+  );
+  assert.match(
+    xml(files, "ppt/slideLayouts/_rels/slideLayout1.xml.rels"),
+    /Type="[^"]*\/slideMaster" Target="\.\.\/slideMasters\/slideMaster1\.xml"[\s\S]*Type="[^"]*\/image"/,
+  );
+  assert.match(
+    xml(files, "ppt/slides/_rels/slide1.xml.rels"),
+    /Type="[^"]*\/slideLayout" Target="\.\.\/slideLayouts\/slideLayout1\.xml"/,
+  );
+  assert.match(xml(files, "ppt/slides/slide1.xml"), /name="Slide artwork"/);
+  assert.doesNotMatch(xml(files, "ppt/slides/slide1.xml"), /name="Layout artwork"/);
+  assert.ok(files.has("ppt/theme/theme3.xml"));
+  assert.match(
+    xml(files, "ppt/notesMasters/_rels/notesMaster1.xml.rels"),
+    /Target="\.\.\/theme\/theme3\.xml"/,
   );
 });
 
@@ -619,6 +700,15 @@ test("rejects duplicate and missing asset references", () => {
         ],
       }),
     /references missing asset "missing"/,
+  );
+  assert.throws(
+    () =>
+      buildPptxPackage({
+        masters: [{ id: "dark", theme: "dark", layoutIds: ["dark:default"] }],
+        layouts: [{ id: "dark:default", name: "default", theme: "dark" }],
+        slides: [{ layoutId: "dark:title", elements: [] }],
+      }),
+    /references missing layout "dark:title"/,
   );
 });
 

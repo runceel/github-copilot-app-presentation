@@ -82,8 +82,11 @@ syntax-highlighted runs, indentation, blank lines, monospace typography, backgro
 accent edges. Architecture nodes, groups, and connector-label pills are visible AutoShapes with
 their labels stored inside the shape; diagram icons are transparent foreground pictures above those
 shapes. Decorative backgrounds, gradients, code-block shadows, Mermaid, and unsupported HTML/CSS
-are preserved as background artwork. The export report lists these fallbacks instead of silently
-omitting them.
+are preserved as artwork. The exported presentation creates one slide master for each theme used in
+the deck, with named `title`, `default`, `center`, `section`, and `backcover` layouts. Theme-common
+backgrounds, top bars, and cover or back-cover logos live on those layouts, while slide-specific
+fallback artwork remains a transparent layer on the slide. The export report lists these fallbacks
+instead of silently omitting them.
 
 Native Japanese text uses Yu Gothic as its primary East Asian font, while Latin text keeps the font
 selected by the rendered slide. Exported native text is marked as not requiring proofing, so
