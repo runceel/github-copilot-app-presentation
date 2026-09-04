@@ -626,8 +626,10 @@ function pictureXml(
   relationshipId,
   name = `Image ${id}`,
   userDrawn = false,
+  shape = "rect",
 ) {
-  return `<p:pic><p:nvPicPr><p:cNvPr id="${id}" name="${xmlEscape(name)}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr${userDrawn ? ' userDrawn="1"' : ""}/></p:nvPicPr><p:blipFill><a:blip r:embed="${relationshipId}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrmXml(bounds)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
+  const preset = shape === "roundedRect" ? "roundRect" : "rect";
+  return `<p:pic><p:nvPicPr><p:cNvPr id="${id}" name="${xmlEscape(name)}"/><p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr${userDrawn ? ' userDrawn="1"' : ""}/></p:nvPicPr><p:blipFill><a:blip r:embed="${relationshipId}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrmXml(bounds)}<a:prstGeom prst="${preset}"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
 }
 
 function tableXml(element, path, id, relationships) {
@@ -885,6 +887,9 @@ function buildSlide(
           boundsOf(element, elementPath),
           nextId(),
           relationships.image(asset),
+          element.name || element.alt || undefined,
+          false,
+          element.shape,
         ),
       );
     } else if (element.type === "shape") {
@@ -1024,9 +1029,19 @@ function slideMasterXml(master, layoutNumbers) {
   return `${XML}<p:sldMaster xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}"><p:cSld name="${xmlEscape(`MarkdStage ${master.theme}`)}"><p:spTree>${baseShapeTree()}</p:spTree></p:cSld><p:clrMap accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" bg1="lt1" bg2="lt2" folHlink="folHlink" hlink="hlink" tx1="dk1" tx2="dk2"/><p:sldLayoutIdLst>${layouts}</p:sldLayoutIdLst><p:txStyles><p:titleStyle/><p:bodyStyle/><p:otherStyle/></p:txStyles></p:sldMaster>`;
 }
 
-function slideLayoutXml(layout, layoutIndex, assets) {
+function buildSlideLayout(layout, layoutIndex, assets) {
   const path = `layouts[${layoutIndex}]`;
   const shapes = [];
+  const imageRelationships = [];
+  let shapeId = 2;
+  let relationshipId = 2;
+  const addImage = (asset, bounds, name) => {
+    const id = `rId${relationshipId}`;
+    relationshipId += 1;
+    imageRelationships.push({ id, asset });
+    shapes.push(pictureXml(asset, bounds, shapeId, id, name, true));
+    shapeId += 1;
+  };
   if (layout.artworkAssetId !== undefined) {
     const asset = requireAsset(
       assets,
@@ -1036,23 +1051,37 @@ function slideLayoutXml(layout, layoutIndex, assets) {
     if (asset.contentType !== "image/png") {
       fail(`${path}.artworkAssetId must reference a PNG asset`);
     }
-    shapes.push(
-      pictureXml(
-        asset,
-        {
-          x: 0,
-          y: 0,
-          width: PPTX_DIMENSIONS.widthPx,
-          height: PPTX_DIMENSIONS.heightPx,
-        },
-        2,
-        "rId2",
-        "Layout artwork",
-        true,
-      ),
+    addImage(
+      asset,
+      {
+        x: 0,
+        y: 0,
+        width: PPTX_DIMENSIONS.widthPx,
+        height: PPTX_DIMENSIONS.heightPx,
+      },
+      "Layout artwork",
     );
   }
-  return `${XML}<p:sldLayout xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}" type="blank" preserve="1" matchingName="${xmlEscape(layout.name)}"><p:cSld name="${xmlEscape(layout.name)}"><p:spTree>${baseShapeTree()}${shapes.join("")}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`;
+  const elements = layout.elements ?? [];
+  if (!Array.isArray(elements)) fail(`${path}.elements must be an array`);
+  for (let index = 0; index < elements.length; index += 1) {
+    const element = elements[index];
+    const elementPath = `${path}.elements[${index}]`;
+    if (!element || typeof element !== "object" || Array.isArray(element)) {
+      fail(`${elementPath} must be an object`);
+    }
+    if (element.type !== "image") fail(`${elementPath}.type is not supported`);
+    const asset = requireAsset(assets, element.assetId, `${elementPath}.assetId`);
+    addImage(
+      asset,
+      boundsOf(element, elementPath),
+      element.name || element.alt || `Layout image ${index + 1}`,
+    );
+  }
+  return {
+    xml: `${XML}<p:sldLayout xmlns:a="${NS_A}" xmlns:r="${NS_R}" xmlns:p="${NS_P}" type="blank" preserve="1" matchingName="${xmlEscape(layout.name)}"><p:cSld name="${xmlEscape(layout.name)}"><p:spTree>${baseShapeTree()}${shapes.join("")}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sldLayout>`,
+    imageRelationships,
+  };
 }
 
 function notesPlaceholderXml({ id, name, type, idx, x, y, cx, cy, paragraphs = "" }) {
@@ -1428,6 +1457,9 @@ export function buildPptxPackage({
     }
     return built;
   });
+  const builtLayouts = structure.layouts.map((layout, index) =>
+    buildSlideLayout(layout, index, normalizedAssets),
+  );
   const entries = [
     {
       name: "[Content_Types].xml",
@@ -1491,29 +1523,23 @@ export function buildPptxPackage({
       },
     ]),
     ...structure.layouts.flatMap((layout, index) => {
+      const builtLayout = builtLayouts[index];
       const entries = [
         {
           id: "rId1",
           type: REL.slideMaster,
           target: `../slideMasters/slideMaster${layout.masterNumber}.xml`,
         },
-      ];
-      if (layout.artworkAssetId !== undefined) {
-        const asset = requireAsset(
-          normalizedAssets,
-          layout.artworkAssetId,
-          `layouts[${index}].artworkAssetId`,
-        );
-        entries.push({
-          id: "rId2",
+        ...builtLayout.imageRelationships.map(({ id, asset }) => ({
+          id,
           type: REL.image,
           target: `../media/${asset.mediaPath.split("/").at(-1)}`,
-        });
-      }
+        })),
+      ];
       return [
         {
           name: `ppt/slideLayouts/slideLayout${layout.number}.xml`,
-          data: slideLayoutXml(layout, index, normalizedAssets),
+          data: builtLayout.xml,
         },
         {
           name: `ppt/slideLayouts/_rels/slideLayout${layout.number}.xml.rels`,

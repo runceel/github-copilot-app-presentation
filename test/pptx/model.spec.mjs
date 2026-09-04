@@ -248,6 +248,16 @@ test("collects a serializable hybrid model for every layout and theme", async ({
     expect(kicker.x).toBeCloseTo(kickerBounds.textX, 1);
     expect(kicker.x).toBeGreaterThan(kickerBounds.elementX);
     expect(kicker.textWrap).toBe("none");
+    expect(model.slides[0].fallbacks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "decoration",
+          reason: "kicker-mark-rendered-as-artwork",
+          captureId: expect.stringMatching(/^pptx-fallback-/),
+          zOrder: expect.any(Number),
+        }),
+      ]),
+    );
     for (const slide of model.slides) {
       expect(slide.width).toBe(1280);
       expect(slide.height).toBe(720);
@@ -335,6 +345,21 @@ total: 8
     expect(blockquote.textWrap).toBe("none");
     expect(footer.textWrap).toBe("none");
     expect(pageNumber.textWrap).toBe("none");
+    expect(model.slides[0].fallbacks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "decoration",
+          reason: "native-text-decoration-rendered-as-artwork",
+          x: blockquote.x,
+        }),
+        expect.objectContaining({
+          type: "decoration",
+          reason: "footer-decoration-rendered-as-artwork",
+          width: expect.any(Number),
+          height: expect.any(Number),
+        }),
+      ]),
+    );
   } finally {
     await harness.close();
   }
@@ -401,6 +426,12 @@ title: Theme back cover
     expect(runs.some((run) => run.color === "#FEFEFE")).toBe(true);
     expect(title.textWrap).toBe("none");
     expect(slide.elements.some((element) => element.type === "image")).toBe(false);
+    const titleLayout = model.layouts.find((layout) => layout.id === "custom:title");
+    expect(titleLayout.elements).toHaveLength(1);
+    expect(titleLayout.elements[0]).toMatchObject({
+      type: "image",
+      alt: "Custom logo",
+    });
     const layoutLogo = await page.evaluate(() => {
       const layout = [...document.querySelectorAll(".pptx-layout-template")].find(
         (candidate) => candidate.dataset.pptxLayoutId === "custom:title",
@@ -410,11 +441,13 @@ title: Theme back cover
         ? {
             src: logo.getAttribute("src"),
             alt: logo.getAttribute("alt"),
+            native: logo.getAttribute("data-pptx-native"),
           }
         : null;
     });
     expect(layoutLogo?.src).toMatch(/simple-slide\.png$/);
     expect(layoutLogo?.alt).toBe("Custom logo");
+    expect(layoutLogo?.native).toBe("image");
     const backcovers = model.slides.slice(1);
     const textOf = (element) =>
       element.paragraphs.flatMap((paragraph) => paragraph.runs).map((run) => run.text).join("");
@@ -481,7 +514,9 @@ test("collects native text, nested lists, links, tables, and raster images", asy
       .flatMap((element) => element.paragraphs)
       .filter((paragraph) => paragraph.bullet);
     const table = slide.elements.find((element) => element.type === "table");
-    const image = slide.elements.find((element) => element.type === "image");
+    const images = slide.elements.filter((element) => element.type === "image");
+    const image = images.find((element) => element.src.endsWith("simple-slide.png"));
+    const svg = images.find((element) => element.src.endsWith("sample.svg"));
     const textOf = (element) =>
       element.paragraphs.flatMap((paragraph) => paragraph.runs).map((run) => run.text).join("");
     const code = slide.elements.find(
@@ -511,6 +546,16 @@ test("collects native text, nested lists, links, tables, and raster images", asy
     expect(table.rows[0].cells).toHaveLength(2);
     expect(table.rows[1].cells[1].paragraphs[0].runs[0].text.trim()).toBe("42");
     expect(image.src).toMatch(/simple-slide\.png$/);
+    expect(image.shape).toBe("roundedRect");
+    expect(svg.src).toMatch(/sample\.svg$/);
+    const imageEffect = slide.fallbacks.find(
+      (fallback) =>
+        fallback.type === "effect" &&
+        fallback.path === image.path &&
+        fallback.reason.includes("box-shadow"),
+    );
+    expect(imageEffect.width).toBeGreaterThan(image.width);
+    expect(imageEffect.y).toBeLessThan(image.y);
     expect(slide.elements.filter((element) => element.type === "table")).toHaveLength(1);
     expect(code).toMatchObject({
       shape: "roundedRect",
@@ -543,7 +588,6 @@ test("collects native text, nested lists, links, tables, and raster images", asy
     });
     expect(slide.fallbacks).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ type: "image", reason: "unsupported-image-format" }),
         expect.objectContaining({
           type: "effect",
           reason: "native-code-approximates: box-shadow",
@@ -564,6 +608,12 @@ test("collects native text, nested lists, links, tables, and raster images", asy
       ]),
     );
     expect(slide.fallbacks.some((fallback) => fallback.type === "code")).toBe(false);
+    expect(
+      slide.fallbacks.some(
+        (fallback) =>
+          fallback.type === "image" && fallback.reason === "unsupported-image-format",
+      ),
+    ).toBe(false);
     const rotatedVisibility = await page.evaluate(() => {
       const paragraphs = [...document.querySelectorAll("#stage > .deck")[1].querySelectorAll("p")];
       const rotated = paragraphs.find((element) => element.textContent.includes("Rotated fallback"));
@@ -688,6 +738,15 @@ test("exports Architecture objects from the DSL and keeps fallback artwork visib
         }),
       ]),
     );
+    expect(slide.fallbacks.filter((fallback) => fallback.type === "mermaid")).toHaveLength(1);
+    expect(
+      slide.fallbacks.find((fallback) => fallback.type === "mermaid")?.captureId,
+    ).toMatch(/^pptx-fallback-/);
+    expect(
+      slide.fallbacks.some(
+        (fallback) => fallback.type === "html" && fallback.path.includes("pre.mermaid"),
+      ),
+    ).toBe(false);
     expect(slide.fallbacks.some((fallback) => fallback.type === "architecture-shape")).toBe(false);
 
     const visibility = await page.evaluate(() => {
@@ -725,8 +784,146 @@ test("exports Architecture objects from the DSL and keeps fallback artwork visib
       iconOpacity: "0",
       mermaidVisible: true,
       codeVisible: false,
-      unsupportedImageNative: false,
+      unsupportedImageNative: true,
     });
+  } finally {
+    await harness.close();
+  }
+});
+
+test("marks fully off-slide fallbacks as non-artwork instead of aborting export", async ({
+  page,
+}) => {
+  const harness = await startHarness({
+    slides: [
+      `## Off-slide fallback
+
+<div style="position:absolute;left:1400px;top:100px;width:100px;height:100px">Hidden</div>`,
+    ],
+  });
+  try {
+    const model = await openPptx(page, harness);
+    const fallback = model.slides[0].fallbacks.find((candidate) => candidate.type === "html");
+    expect(fallback).toMatchObject({
+      x: 1280,
+      width: 0,
+      artwork: false,
+    });
+    expect(fallback.captureId).toBeUndefined();
+  } finally {
+    await harness.close();
+  }
+});
+
+test("collapses nested captures and preserves z-index and descendant effect bounds", async ({
+  page,
+}) => {
+  const harness = await startHarness({
+    slides: [
+      `## Nested fallback
+
+<div style="position:relative;width:100px;height:80px;border:2px solid red;padding:8px"><p style="transform:rotate(1deg)">Nested effect</p><hr><span style="position:absolute;left:180px;top:20px;width:20px;white-space:nowrap;text-shadow:40px 0 4px red">Overflowing sibling text</span></div>`,
+      `## Stacking order
+
+<div style="position:absolute;z-index:10;left:100px;top:160px;width:240px;height:80px">Fallback above</div>
+
+<p style="position:relative;z-index:1">Native below</p>`,
+      `## Descendant shadow
+
+<p style="width:200px">Start <span style="text-shadow:100px 0 0 red">shadow</span></p>`,
+      `## Generic box shadow
+
+<p style="width:200px;box-shadow:40px 0 10px red">Editable shadow text</p>`,
+      `## Unsupported fit shadow
+
+<img src="/assets/readme/simple-slide.png" style="width:300px;height:100px;object-fit:cover" alt="Cover fallback">`,
+      `## Raw block effect
+
+<div style="width:220px;height:60px;transform:rotate(1deg)">Transformed block</div>
+
+<p>Editable sibling</p>`,
+    ],
+  });
+  try {
+    const model = await openPptx(page, harness);
+    const nested = model.slides[0].fallbacks.filter((fallback) => fallback.artwork !== false);
+    expect(nested).toHaveLength(1);
+    const nestedRegion = nested[0];
+    expect(nestedRegion.path).toMatch(/div\.body > div/);
+    expect(nestedRegion.width).toBeGreaterThan(200);
+    expect(nested.some((fallback) => fallback.path.endsWith("> hr"))).toBe(false);
+    const nestedTextRight = await page.evaluate(() => {
+      const deck = document.querySelectorAll("#stage > .deck")[0];
+      const deckRect = deck.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(deck.querySelector("span"));
+      return range.getBoundingClientRect().right - deckRect.left;
+    });
+    expect(nestedRegion.x + nestedRegion.width).toBeGreaterThanOrEqual(
+      nestedTextRight + 40 - 0.1,
+    );
+
+    const stackingSlide = model.slides[1];
+    const fallback = stackingSlide.fallbacks.find((candidate) => candidate.type === "html");
+    const nativeText = stackingSlide.elements.find(
+      (element) =>
+        element.type === "text" &&
+        element.paragraphs.some((paragraph) =>
+          paragraph.runs.some((run) => run.text.includes("Native below")),
+        ),
+    );
+    expect(fallback.zOrder).toBeGreaterThan(nativeText.zOrder);
+
+    const shadowFallback = model.slides[2].fallbacks.find(
+      (candidate) =>
+        candidate.type === "effect" && candidate.reason.includes("text-shadow"),
+    );
+    const shadowRight = await page.evaluate(() => {
+      const deck = document.querySelectorAll("#stage > .deck")[2];
+      const deckRect = deck.getBoundingClientRect();
+      const spanRect = deck.querySelector("span").getBoundingClientRect();
+      return spanRect.right - deckRect.left + 100;
+    });
+    expect(shadowFallback.x + shadowFallback.width).toBeGreaterThanOrEqual(shadowRight);
+
+    const boxShadowSlide = model.slides[3];
+    const boxShadowFallback = boxShadowSlide.fallbacks.find(
+      (candidate) => candidate.reason === "native-element-approximates: box-shadow",
+    );
+    const boxShadowWidth = await page.evaluate(
+      () => document.querySelectorAll("#stage > .deck")[3].querySelector("p").getBoundingClientRect().width,
+    );
+    const boxShadowVisibility = await page.evaluate(() => {
+      const deck = document.querySelectorAll("#stage > .deck")[3];
+      return {
+        original: getComputedStyle(deck.querySelector("p")).boxShadow,
+        clone: getComputedStyle(deck.querySelector(".pptx-effect-fallback")).boxShadow,
+      };
+    });
+    expect(boxShadowFallback).toBeTruthy();
+    expect(boxShadowFallback.width).toBeGreaterThan(boxShadowWidth);
+    expect(boxShadowVisibility.original).toBe("none");
+    expect(boxShadowVisibility.clone).not.toBe("none");
+
+    const imageFallback = model.slides[4].fallbacks.find(
+      (candidate) => candidate.reason === "unsupported-image-fit",
+    );
+    expect(imageFallback.width).toBeGreaterThan(300);
+    expect(imageFallback.height).toBeGreaterThan(100);
+
+    const blockSlide = model.slides[5];
+    const blockFallback = blockSlide.fallbacks.find((candidate) => candidate.type === "effect");
+    expect(blockFallback.path).toMatch(/div\.body > div/);
+    expect(blockFallback.width).toBeLessThan(500);
+    expect(
+      blockSlide.elements.some(
+        (element) =>
+          element.type === "text" &&
+          element.paragraphs.some((paragraph) =>
+            paragraph.runs.some((run) => run.text.includes("Editable sibling")),
+          ),
+      ),
+    ).toBe(true);
   } finally {
     await harness.close();
   }

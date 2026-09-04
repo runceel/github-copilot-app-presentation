@@ -1,0 +1,10 @@
+{
+  "$schema": "../../../.github/extensions/markdstage/schema/theme-metadata-v1.schema.json",
+  "version": 1,
+  "cover": {
+    "logo": {
+      "image": "assets/issue-111-logo.svg",
+      "alt": "Issue 111 fallback test"
+    }
+  }
+}

@@ -2517,7 +2517,7 @@ const session = await joinSession({
         {
           name: "export_pptx",
           description:
-            "Export the displayed deck to a hybrid editable 16:9 PowerPoint presentation. Supported text, lists, links, tables, images, and Architecture DSL objects remain editable, and speaker-note Markdown is included as readable plain text in the PowerPoint notes pane. Mermaid, decorative styling, and unsupported content are preserved as background artwork and reported as fallbacks. Temporary show_slide content and the automatic back cover are included.",
+            "Export the displayed deck to a hybrid editable 16:9 PowerPoint presentation. Supported text, lists, links, tables, images, and Architecture DSL objects remain editable, and speaker-note Markdown is included as readable plain text in the PowerPoint notes pane. Mermaid, decorative styling, and unsupported content are preserved as cropped, positioned fallback pictures and reported as fallbacks. Temporary show_slide content and the automatic back cover are included.",
           inputSchema: {
             type: "object",
             properties: {

@@ -1,0 +1,17 @@
+:root {
+  --bg: #0f172a;
+  --fg: #f8fafc;
+  --body: #dbeafe;
+  --muted: #cbd5e1;
+  --accent: #38bdf8;
+  --accent-strong: #7dd3fc;
+  --accent-soft: rgba(56, 189, 248, 0.3);
+  --accent-line: rgba(125, 211, 252, 0.8);
+  --surface: #172554;
+  --code: #111827;
+  --code-fg: #e0f2fe;
+  --border: #64748b;
+  --topbar: #38bdf8;
+  --cover-bg: #0f172a;
+  --print-cover-bg: #0f172a;
+}
