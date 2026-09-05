@@ -12,3 +12,6 @@ playwright/.cache/
 
 # Generated MarkdStage CLI package mirror
 packages/markdstage-cli/shared/
+
+# Generated GitHub Pages site
+_site/

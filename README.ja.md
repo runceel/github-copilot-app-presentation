@@ -22,6 +22,7 @@
 </p>
 
 <p align="center">
+  <a href="http://okazuki.jp/markdstage/">紹介サイト</a> |
   <a href="#canvas-extension">Canvas Extension</a> |
   <a href="#desktop">Desktop</a> |
   <a href="#community-macos-app">macOS アプリ</a> |
@@ -209,7 +210,37 @@ layout: title
 | `apps/MarkdStage.Desktop/` | WinUI 3 Desktop アプリ |
 | `assets/brand/` | MarkdStage のロゴ、ロックアップ、README バナー |
 | `assets/readme/` | この README に掲載しているスライドと Architecture Editor の画像 |
+| `site/` | 日英対応の GitHub Pages 紹介サイト、本文、ソース付き作例 |
 | `slides.md` | 機能を紹介するサンプルデッキ |
+
+## 紹介サイトの開発
+
+[紹介サイト](http://okazuki.jp/markdstage/) は `site/` から静的に生成します。
+ビルドに追加パッケージは不要です。Node.js 24 以降で次を実行します。
+
+```console
+npm run preview:site
+```
+
+日本語は `http://127.0.0.1:4173/markdstage/`、英語は末尾に `en/` を付けて開きます。
+ソースの編集後はコマンドを再実行してください。`npm run build:site` は公開に必要な
+ファイルだけを `_site/` に生成します。別の公開先でビルドする場合は、環境変数
+`SITE_URL` にサイトの完全なベース URL を指定します。ローカルのポートは `PORT` で変更できます。
+
+本文は `site/content/ja.json` と `site/content/en.json` をセットで編集します。
+共通リンク、CLI コマンド、Canvas の信頼できるリリースタグは
+`site/content/product.json` で管理します。`site/examples/` の作例は
+`site/assets/examples/` の PNG と対応しています。作例を変更したら
+[CLI の `capture --pages 1`](./docs/user-guide/ja/cli.md) で先頭スライドを再取得し、
+対応する PNG を置き換えてください。Architecture Editor の画像は `assets/readme/` を再利用します。
+
+`npm run test:site` は既存の Node、Playwright、axe-core でサイトを確認します。
+必要に応じて `npm ci` でテスト依存関係、`npx playwright install chromium` で
+Chromium を用意してください。
+**GitHub Pages** workflow は PR では確認のみを行い、`main` への反映後に
+確認済みの `_site/` を公開します。`main` を対象に手動実行することもできます。
+Pages の Source は **GitHub Actions** に設定します。既存の公開先 URL を読み取り、
+独自ドメイン・DNS・HTTPS 設定は変更しません。
 
 ## v2.0.0 の破壊的変更
 

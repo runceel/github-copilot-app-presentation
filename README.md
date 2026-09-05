@@ -22,6 +22,7 @@
 </p>
 
 <p align="center">
+  <a href="http://okazuki.jp/markdstage/en/">Website</a> |
   <a href="#use-the-canvas-extension">Canvas Extension</a> |
   <a href="#use-markdstage-desktop">Desktop</a> |
   <a href="#community-macos-app">macOS app</a> |
@@ -203,7 +204,38 @@ PowerPoint notes pane. They remain absent from regular slides, the audience wind
 | `apps/MarkdStage.Desktop/` | WinUI 3 desktop app |
 | `assets/brand/` | MarkdStage logo, lockup, and README banner |
 | `assets/readme/` | Rendered slide and Architecture Editor images used in this README |
+| `site/` | Bilingual GitHub Pages website, content, and source-backed examples |
 | `slides.md` | Sample deck that demonstrates the features |
+
+## Website development
+
+The [website](http://okazuki.jp/markdstage/en/) is generated from `site/` using
+Node.js 24 or later, with no build dependencies:
+
+```console
+npm run preview:site
+```
+
+Open `http://127.0.0.1:4173/markdstage/` for Japanese or append `en/` for English.
+Restart the command after editing the source. `npm run build:site` produces only
+the public files in `_site/`; set `SITE_URL` to the full deployment base URL when
+building for another host. `PORT` changes the local preview port.
+
+Edit both `site/content/ja.json` and `site/content/en.json` together. Shared links,
+the CLI command, and the trusted Canvas release tag live in
+`site/content/product.json`. The examples in `site/examples/` match their PNGs
+in `site/assets/examples/`; after editing an example, regenerate its first slide
+with the [CLI's `capture --pages 1` command](./docs/user-guide/cli.md) and replace
+the matching PNG. The Architecture Editor image is reused from `assets/readme/`.
+
+`npm run test:site` uses the existing Node, Playwright, and axe-core test tools
+(install test dependencies with `npm ci` and Chromium with
+`npx playwright install chromium` if needed).
+The **GitHub Pages** workflow checks pull requests without deploying. Once
+changes reach `main`, it publishes the checked `_site/` artifact; it can also
+be run manually against `main`. Pages must use **GitHub Actions** as its source.
+The workflow reads the existing Pages URL and does not change custom domains,
+DNS, or HTTPS settings.
 
 ## Breaking changes in v2.0.0
 
