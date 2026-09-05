@@ -25,6 +25,7 @@
   <a href="https://runceel.github.io/markdstage/en/">Website</a> |
   <a href="#use-the-canvas-extension">Canvas Extension</a> |
   <a href="#use-markdstage-desktop">Desktop</a> |
+  <a href="#use-the-cli">CLI</a> |
   <a href="#community-macos-app">macOS app</a> |
   <a href="#see-markdown-on-stage">Examples</a> |
   <a href="#markdown-format">Markdown format</a> |
@@ -33,9 +34,9 @@
 </p>
 
 MarkdStage is an open-source presentation tool that turns Markdown directly into polished slides,
-with editing, synchronized presenting, speaker notes, PDF export, and hybrid editable PowerPoint
-export. Its native GitHub Copilot
-canvas Extension and standalone Windows app share one renderer, so authors can keep Markdown as
+with editing, synchronized presenting, speaker notes, PDF export, and PowerPoint export that keeps
+text, tables, code, and diagrams editable. Its native GitHub Copilot canvas Extension, standalone
+Windows app, and command-line interface share one renderer, so authors can keep Markdown as
 the source of truth from the first draft to the stage.
 
 ## Why MarkdStage
@@ -49,8 +50,8 @@ the source of truth from the first draft to the stage.
 
 ## See Markdown on stage
 
-The same Markdown renderer powers the GitHub Copilot canvas, presenter window, Desktop app, PDF
-export, and hybrid editable PowerPoint export.
+The same Markdown renderer powers the GitHub Copilot canvas, presenter window, Desktop app, CLI, PDF
+export, and editable PowerPoint export.
 
 <table>
   <tr>
@@ -95,7 +96,7 @@ back to Markdown.
 | **MarkdStage canvas** | Ask GitHub Copilot to summarize and format Markdown, or load it directly with **More controls > Open Markdown** |
 | **MarkdStage Desktop** | Present on Windows while viewing the Markdown, next slide, and speaker notes without opening GitHub Copilot |
 | **MarkdStage CLI** | Present, validate, capture, and export from a terminal, CI, Codex, or Claude Code without the canvas |
-| **MarkStageForMac** | Present on macOS with the community-built native app |
+| **MarkStageForMac** (third-party) | Present on macOS with the community-built native app. Developed and supported outside this repository |
 
 ## Use the canvas Extension
 
@@ -151,6 +152,7 @@ npx @markdstage/markdstage preview slides.md --watch
 npx @markdstage/markdstage validate slides.md --json
 npx @markdstage/markdstage inspect slides.md
 npx @markdstage/markdstage export slides.md --output slides.pdf
+npx @markdstage/markdstage export slides.md --output slides.pptx
 ```
 
 `present` opens the presenter dashboard; select **Start presentation** there

@@ -64,15 +64,24 @@ HTML コメントを置く場合は、コメントの終了行と次の `---` �
 - **Desktop:** **Start presentation** を選ぶと、操作が同期する投影用ウィンドウが開きます。
 - 投影用ウィンドウで `F11` を押すと全画面表示になり、`Esc` で元に戻ります。
 
-## 5. PDF をエクスポートする
+## 5. PDF または PowerPoint をエクスポートする
 
-PDF エクスポートは Canvas Extension だけの機能です。
+Canvas Extension から書き出します。
 
 1. **More controls > Output preview** を選び、クリッピング警告があれば直します。
-2. **More controls > Export PDF** を選びます。
-3. ワークスペースに出力された 16:9 PDF を確認します。
+2. **More controls > Export PDF** を選びます。テキスト、表、コード、Architecture DSL が
+   PowerPoint 上で編集可能なまま残るハイブリッド形式が必要なときは
+   **More controls > Export PowerPoint** を選びます。
+3. ワークスペースに出力された 16:9 のファイルを確認します。
 
-MarkdStage Desktop に PDF エクスポートはありません。
+Canvas Extension を導入せずに、CLI から同じ出力を得ることもできます。
+
+```console
+npx @markdstage/markdstage export slides.md --output slides.pdf
+npx @markdstage/markdstage export slides.md --output slides.pptx
+```
+
+MarkdStage Desktop にエクスポート機能はありません。Canvas Extension か CLI を使います。
 
 ## 次のステップ
 

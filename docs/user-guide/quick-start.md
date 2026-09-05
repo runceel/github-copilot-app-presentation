@@ -65,15 +65,23 @@ The main window shows the current slide, next slide, and current speaker notes.
 - **Desktop:** Select **Start presentation** to open the synchronized audience window.
 - Press `F11` in the audience window for fullscreen and `Esc` to leave fullscreen.
 
-## 5. Export a PDF
+## 5. Export a PDF or PowerPoint
 
-PDF export is available in the Canvas Extension:
+Export from the Canvas Extension:
 
 1. Select **More controls > Output preview** and correct any clipping warning.
-2. Select **More controls > Export PDF**.
-3. Use the generated 16:9 PDF from the workspace.
+2. Select **More controls > Export PDF**, or **More controls > Export PowerPoint** for a hybrid
+   deck whose text, tables, code, and Architecture DSL stay editable in PowerPoint.
+3. Use the generated 16:9 file from the workspace.
 
-MarkdStage Desktop does not export PDF.
+Or export the same output from the CLI, without installing the Canvas Extension:
+
+```console
+npx @markdstage/markdstage export slides.md --output slides.pdf
+npx @markdstage/markdstage export slides.md --output slides.pptx
+```
+
+MarkdStage Desktop does not export. Use the Canvas Extension or the CLI.
 
 ## Next steps
 

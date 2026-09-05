@@ -117,8 +117,9 @@ Explain the rollback plan before showing the command.
 -->
 ```
 
-Notes support Markdown. They appear in Canvas presenter view and Desktop, but not on normal slides,
-in the audience window, or in PDF output.
+Notes support Markdown. They appear in the Canvas presenter view, the Desktop main window, and the
+CLI presenter view, and PowerPoint export converts them to plain text in each slide's notes pane.
+They do not appear on normal slides, in the audience window, or in PDF output.
 
 Comments inside code fences and `slide-size` directives are not treated as notes.
 

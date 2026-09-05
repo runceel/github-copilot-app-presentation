@@ -1,7 +1,7 @@
 {
   "lang": "ja",
   "locale": "ja_JP",
-  "title": "MarkdStage — Markdownからスライドを作成",
+  "title": "MarkdStage — Markdown からスライドを作成し PowerPoint に出力",
   "description": "Markdown からスライドを作成できるオープンソースのツールです。GitHub Copilot Canvas、Windows アプリ、CLI で利用でき、発表用の画面や PDF/PowerPoint への出力に対応しています。",
   "skip": "本文へスキップ",
   "navLabel": "メインナビゲーション",
@@ -47,7 +47,7 @@
     },
     {
       "title": "発表・エクスポート",
-      "body": "発表者用の画面でスピーカーノートを確認しながら、別の画面にスライドを表示できます。PDF や、一部の要素を編集できる PowerPoint 形式で出力することもできます。",
+      "body": "発表者用の画面でスピーカーノートを確認しながら、別の画面にスライドを表示できます。PDF や、文章・表・コード・図が編集可能なまま残る PowerPoint 形式で出力することもできます。",
       "detail": "スピーカーノート · PDF · PowerPoint"
     }
   ],
@@ -56,7 +56,7 @@
   "cliTitle": "CLI",
   "cliDescription": "コマンドラインからスライドのプレビュー・発表・検証・出力ができます。GitHub Copilot App は不要で、Codex や Claude Code からも利用できます。",
   "cliRequirements": "Node.js 24 以降と、Microsoft Edge・Google Chrome・Chromium のいずれかが必要です。",
-  "cliNext": "slides.md を作成して上のコマンドを実行します。開いた画面で「Start presentation」を選ぶと、発表用のウィンドウが開きます。",
+  "cliNext": "Markdown を slides.md として保存し、上のコマンドを実行します。手元にデッキがない場合は、「できること」の「Markdown をダウンロード」から作例を入手できます。開いた画面で「Start presentation」を選ぶと、発表用のウィンドウが開きます。",
   "cliLink": "CLI ガイド",
   "desktopTitle": "Windows Desktop",
   "desktopDescription": "Markdown ファイルを開いてスライドを表示する Windows アプリです。現在のスライド・次のスライド・スピーカーノートを確認しながら発表できます。GitHub Copilot App は不要です。",

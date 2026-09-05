@@ -7,7 +7,7 @@
 # MarkdStage user guide
 
 MarkdStage turns Markdown into presentation-ready slides. The same Markdown deck can be opened in
-the GitHub Copilot Canvas Extension or the standalone Windows Desktop app.
+the GitHub Copilot Canvas Extension, the standalone Windows Desktop app, or the command-line CLI.
 
 ![A Markdown deck open in the MarkdStage Canvas Extension](images/canvas-main.png)
 
@@ -15,12 +15,12 @@ the GitHub Copilot Canvas Extension or the standalone Windows Desktop app.
 
 | Surface | Best for | Main capabilities |
 | --- | --- | --- |
-| [**Canvas Extension**](canvas-extension.md) | Creating and revising a deck with GitHub Copilot | Markdown import, live refresh, presenter view, Architecture editing, 16:9 validation, and PDF export |
+| [**Canvas Extension**](canvas-extension.md) | Creating and revising a deck with GitHub Copilot | Markdown import, live refresh, presenter view, Architecture editing, 16:9 validation, and PDF and editable PowerPoint export |
 | [**MarkdStage Desktop**](desktop.md) | Presenting on Windows without opening GitHub Copilot | Current/next slide previews, speaker notes, live refresh, slide overview, and a synchronized audience window |
-| [**MarkdStage CLI**](cli.md) | Working in a terminal, CI, Codex, or Claude Code | Presenting with live reload, deck validation, 16:9 clipping diagnostics, PNG capture, PDF export, and portable Agent Skills |
+| [**MarkdStage CLI**](cli.md) | Working in a terminal, CI, Codex, or Claude Code | Presenting with live reload, deck validation, 16:9 clipping diagnostics, PNG capture, PDF and editable PowerPoint export, and portable Agent Skills |
 
-Both surfaces support Markdown, syntax-highlighted code, Mermaid, Architecture DSL, local images,
-speaker notes, and the built-in dark, light, and Microsoft themes.
+All three surfaces support Markdown, syntax-highlighted code, Mermaid, Architecture DSL, local
+images, speaker notes, and the built-in dark, light, and Microsoft themes.
 
 ## Start here
 
@@ -31,7 +31,7 @@ speaker notes, and the built-in dark, light, and Microsoft themes.
 5. Learn the [Markdown authoring format](markdown-authoring.md).
 6. Review [themes and layouts](themes-and-layouts.md).
 7. Add [diagrams and media](diagrams-and-media.md).
-8. Prepare the [presentation and PDF output](presenting-and-export.md).
+8. Prepare the [presentation and PDF or PowerPoint output](presenting-and-export.md).
 
 ## Feature guide
 
@@ -45,7 +45,7 @@ speaker notes, and the built-in dark, light, and Microsoft themes.
 | Separators, front matter, content sizes, notes, code, tables, and assets | [Markdown authoring](markdown-authoring.md) |
 | Dark, light, Microsoft, custom themes, and slide layouts | [Themes and layouts](themes-and-layouts.md) |
 | Mermaid, Architecture DSL, images, and visual Architecture editing | [Diagrams and media](diagrams-and-media.md) |
-| Audience windows, synchronized navigation, clipping checks, and PDF export | [Presenting and export](presenting-and-export.md) |
+| Audience windows, synchronized navigation, clipping checks, and PDF and PowerPoint export | [Presenting and export](presenting-and-export.md) |
 | Terminal commands, exit codes, JSON output, and Agent Skills | [MarkdStage CLI](cli.md) |
 | Common setup, loading, rendering, and editing problems | [Troubleshooting](troubleshooting.md) |
 
