@@ -32,6 +32,34 @@ const WIDE_SLIDE = [
   "```",
 ].join("\n");
 
+for (const mode of ["print", "capture", "pptx"]) {
+  test(`${mode} output excludes export notifications and live announcements`, async ({ page }) => {
+    const harness = await startHarness({ slides: [SHORT_SLIDE] });
+    try {
+      await page.goto(`${harness.url}/?${mode}=1&token=${harness.printToken}&index=0`, {
+        waitUntil: "load",
+      });
+      await expect(page.locator("html")).toHaveAttribute(`data-${mode}-ready`, "true");
+      await page.evaluate(() => document.fonts.ready);
+      const before = await page.screenshot({ animations: "disabled" });
+      await page.evaluate(() => {
+        document.getElementById("exportNotification").hidden = false;
+        document.getElementById("exportNotificationMessage").textContent = "PDF saved: slides.pdf.";
+        document.getElementById("exportNotificationClose").hidden = false;
+        document.getElementById("exportStatus").textContent = "Saved to: D:\\Exports\\slides.pdf";
+        document.getElementById("exportErrorStatus").textContent = "Previous export error";
+      });
+      for (const id of ["exportNotification", "exportStatus", "exportErrorStatus"]) {
+        await expect(page.locator(`#${id}`)).toHaveCSS("display", "none");
+      }
+      const after = await page.screenshot({ animations: "disabled" });
+      expect(after.equals(before)).toBe(true);
+    } finally {
+      await harness.close();
+    }
+  });
+}
+
 test("print readiness reports bounded PDF layout diagnostics", async ({ page }) => {
   const slides = [SHORT_SLIDE, TALL_SLIDE, WIDE_SLIDE];
   const harness = await startHarness({ slides });

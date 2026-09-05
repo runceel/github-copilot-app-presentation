@@ -447,6 +447,24 @@ footer .page{color:var(--accent-strong);font-weight:600;background:var(--accent-
      color:#fff;background:#a4262c;border:1px solid #f1aeb5;
      box-shadow:0 6px 22px rgba(0,0,0,.25);font-size:14px;font-weight:650;}
 .layout-warning[hidden]{display:none;}
+.export-notification{position:fixed;top:14px;left:14px;z-index:45;
+     display:flex;align-items:flex-start;gap:12px;width:min(420px,calc(100vw - 28px));
+     padding:14px;border:1px solid var(--border);border-left:4px solid var(--accent-strong);
+     border-radius:8px;background:var(--surface);color:var(--fg);
+     box-shadow:0 6px 22px rgba(0,0,0,.25);font-size:14px;line-height:1.5;}
+.export-notification[hidden],.export-notification-path[hidden]{display:none;}
+.export-notification[data-state="error"]{border-left-color:#d13438;}
+.export-notification-content{min-width:0;max-height:min(40vh,320px);overflow:auto;
+     overflow-wrap:anywhere;user-select:text;}
+.export-notification-message{margin:0;font-weight:650;}
+.export-notification-path{margin:8px 0 0;}
+.export-notification-path:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;}
+.export-notification>.nav-btn{flex:none;margin-left:auto;}
+body.presenter-mode .export-feedback,
+body.preview-mode .export-feedback,
+body.capture-mode .export-feedback,
+body.pptx-mode .export-feedback,
+body.print-mode .export-feedback{display:none!important;}
 body.presenter-mode .nav{opacity:0;}
 body.presenter-mode .nav:hover,body.presenter-mode .nav:focus-within{opacity:1;}
 body.presenter-mode #navPresent{display:none;}
@@ -697,6 +715,7 @@ body.pptx-slide-artwork-mode .deck:not(.pptx-layout-template)>.theme-cover-logo{
 /* ===== Headless PDF export ===== */
 @page{size:13.333333in 7.5in;margin:0;}
 @media print{
+  .export-feedback{display:none!important;}
   /* The screen rules clip everything to one viewport; printing needs the whole
      stack of pages to flow, so the scroll containment is lifted here. */
   html,body{width:1280px;height:auto;overflow:visible;}
@@ -717,6 +736,10 @@ body.pptx-slide-artwork-mode .deck:not(.pptx-layout-template)>.theme-cover-logo{
 }
 
 @media (forced-colors:active){
+  .export-notification{background:Canvas;color:CanvasText;border-color:CanvasText;}
+  .export-notification[data-state="error"]{border-left-color:CanvasText;}
+  .export-notification .nav-btn:focus-visible,
+  .export-notification-path:focus-visible{outline-color:Highlight;}
   body{background:Canvas;color:CanvasText;}
   .deck{background:Canvas!important;color:CanvasText;border:1px solid CanvasText;}
   .deck::before{background:Highlight;}
