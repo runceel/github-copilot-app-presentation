@@ -29,11 +29,11 @@
   "architectureAlt": "An architecture diagram connecting a browser, API, and database, with positions, icons, and connectors defined in Architecture DSL.",
   "markdownDescription": "Write headings, text, bullet lists, and code blocks in Markdown and display them as slides. Code blocks support syntax highlighting.",
   "architectureDescription": "Create architecture diagrams by writing JSON-based Architecture DSL inside Markdown. You can specify node positions, icons, connectors, and more.",
-  "editorTitle": "Edit diagrams visually",
+  "editorTitle": "Visual architecture diagram editing",
   "editorDescription": "The Architecture Editor lets you edit nodes and connectors visually. Saving updates the Architecture DSL in your Markdown file.",
   "editorAlt": "The MarkdStage Architecture Editor, with an API node selected and its position and style available for editing.",
   "editorLink": "Diagrams & media guide",
-  "workflowTitle": "Create, present, and export slides",
+  "workflowTitle": "Slide creation and presentation workflow",
   "steps": [
     {
       "title": "Write in Markdown.",

@@ -29,11 +29,11 @@
   "architectureAlt": "ブラウザー、API、データベースを接続した構成図。位置、アイコン、接続線を Architecture DSL で指定している。",
   "markdownDescription": "見出し・文章・箇条書き・コードブロックなどを Markdown で記述し、スライドとして表示できます。コードブロックはシンタックスハイライトに対応しています。",
   "architectureDescription": "Markdown 内に JSON 形式の Architecture DSL を記述して、構成図を作成できます。ノードの位置・アイコン・接続線などを指定できます。",
-  "editorTitle": "図を画面上で編集",
+  "editorTitle": "構成図のビジュアル編集",
   "editorDescription": "Architecture Editor では、ノードや接続線を画面上で編集できます。保存すると、変更内容が Markdown 内の Architecture DSL に反映されます。",
   "editorAlt": "MarkdStage の Architecture Editor。構成図の API ノードが選択され、位置やスタイルを編集できる。",
   "editorLink": "図とメディアのガイド",
-  "workflowTitle": "スライドの作成から発表・出力まで",
+  "workflowTitle": "スライド作成・発表の流れ",
   "steps": [
     {
       "title": "Markdownで作成",
