@@ -1,7 +1,7 @@
 {
   "lang": "en",
   "locale": "en_US",
-  "title": "MarkdStage — Markdown, ready for the stage.",
+  "title": "MarkdStage — Markdown presentation tool with editable PowerPoint export",
   "description": "An open-source tool for creating slides from Markdown. Available in GitHub Copilot Canvas, a Windows app, and the CLI, with a presentation window and PDF/PowerPoint export.",
   "skip": "Skip to content",
   "navLabel": "Main navigation",
@@ -47,7 +47,7 @@
     },
     {
       "title": "Present and share.",
-      "body": "View speaker notes on the presenter screen while displaying slides on another screen. You can also export to PDF or to PowerPoint with some elements remaining editable.",
+      "body": "View speaker notes on the presenter screen while displaying slides on another screen. You can also export to PDF, or to PowerPoint where text, tables, code, and diagrams stay editable.",
       "detail": "Speaker notes · PDF · PowerPoint"
     }
   ],
@@ -56,7 +56,7 @@
   "cliTitle": "CLI",
   "cliDescription": "Preview, present, validate, and export slides from the command line. The GitHub Copilot App is not required, and you can also use the CLI from Codex or Claude Code.",
   "cliRequirements": "Requires Node.js 24 or later and Microsoft Edge, Google Chrome, or Chromium.",
-  "cliNext": "Create slides.md and run the command above. Select “Start presentation” in the screen that opens to launch the presentation window.",
+  "cliNext": "Save your Markdown as slides.md and run the command above. If you do not have a deck yet, get one from “Download Markdown” in the Explore section. Select “Start presentation” in the screen that opens to launch the presentation window.",
   "cliLink": "CLI guide",
   "desktopTitle": "Windows Desktop",
   "desktopDescription": "A Windows app that opens Markdown files and displays slides. View the current slide, next slide, and speaker notes while presenting. The GitHub Copilot App is not required.",

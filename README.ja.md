@@ -25,6 +25,7 @@
   <a href="https://runceel.github.io/markdstage/">紹介サイト</a> |
   <a href="#canvas-extension">Canvas Extension</a> |
   <a href="#desktop">Desktop</a> |
+  <a href="#cli">CLI</a> |
   <a href="#community-macos-app">macOS アプリ</a> |
   <a href="#examples">表示例</a> |
   <a href="#markdown-format">Markdown 形式</a> |
@@ -33,8 +34,9 @@
 </p>
 
 MarkdStage は、Markdown をそのまま洗練されたスライドに変換するオープンソースのプレゼンテーションツールです。
-編集、操作が同期するプレゼンテーション、スピーカーノート、PDF エクスポートに対応しています。
-GitHub Copilot ネイティブの Canvas Extension とスタンドアロンの Windows アプリは同じレンダラーで描画するため、
+編集、操作が同期するプレゼンテーション、スピーカーノート、PDF エクスポート、そしてテキスト・表・
+コード・図が編集可能なまま残る PowerPoint エクスポートに対応しています。
+GitHub Copilot ネイティブの Canvas Extension、スタンドアロンの Windows アプリ、コマンドラインインターフェイスは同じレンダラーで描画するため、
 最初の下書きから本番の登壇まで、Markdown を正本として扱えます。
 
 ## MarkdStage を選ぶ理由
@@ -42,7 +44,7 @@ GitHub Copilot ネイティブの Canvas Extension とスタンドアロンの W
 - **Markdown がソース**: 独自形式に乗り換えず、`.md` をそのまま正本として使い続けられます
 - **書いたらすぐに発表**: Canvas でも Desktop でも、ファイルを開けばそのままスライドになります
 - **技術的な内容をそのまま見せられる**: コード、Mermaid、Architecture DSL、画像、表、スピーカーノートに対応します
-- **どこで見ても同じ仕上がり**: Canvas、投影用ウィンドウ、Desktop、PDF を同じレンダラーで描画します
+- **どこで見ても同じ仕上がり**: Canvas、投影用ウィンドウ、Desktop、PDF、PowerPoint エクスポートを同じレンダラーで描画します。コードブロックは PowerPoint 上でも編集可能なテキストのまま残ります
 - **書き出す前に PDF への収まりを確認できる**: 固定 16:9 レイアウトをプレビューしてクリッピングを検出し、気になるページだけを画像で確かめられます
 - **発表に集中できる操作**: ボタン、キーボード、対応環境では Surface Pen でスライドを送れます
 
@@ -50,8 +52,8 @@ GitHub Copilot ネイティブの Canvas Extension とスタンドアロンの W
 
 ## Markdown をステージへ
 
-GitHub Copilot Canvas、投影用ウィンドウ、Desktop アプリ、PDF エクスポートは、
-すべて同じ Markdown レンダラーで描画されます。
+GitHub Copilot Canvas、投影用ウィンドウ、Desktop アプリ、CLI、PDF エクスポート、編集可能な
+PowerPoint エクスポートは、すべて同じ Markdown レンダラーで描画されます。
 
 <table>
   <tr>
@@ -95,7 +97,7 @@ MarkdStage Canvas は、表示中のデッキと Architecture DSL を GitHub Cop
 | **MarkdStage Canvas** | GitHub Copilot に Markdown の要約やスライド化を任せるか、**More controls > Open Markdown** から直接読み込みます |
 | **MarkdStage Desktop** | GitHub Copilot を開かずに、Markdown、次のスライド、スピーカーノートを手元で見ながら Windows で発表します |
 | **MarkdStage CLI** | Canvas を使わずに、ターミナル、CI、Codex、Claude Code から発表・検証・取得・エクスポートします |
-| **MarkStageForMac** | コミュニティ製の macOS ネイティブアプリで発表します |
+| **MarkStageForMac**（第三者製） | コミュニティ製の macOS ネイティブアプリで発表します。本リポジトリの開発・サポート対象外です |
 
 <a id="canvas-extension"></a>
 
@@ -119,7 +121,7 @@ Extension は利用者の環境でローカルのコードを実行します。�
 1. `slides.md` を編集し、空行の後の `---` でスライドを区切ります。
 2. Copilot に「`slides.md` を使ってこのデッキをプレゼンテーションしてください」と依頼します。
 3. MarkdStage Canvas の **◀ ▶**、**矢印キー**、または **☰ スライド一覧**でスライドを送ります。
-4. PDF に書き出す前に **More controls > Output preview** で確認します。Copilot に `inspect_layout` を先に実行させれば、確認が必要なページだけを PNG プレビューにできます。
+4. PDF や PowerPoint に書き出す前に **More controls > Output preview** で確認します。Copilot に `inspect_layout` を先に実行させれば、確認が必要なページだけを PNG プレビューにできます。
 
 Canvas の **More controls > Open Markdown** か `I` キーを使えば、AI を介さずにワークスペースの Markdown をそのまま開けます。
 Git リポジトリではリポジトリルート、それ以外では現在のセッションで開いているフォルダーが
@@ -144,6 +146,8 @@ Windows x64 / ARM64 向けのポータブルビルドと SHA-256 チェックサ
 - [MarkdStage-win-x64.zip](https://github.com/runceel/markdstage/releases/download/v3.2.0/MarkdStage-win-x64.zip)
 - [MarkdStage-win-arm64.zip](https://github.com/runceel/markdstage/releases/download/v3.2.0/MarkdStage-win-arm64.zip)
 
+<a id="cli"></a>
+
 ## CLI を使う
 
 [MarkdStage CLI](./docs/user-guide/ja/cli.md) は Canvas なしで同じレンダラーを実行します。
@@ -156,6 +160,7 @@ npx @markdstage/markdstage preview slides.md --watch
 npx @markdstage/markdstage validate slides.md --json
 npx @markdstage/markdstage inspect slides.md
 npx @markdstage/markdstage export slides.md --output slides.pdf
+npx @markdstage/markdstage export slides.md --output slides.pptx
 ```
 
 `present` は発表者用ダッシュボードを開きます。そこで **Start presentation** を選ぶと、
@@ -198,7 +203,9 @@ layout: title
 
 先頭のフロントマターがデッキ全体の設定になります。各スライドのフロントマターでは、
 `layout`、`size`、`theme` などを個別に上書きできます。スピーカーノートは、コードフェンスの外側で
-スライドに直接書いた HTML コメントに記述します。発表者ビューにだけ表示されます。
+スライドに直接書いた HTML コメントに記述します。ノートは発表者ビューに表示され、PowerPoint
+エクスポートでは対応するノートペインに読みやすいプレーンテキストとして書き出されます。
+通常のスライド、投影用ウィンドウ、PDF 出力には表示されません。
 
 ## リポジトリ構成
 

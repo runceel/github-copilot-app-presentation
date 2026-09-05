@@ -117,8 +117,9 @@ Explain the rollback plan before showing the command.
 -->
 ```
 
-ノートの中でも Markdown を使えます。ノートは Canvas の発表者ビューと Desktop に出ますが、
-通常のスライド、投影用ウィンドウ、PDF には出ません。
+ノートの中でも Markdown を使えます。ノートは Canvas の発表者ビュー、Desktop のメインウィンドウ、
+CLI の発表者ビューに出るほか、PowerPoint エクスポートでは各スライドのノート欄にプレーンテキストとして
+書き出されます。通常のスライド、投影用ウィンドウ、PDF には出ません。
 
 コードフェンスの中のコメントと `slide-size` ディレクティブは、ノートとして扱いません。
 

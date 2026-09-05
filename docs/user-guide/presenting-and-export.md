@@ -2,24 +2,24 @@
 
 > 日本語版: [日本語](ja/presenting-and-export.md)
 
-Canvas and Desktop use the same renderer, so the audience output stays consistent. The available
-preparation and export tools differ by surface.
+Canvas, Desktop, and the CLI use the same renderer, so the audience output stays consistent. The
+available preparation and export tools differ by surface.
 
 ## Compare presentation features
 
-| Feature | Canvas Extension | Desktop |
-| --- | --- | --- |
-| Current slide | Yes | Yes |
-| Next-slide preview | Presenter view | Main window |
-| Speaker notes | Presenter view | Main window |
-| Slide overview | Yes | Yes |
-| External/audience window | Yes | Yes |
-| Synchronized navigation | Yes | Yes |
-| Fullscreen audience view | `F11` | `F11` |
-| 16:9 clipping preview | Yes | No |
-| PDF export | Yes | No |
-| Editable PowerPoint export | Yes | No |
-| Surface Pen | Supported on Windows | Supported while audience window is open |
+| Feature | Canvas Extension | Desktop | CLI |
+| --- | --- | --- | --- |
+| Current slide | Yes | Yes | Yes |
+| Next-slide preview | Presenter view | Main window | Presenter view |
+| Speaker notes | Presenter view | Main window | Presenter view |
+| Slide overview | Yes | Yes | Yes |
+| External/audience window | Yes | Yes | Yes |
+| Synchronized navigation | Yes | Yes | Yes |
+| Fullscreen audience view | `F11` | `F11` | `F11` |
+| 16:9 clipping preview | Yes | No | `markdstage inspect` |
+| PDF export | Yes | No | `markdstage export --output slides.pdf` |
+| Editable PowerPoint export | Yes | No | `markdstage export --output slides.pptx` |
+| Surface Pen | Supported on Windows | Supported while audience window is open | No |
 
 ## Prepare presenter view
 
@@ -76,29 +76,38 @@ Speaker notes and Architecture editing controls are excluded.
    `markdstage export slides.md --output slides.pptx`.
 4. Open the generated presentation and review every slide.
 
-Headings, paragraphs, lists, links, simple tables, fenced code blocks, supported images, and
-Architecture DSL objects are native PowerPoint content. Code blocks retain editable
-syntax-highlighted runs, indentation, blank lines, monospace typography, backgrounds, borders, and
-accent edges. Each contiguous list is one editable PowerPoint text box, including nested levels, and
-its bullet colors follow the rendered slide theme. Architecture nodes, groups, and connector-label pills are visible AutoShapes with
-their labels stored inside the shape; diagram icons are transparent foreground pictures above those
-shapes. Supported SVG files remain individual pictures. Decorative backgrounds, gradients,
-code-block shadows, Mermaid, unsupported image effects, and unsupported HTML/CSS are preserved as
-individually positioned fallback pictures instead of a full-slide transparent image. The exported
-presentation creates one slide master for each theme used in the deck, with named `title`, `default`,
-`center`, `section`, and `backcover` layouts. Theme-common backgrounds and top bars live in layout
-artwork, while supported cover logos are separate layout pictures. Slide-specific decorations such
-as footer rules, page-number frames, and kicker marks are cropped to their painted bounds. The
-export report lists these fallbacks instead of silently omitting them.
+Native PowerPoint objects stay editable; anything the converter cannot express natively becomes a
+fallback picture that is positioned individually rather than flattened into a full-slide image.
+
+| Markdown element | In PowerPoint |
+| --- | --- |
+| Headings, paragraphs, links | Native editable text |
+| Bullet and numbered lists | One editable text box per contiguous list, including nested levels, with bullet colors from the slide theme |
+| Simple tables | Native editable table |
+| Fenced code blocks | Native text with editable syntax-highlighted runs, indentation, blank lines, monospace typography, backgrounds, borders, and accent edges |
+| Architecture DSL nodes, groups, and connector labels | AutoShapes with their labels stored inside the shape |
+| Architecture DSL icons | Transparent foreground pictures above those shapes |
+| Images, including supported SVG | Individual pictures |
+| Speaker notes | Plain text in the slide's notes pane |
+| Mermaid diagrams | Fallback picture |
+| Decorative backgrounds, gradients, and code-block shadows | Fallback picture |
+| Unsupported image effects and HTML/CSS | Fallback picture |
+
+The export report lists every fallback instead of silently omitting it.
+
+The exported presentation creates one slide master for each theme used in the deck, with named
+`title`, `default`, `center`, `section`, and `backcover` layouts. Theme-common backgrounds and top
+bars live in layout artwork, while supported cover logos are separate layout pictures.
+Slide-specific decorations such as footer rules, page-number frames, and kicker marks are cropped to
+their painted bounds.
 
 Native Japanese text uses Yu Gothic as its primary East Asian font, while Latin text keeps the font
 selected by the rendered slide. Exported native text is marked as not requiring proofing, so
 PowerPoint does not add spelling or grammar underlines.
 
 PowerPoint export uses the same 13.333333 x 7.5 inch page size and frozen in-memory deck snapshot as
-PDF export, including temporary slide replacements and the automatic back cover. Speaker-note
-Markdown is converted to readable plain text in the corresponding PowerPoint notes pane.
-Architecture editing controls are excluded. The result aims for practical fidelity, not
-pixel-perfect Chromium equivalence or general HTML/CSS conversion.
+PDF export, including temporary slide replacements and the automatic back cover. Architecture
+editing controls are excluded. The result aims for practical fidelity, not pixel-perfect Chromium
+equivalence or general HTML/CSS conversion.
 
 [Next: Troubleshooting →](troubleshooting.md)

@@ -7,7 +7,8 @@
 # MarkdStage ユーザーガイド
 
 MarkdStage は Markdown をそのままプレゼンテーション用のスライドにします。同じ Markdown デッキを
-GitHub Copilot Canvas Extension でもスタンドアロンの Windows Desktop アプリでも開けます。
+GitHub Copilot Canvas Extension、スタンドアロンの Windows Desktop アプリ、コマンドラインの CLI の
+いずれでも開けます。
 
 ![Markdown デッキを開いた MarkdStage Canvas Extension](../images/canvas-main.png)
 
@@ -15,12 +16,12 @@ GitHub Copilot Canvas Extension でもスタンドアロンの Windows Desktop �
 
 | 利用環境 | 向いている場面 | 主な機能 |
 | --- | --- | --- |
-| [**Canvas Extension**](canvas-extension.md) | GitHub Copilot と一緒にデッキを作り込む | Markdown 読み込み、自動更新、発表者ビュー、Architecture 編集、16:9 の確認、PDF エクスポート |
+| [**Canvas Extension**](canvas-extension.md) | GitHub Copilot と一緒にデッキを作り込む | Markdown 読み込み、自動更新、発表者ビュー、Architecture 編集、16:9 の確認、PDF と編集可能な PowerPoint のエクスポート |
 | [**MarkdStage Desktop**](desktop.md) | GitHub Copilot を開かずに Windows で発表する | 現在／次のスライドのプレビュー、スピーカーノート、自動更新、スライド一覧、操作が同期する投影用ウィンドウ |
-| [**MarkdStage CLI**](cli.md) | ターミナル、CI、Codex、Claude Code で作業する | 自動更新付きの発表、デッキ検証、16:9 のクリッピング診断、PNG 取得、PDF エクスポート、持ち運べる Agent Skills |
+| [**MarkdStage CLI**](cli.md) | ターミナル、CI、Codex、Claude Code で作業する | 自動更新付きの発表、デッキ検証、16:9 のクリッピング診断、PNG 取得、PDF と編集可能な PowerPoint のエクスポート、持ち運べる Agent Skills |
 
-どちらでも、Markdown、シンタックスハイライト付きコード、Mermaid、Architecture DSL、ローカル画像、
-スピーカーノート、組み込みの dark／light／microsoft テーマを利用できます。
+3 つのいずれでも、Markdown、シンタックスハイライト付きコード、Mermaid、Architecture DSL、
+ローカル画像、スピーカーノート、組み込みの dark／light／microsoft テーマを利用できます。
 
 ## はじめに
 
@@ -31,7 +32,7 @@ GitHub Copilot Canvas Extension でもスタンドアロンの Windows Desktop �
 5. [Markdown の書き方](markdown-authoring.md)を覚えます。
 6. [テーマとレイアウト](themes-and-layouts.md)を確認します。
 7. [図とメディア](diagrams-and-media.md)を追加します。
-8. [プレゼンテーションと PDF 出力](presenting-and-export.md)に備えます。
+8. [プレゼンテーションと PDF／PowerPoint 出力](presenting-and-export.md)に備えます。
 
 ## 機能ガイド
 
@@ -45,7 +46,7 @@ GitHub Copilot Canvas Extension でもスタンドアロンの Windows Desktop �
 | 区切り、フロントマター、コンテンツサイズ、ノート、コード、表、アセット | [Markdown の記述](markdown-authoring.md) |
 | dark、light、microsoft、custom テーマとスライドレイアウト | [テーマとレイアウト](themes-and-layouts.md) |
 | Mermaid、Architecture DSL、画像、画面上での Architecture 編集 | [図とメディア](diagrams-and-media.md) |
-| 投影用ウィンドウ、操作の同期、クリッピングの確認、PDF | [プレゼンテーションとエクスポート](presenting-and-export.md) |
+| 投影用ウィンドウ、操作の同期、クリッピングの確認、PDF と PowerPoint のエクスポート | [プレゼンテーションとエクスポート](presenting-and-export.md) |
 | ターミナルのコマンド、終了コード、JSON 出力、Agent Skills | [MarkdStage CLI](cli.md) |
 | セットアップ、読み込み、表示、編集でよくある問題 | [トラブルシューティング](troubleshooting.md) |
 

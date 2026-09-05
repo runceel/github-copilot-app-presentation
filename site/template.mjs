@@ -39,14 +39,16 @@ export function renderPage({ copy: c, product, sources, siteUrl }) {
         <a class="text-link" href="${prefix}examples/${id}.md" download>${e(c.downloadSource)}${arrow}</a>
       </div>
     </section>`;
+  /*
+   * Design intent, kept in source only. Do not emit into the served HTML.
+   *
+   * THESIS: An opening-night poster for a real Markdown presentation tool, not a grid of feature cards.
+   * OWN-WORLD: Midnight Ink, Paper, one Spotlight Amber focus; the existing hash-and-spotlight mark and Segoe system typography.
+   * STORY: See actual output, inspect its source, choose an entry point, keep the Markdown.
+   * FIRST VIEWPORT: Oversized two-line promise and an immediate start action above a wide, real architecture slide on a lit stage.
+   * FORM: Opening-poster composition; static stage reveal, no scroll hijacking.
+   */
   return `<!doctype html>
-<!--
-THESIS: An opening-night poster for a real Markdown presentation tool, not a grid of feature cards.
-OWN-WORLD: Midnight Ink, Paper, one Spotlight Amber focus; the existing hash-and-spotlight mark and Segoe system typography.
-STORY: See actual output, inspect its source, choose an entry point, keep the Markdown.
-FIRST VIEWPORT: Oversized two-line promise and an immediate start action above a wide, real architecture slide on a lit stage.
-FORM: Opening-poster composition, grounded candidate 4, seed 44ef8c4b; static stage reveal, no scroll hijacking. User-confirmed.
--->
 <html lang="${e(c.lang)}">
 <head>
   <meta charset="utf-8">
@@ -77,7 +79,7 @@ FORM: Opening-poster composition, grounded candidate 4, seed 44ef8c4b; static st
 <body>
   <a class="skip-link" href="#main">${e(c.skip)}</a>
   <header class="header wrap">
-    <a class="wordmark" href="${prefix}" aria-label="MarkdStage">
+    <a class="wordmark" href="./" aria-label="MarkdStage">
       <img src="${asset("mark.svg")}" alt="" width="38" height="38">
       <span>Markd<span class="wordmark-accent">Stage</span></span>
     </a>
