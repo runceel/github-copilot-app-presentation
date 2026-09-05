@@ -72,9 +72,17 @@
       </section>
     </div>
     <span id="presentStatus" class="sr-only" aria-live="polite"></span>
-    <span id="exportStatus" class="sr-only" aria-live="polite"></span>
     <span id="sourceStatus" class="sr-only" aria-live="polite"></span>
   </nav>
+  <span id="exportStatus" class="export-feedback sr-only" role="status" aria-live="polite" aria-atomic="true"></span>
+  <span id="exportErrorStatus" class="export-feedback sr-only" role="alert" aria-atomic="true"></span>
+  <section id="exportNotification" class="export-feedback export-notification" aria-label="Export notification" hidden>
+    <div class="export-notification-content">
+      <p id="exportNotificationMessage" class="export-notification-message"></p>
+      <p id="exportNotificationPath" class="export-notification-path" tabindex="0" hidden></p>
+    </div>
+    <button id="exportNotificationClose" class="nav-btn" type="button" aria-label="Dismiss export notification" hidden>&#10005;</button>
+  </section>
   <div id="layoutWarning" class="layout-warning" role="status" aria-live="polite" hidden></div>
 
   <section id="presenterView" class="presenter-view" hidden aria-label="Presenter view">

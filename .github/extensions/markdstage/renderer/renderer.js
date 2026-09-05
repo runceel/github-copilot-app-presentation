@@ -2790,8 +2790,10 @@ let pptxExportAvailable = false;
 let markdownImportAvailable = false;
 let presenterViewOpen = false;
 let presenterViewRequested = false;
-let pdfExportPending = false;
-let pptxExportPending = false;
+let exportPending = false;
+let exportNotificationTimer = null;
+let exportNotificationRemaining = 0;
+let exportNotificationStarted = 0;
 
 // Derive a short overview title from a slide fragment: first heading, else first
 // non-empty body line, trimmed. Mirrors the skill's title rule.
@@ -3450,93 +3452,109 @@ function updatePresenterButton(running, message = "") {
   syncMoreControls();
 }
 
-async function exportPdfFromCanvas() {
-  if (!pdfExportAvailable || pdfExportPending || pptxExportPending) return;
-  pdfExportPending = true;
-  const button = document.getElementById("navExport");
-  const pptxButton = document.getElementById("navExportPptx");
-  const status = document.getElementById("exportStatus");
-  if (button) button.disabled = true;
-  if (pptxButton) pptxButton.disabled = true;
-  if (status) status.textContent = "Saving PDF.";
+function pauseExportNotification() {
+  if (exportNotificationTimer === null) return;
+  clearTimeout(exportNotificationTimer);
+  exportNotificationTimer = null;
+  exportNotificationRemaining = Math.max(
+    0,
+    exportNotificationRemaining - (performance.now() - exportNotificationStarted),
+  );
+}
 
-  try {
-    const response = await fetch("./export", {
-      method: "POST",
-      headers: { Accept: "application/json" },
-      cache: "no-store",
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data.message || `PDF export failed (${response.status}).`);
-    }
-    const filename = data.path ? data.path.split(/[\\/]/).pop() : "PDF";
-    const message = `Saved ${filename}.`;
-    if (status) status.textContent = message;
-    if (button) {
-      button.dataset.state = "active";
-      button.title = message;
-    }
-    syncMoreControls();
-  } catch (error) {
-    const message = error?.message || "Could not save the PDF.";
-    console.error("PDF export failed", error);
-    if (status) status.textContent = message;
-    if (button) {
-      button.dataset.state = "error";
-      button.title = message;
-    }
-    syncMoreControls();
-  } finally {
-    pdfExportPending = false;
-    if (button) button.disabled = false;
-    if (pptxButton) pptxButton.disabled = false;
+function dismissExportNotification() {
+  const notification = document.getElementById("exportNotification");
+  const restoreFocus = notification.contains(document.activeElement);
+  pauseExportNotification();
+  exportNotificationRemaining = 0;
+  notification.hidden = true;
+  document.getElementById("exportStatus").textContent = "";
+  document.getElementById("exportErrorStatus").textContent = "";
+  if (restoreFocus) {
+    const more = document.getElementById("navMore");
+    (more.getClientRects().length ? more : document.body).focus();
   }
 }
 
-async function exportPptxFromCanvas() {
-  if (!pptxExportAvailable || pdfExportPending || pptxExportPending) return;
-  pptxExportPending = true;
-  const button = document.getElementById("navExportPptx");
+function resumeExportNotification() {
+  const notification = document.getElementById("exportNotification");
+  if (
+    notification.hidden ||
+    notification.dataset.state !== "success" ||
+    notification.matches(":hover, :focus-within") ||
+    exportNotificationTimer !== null
+  ) {
+    return;
+  }
+  exportNotificationStarted = performance.now();
+  exportNotificationTimer = setTimeout(dismissExportNotification, exportNotificationRemaining);
+}
+
+function showExportNotification(state, message, path = "") {
+  pauseExportNotification();
+  const notification = document.getElementById("exportNotification");
+  const location = document.getElementById("exportNotificationPath");
+  notification.dataset.state = state;
+  document.getElementById("exportNotificationMessage").textContent = message;
+  location.textContent = path ? `Saved to: ${path}` : "";
+  location.hidden = !path;
+  document.getElementById("exportNotificationClose").hidden = state === "pending";
+  notification.hidden = false;
+  const announcement = path ? `${message} Saved to: ${path}` : message;
+  document.getElementById("exportStatus").textContent = state === "error" ? "" : announcement;
+  document.getElementById("exportErrorStatus").textContent = state === "error" ? announcement : "";
+  exportNotificationRemaining = state === "success" ? 8000 : 0;
+  resumeExportNotification();
+}
+
+async function exportFromCanvas(format) {
+  const isPdf = format === "pdf";
+  if (exportPending || !(isPdf ? pdfExportAvailable : pptxExportAvailable)) return;
+  exportPending = true;
+  const label = isPdf ? "PDF" : "PowerPoint";
   const pdfButton = document.getElementById("navExport");
-  const status = document.getElementById("exportStatus");
-  if (button) button.disabled = true;
-  if (pdfButton) pdfButton.disabled = true;
-  if (status) status.textContent = "Saving editable PowerPoint.";
+  const pptxButton = document.getElementById("navExportPptx");
+  const button = isPdf ? pdfButton : pptxButton;
+  const idleTitle = button.title;
+  pdfButton.disabled = true;
+  pptxButton.disabled = true;
+  delete button.dataset.state;
+  button.title = `Saving ${label}.`;
+  showExportNotification("pending", `Saving ${label}...`);
+  syncMoreControls();
 
   try {
-    const response = await fetch("./export-pptx", {
+    const response = await fetch(isPdf ? "./export" : "./export-pptx", {
       method: "POST",
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(data.message || `PowerPoint export failed (${response.status}).`);
+    const data = await response.json();
+    if (!response.ok || data?.ok !== true) {
+      throw new Error(
+        (typeof data?.message === "string" && data.message) ||
+        `${label} export failed (${response.status}).`,
+      );
     }
-    const filename = data.path ? data.path.split(/[\\/]/).pop() : "PowerPoint";
+    if (typeof data.path !== "string" || !data.path.trim() || !data.path.split(/[\\/]/).pop()) {
+      throw new Error(`${label} export returned an invalid save location.`);
+    }
+    const filename = data.path.split(/[\\/]/).pop();
     const fallback =
-      data.fallbackCount > 0 ? ` ${data.fallbackCount} fallback item(s) preserved.` : "";
-    const message = `Saved ${filename}.${fallback}`;
-    if (status) status.textContent = message;
-    if (button) {
-      button.dataset.state = "active";
-      button.title = message;
-    }
-    syncMoreControls();
+      !isPdf && data.fallbackCount > 0 ? ` ${data.fallbackCount} fallback item(s) preserved.` : "";
+    const message = `${label} saved: ${filename}.${fallback}`;
+    showExportNotification("success", message, data.path);
   } catch (error) {
-    const message = error?.message || "Could not save the PowerPoint presentation.";
-    console.error("PowerPoint export failed", error);
-    if (status) status.textContent = message;
-    if (button) {
-      button.dataset.state = "error";
-      button.title = message;
-    }
-    syncMoreControls();
+    const message = `Could not save ${label}. ${error?.message || "Export failed."}`;
+    console.error(`${label} export failed`, error);
+    showExportNotification("error", message);
   } finally {
-    pptxExportPending = false;
-    if (button) button.disabled = false;
-    if (pdfButton) pdfButton.disabled = false;
+    exportPending = false;
+    pdfButton.disabled = false;
+    pptxButton.disabled = false;
+    delete button.dataset.state;
+    button.title = idleTitle;
+    syncMoreControls();
   }
 }
 
@@ -3982,8 +4000,8 @@ function wireControls() {
   bind("navPresent", openPresenterWindow, { closeMore: true });
   bind("navPresenterView", openPresenterView, { closeMore: true });
   bind("navFixedPreview", toggleFixedPreviewMode, { closeMore: true });
-  bind("navExport", exportPdfFromCanvas, { closeMore: true });
-  bind("navExportPptx", exportPptxFromCanvas, { closeMore: true });
+  bind("navExport", () => exportFromCanvas("pdf"), { closeMore: true });
+  bind("navExportPptx", () => exportFromCanvas("pptx"), { closeMore: true });
   bind("navImport", toggleImportPicker, { closeMore: true });
   bind("navSourceMode", toggleSourceMode, { closeMore: true });
   bind("overviewClose", closeOverview);
@@ -3994,6 +4012,13 @@ function wireControls() {
   bind("presenterListButton", openOverview);
   bind("presenterToggleButton", togglePresenterWindow);
   bind("presenterReturnButton", closePresenterView);
+
+  const exportNotification = document.getElementById("exportNotification");
+  document.getElementById("exportNotificationClose").addEventListener("click", dismissExportNotification);
+  exportNotification.addEventListener("pointerenter", pauseExportNotification);
+  exportNotification.addEventListener("pointerleave", resumeExportNotification);
+  exportNotification.addEventListener("focusin", pauseExportNotification);
+  exportNotification.addEventListener("focusout", () => queueMicrotask(resumeExportNotification));
 
   const importFilter = document.getElementById("importFilter");
   if (importFilter) {

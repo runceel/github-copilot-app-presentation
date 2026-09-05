@@ -108,6 +108,16 @@ The themed slide is displayed and updates automatically
   notes are converted from Markdown to readable plain text in the corresponding
   PowerPoint notes pane. AI may call `export_pptx` with another
   workspace-confined `.pptx` path.
+- **Both export buttons show a visible notification outside More controls.**
+  Progress remains visible while saving, and both buttons are disabled until
+  the operation finishes. Export buttons return to their normal appearance and
+  tooltips after success or failure; the notification carries the result.
+  Success appears only after the file has been saved,
+  with its file name and selectable save location. It dismisses after eight
+  seconds, pausing while hovered or keyboard-focused. Errors remain until
+  dismissed or another export starts. Success and error notifications also have
+  a dismiss button and are announced to screen readers. Notifications never
+  appear in exported files or the external presentation window.
 - Use **More controls > Output preview** to letterbox the current slide inside
   the canvas with
   the same fixed 1280×720 typography, spacing, diagram limits, and clipping used
