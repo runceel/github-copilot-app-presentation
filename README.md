@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <a href="http://okazuki.jp/markdstage/en/">Website</a> |
+  <a href="https://runceel.github.io/markdstage/en/">Website</a> |
   <a href="#use-the-canvas-extension">Canvas Extension</a> |
   <a href="#use-markdstage-desktop">Desktop</a> |
   <a href="#community-macos-app">macOS app</a> |
@@ -209,7 +209,7 @@ PowerPoint notes pane. They remain absent from regular slides, the audience wind
 
 ## Website development
 
-The [website](http://okazuki.jp/markdstage/en/) is generated from `site/` using
+The [website](https://runceel.github.io/markdstage/en/) is generated from `site/` using
 Node.js 24 or later, with no build dependencies:
 
 ```console

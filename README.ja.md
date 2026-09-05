@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <a href="http://okazuki.jp/markdstage/">紹介サイト</a> |
+  <a href="https://runceel.github.io/markdstage/">紹介サイト</a> |
   <a href="#canvas-extension">Canvas Extension</a> |
   <a href="#desktop">Desktop</a> |
   <a href="#community-macos-app">macOS アプリ</a> |
@@ -215,7 +215,7 @@ layout: title
 
 ## 紹介サイトの開発
 
-[紹介サイト](http://okazuki.jp/markdstage/) は `site/` から静的に生成します。
+[紹介サイト](https://runceel.github.io/markdstage/) は `site/` から静的に生成します。
 ビルドに追加パッケージは不要です。Node.js 24 以降で次を実行します。
 
 ```console
