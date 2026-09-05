@@ -43,6 +43,7 @@ const SKIP_DIRECTORIES = new Set([
   "test-results",
   "playwright-report",
   "dist",
+  "_site",
 ]);
 
 async function collectMarkdownFiles(directory) {
@@ -195,28 +196,33 @@ function assertSnapshotClose(actual, expected, label) {
   walk(actual, expected, "snapshot");
 }
 
-test("real data contains layout-managed nodes, so this test is not vacuous", () => {
+test("every real layout manages at least one box, so this test is not vacuous", () => {
   assert.ok(sources.length > 0, "no architecture sources were collected");
 
   let managed = 0;
-  let total = 0;
   let groups = 0;
-  for (const { source } of sources) {
+  for (const { label, source } of sources) {
     const model = parseArchitecture(source);
-    groups += layoutGroups(model).length;
+    const groupIds = layoutGroups(model);
+    const managedOwners = new Set();
+    groups += groupIds.length;
     for (const element of model.elements) {
-      if (element.type !== "node" && element.type !== "group") continue;
-      total += 1;
-      if (describePlacement(model, element.id).reason === "layout-managed") managed += 1;
+      if (!element.id) continue;
+      const placement = describePlacement(model, element.id);
+      if (placement.reason !== "layout-managed") continue;
+      managed += 1;
+      managedOwners.add(placement.layoutOwner);
+    }
+    for (const groupId of groupIds) {
+      assert.ok(
+        managedOwners.has(groupId),
+        `${label} / ${groupId}: layout does not manage any elements`,
+      );
     }
   }
 
-  // Exact counts would break whenever diagrams are added; require only a meaningful proportion.
   assert.ok(groups > 0, "no groups have layouts");
-  assert.ok(
-    managed / total > 0.4,
-    `layout-managed proportion is lower than expected: ${managed}/${total}`,
-  );
+  assert.ok(managed > 0, "no elements are layout-managed");
 });
 
 test("releasing a layout does not move diagram geometry by even 1px for all real data", () => {
