@@ -1,0 +1,8 @@
+{
+  "name": "MarkdStage",
+  "tagline": "Markdown, ready for the stage.",
+  "repository": "https://github.com/runceel/markdstage",
+  "releaseTag": "v3.2.0",
+  "cliCommand": "npx @markdstage/markdstage present slides.md",
+  "macUrl": "https://github.com/07JP27/MarkStageForMac"
+}

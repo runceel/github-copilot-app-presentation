@@ -80,5 +80,12 @@ export default defineConfig({
       workers: 1,
       fullyParallel: false,
     },
+    {
+      name: "site",
+      testDir: "test/site",
+      testMatch: /.*\.spec\.mjs/,
+      fullyParallel: true,
+      workers: 2,
+    },
   ],
 });
