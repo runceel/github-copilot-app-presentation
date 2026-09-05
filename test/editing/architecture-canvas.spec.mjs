@@ -359,10 +359,15 @@ test("breakpoint changes preserve the focused panel without stale Escape handlin
   await page.setViewportSize({ width: 1300, height: 720 });
   const harness = await openEditor(page);
   try {
-    await page.locator('[data-ref="client"].tree-item').click();
-    await openProperties(page);
     const clientTreeItem = page.locator('[data-ref="client"].tree-item');
-    await clientTreeItem.focus();
+    await clientTreeItem.click();
+    // Move focus in the same task so any deferred panel autofocus runs afterward.
+    await page.getByRole("button", { name: "Properties", exact: true }).evaluate((button) => {
+      button.click();
+      document.querySelector('[data-ref="client"].tree-item').focus();
+      return new Promise((resolve) => requestAnimationFrame(resolve));
+    });
+    await expect(clientTreeItem).toBeFocused();
 
     await page.setViewportSize({ width: 900, height: 720 });
     await expect(page.locator("#elementPanel")).toBeVisible();
@@ -371,6 +376,7 @@ test("breakpoint changes preserve the focused panel without stale Escape handlin
 
     await page.setViewportSize({ width: 1300, height: 720 });
     await expect(page.locator("#elementPanel")).toBeVisible();
+    await expect(page.locator("#inspectorPanel")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page.locator("#elementPanel")).toBeVisible();
     await expect(clientTreeItem).toHaveAttribute("aria-selected", "false");
