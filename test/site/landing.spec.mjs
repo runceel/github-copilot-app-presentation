@@ -23,6 +23,10 @@ for (const basePath of ["/", "/markdstage/"]) {
         await expect(page.locator(".languages [aria-current='page']")).toHaveAttribute("lang", lang);
         await expectNoHorizontalOverflow(page);
         await expectVisibleImagesLoaded(page);
+        if (lang === "ja") {
+          await expect(page.locator("#editor-title")).toHaveCSS("line-break", "strict");
+          await expect(page.locator("#editor-title")).toHaveCSS("word-break", "auto-phrase");
+        }
 
         await page.locator("[data-example='architecture']").click();
         await expectVisibleImagesLoaded(page);
