@@ -142,7 +142,7 @@ function toggleResponsivePanel(panel) {
     opened = desktopInspectorOpen;
   }
   syncResponsivePanels();
-  if (opened) requestAnimationFrame(() => focusPanel(panel));
+  if (opened) focusPanel(panel);
 }
 
 function focusPanel(panel) {
