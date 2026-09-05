@@ -16,6 +16,7 @@
 }
 * { box-sizing: border-box; }
 html { scroll-behavior: smooth; scroll-padding-top: 32px; }
+:lang(ja) { line-break: strict; word-break: auto-phrase; }
 body { margin: 0; }
 body, button { font-size: 16px; }
 button, a { -webkit-tap-highlight-color: transparent; }
