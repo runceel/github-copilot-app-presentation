@@ -138,5 +138,6 @@ The themed slide is displayed and updates automatically
 
 Users can load workspace Markdown directly with **More controls > Open Markdown** (deterministic splitting without AI; natural-language summarization remains the AI's responsibility). The workspace root is the Git repository root when available, otherwise the folder opened for the current session.
 Use **More controls > Shape editing** to adjust the placement of an existing Architecture diagram. In the CLI, run `markdstage preview slides.md --watch`; it starts in viewing mode and enables the same placement editor plus the detailed Architecture designer. CLI `preview` without `--watch` is read-only. Comprehensive edits affect the source Markdown only when explicitly saved.
+Before drafting Architecture DSL, request `architecture-schema` for the generated authoring contract. Before displaying a diagram, call `markdstage_validate` with explicit `format: "dsl"` and `source`, or `format: "slides"` and one-slide `slides` fragments. This read-only preflight needs no open canvas and does not read or change files.
 
 For details, request `slide-format`, `themes`, `custom-themes`, `theme-schema`, `architecture-dsl`, or `architecture-schema`.

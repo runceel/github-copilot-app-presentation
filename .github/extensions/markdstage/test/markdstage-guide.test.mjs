@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   architectureValidationErrors,
-  createMarkdStageHooks,
+  architectureValidationReport,
   deckValidationFeedback,
   readGuide,
 } from "../markdstage-guide.mjs";
@@ -70,50 +70,6 @@ test("readGuide returns every document-backed topic", async () => {
   assert.match(await readGuide("architecture-dsl"), /dedicated Architecture Editor/);
   assert.match(await readGuide("architecture-dsl"), /explicitly saved/);
   assert.match(await readGuide("architecture-dsl"), /`labelLayer`/);
-});
-
-test("MarkdStage hook primes each session at most once", () => {
-  const hooks = createMarkdStageHooks();
-  const input = { sessionId: "session-a", prompt: "Present slides.md" };
-
-  assert.deepEqual(hooks.onUserPromptSubmitted(input), {
-    additionalContext:
-      "Use the markdstage_guide tool to review the format and schemas before using the MarkdStage canvas.",
-  });
-  assert.equal(hooks.onUserPromptSubmitted(input), undefined);
-  assert.equal(
-    hooks.onUserPromptSubmitted({ sessionId: "session-b", prompt: "This is an ordinary question" }),
-    undefined,
-  );
-  assert.ok(
-    hooks.onUserPromptSubmitted({ sessionId: "session-b", prompt: "Create a deck" })
-      ?.additionalContext,
-  );
-  hooks.onSessionEnd({ sessionId: "session-b" });
-  assert.ok(
-    hooks.onUserPromptSubmitted({ sessionId: "session-b", prompt: "Create a presentation" })
-      ?.additionalContext,
-  );
-});
-
-test("guide use suppresses the hook and session end clears its state", () => {
-  const hooks = createMarkdStageHooks();
-  hooks.onPostToolUse({ sessionId: "session-a", toolName: "markdstage_guide" });
-  assert.equal(
-    hooks.onUserPromptSubmitted({ sessionId: "session-a", prompt: "Create a deck" }),
-    undefined,
-  );
-
-  hooks.onSessionEnd({ sessionId: "session-a" });
-  assert.ok(
-    hooks.onUserPromptSubmitted({ sessionId: "session-a", prompt: "Create a deck" })
-      ?.additionalContext,
-  );
-  hooks.onSessionStart({ sessionId: "session-a" });
-  assert.ok(
-    hooks.onUserPromptSubmitted({ sessionId: "session-a", prompt: "Create a deck" })
-      ?.additionalContext,
-  );
 });
 
 test("deck validation reports missing front matter and architecture errors", () => {
@@ -265,4 +221,71 @@ test("architecture validation can target one slide by zero-based index", () => {
   assert.equal(errors[0].page, 3);
   assert.equal(errors[0].code, "invalid_architecture");
   assert.equal(errors[1].code, "unclosed_architecture_fence");
+});
+
+test("overview explicitly sequences the authoring contract and unloaded preflight", async () => {
+  const guide = await readGuide("overview");
+  assert.match(guide, /Before drafting Architecture DSL, request `architecture-schema`/);
+  assert.match(guide, /Before displaying a diagram, call `markdstage_validate`/);
+  assert.match(guide, /needs no open canvas/);
+});
+
+test("legacy errors stay one per invalid block while feedback includes all canonical errors", () => {
+  const source = JSON.stringify({
+    elements: [
+      {
+        type: "node", id: "a", x: 20, y: 20, width: 200, height: 120,
+        label: "unsupported", subtitle: "unsupported",
+      },
+      { type: "node", id: "b", x: 400, y: 20, width: 200, height: 120 },
+      { type: "connector", from: "a", to: "b", id: "unsupported", text: "unsupported" },
+    ],
+  });
+  const slides = [`---\nlayout: center\n---\n\`\`\`architecture\n${source}\n\`\`\``];
+  const validation = architectureValidationReport(slides);
+  assert.equal(validation.diagnostics.length, 4);
+  const errors = architectureValidationErrors(slides, { validation });
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].code, "invalid_architecture");
+  assert.equal(errors[0].message, validation.diagnostics[0].message);
+  const feedback = deckValidationFeedback(slides, { validation });
+  for (const pointer of [
+    "/elements/0/label", "/elements/0/subtitle", "/elements/2/id", "/elements/2/text",
+  ]) assert.ok(feedback.includes(pointer));
+});
+
+test("supplied validation reports are reused rather than inspecting content twice", () => {
+  const slides = ["```architecture\n{\n```"];
+  const validation = architectureValidationReport(slides);
+  const opaqueSlides = {
+    forEach(callback) { callback("---\nlayout: title\n---", 0); },
+  };
+  assert.equal(architectureValidationErrors(opaqueSlides, { validation }).length, 1);
+  assert.match(deckValidationFeedback(opaqueSlides, { validation }), /invalid JSON/);
+});
+
+test("targeted canonical reports retain actual deck positions without checking other slides", () => {
+  const slides = ["```architecture\n{\n```", "# No diagram", "```architecture\n{\n```"];
+  const report = architectureValidationReport(slides, { index: 2 });
+  assert.equal(report.scope, "slide");
+  assert.equal(report.total, 3);
+  assert.equal(report.blocks.length, 1);
+  assert.equal(report.blocks[0].slideIndex, 2);
+  assert.equal(report.diagnostics[0].page, 3);
+  assert.equal(report.budget.scannedSlides, 1);
+});
+
+test("legacy validation ignores nested example fences and accepts an empty slide list", () => {
+  const slides = ["````text\n```architecture\n{\n```\n````"];
+  assert.deepEqual(architectureValidationErrors(slides), []);
+  assert.deepEqual(architectureValidationErrors([]), []);
+  assert.equal(deckValidationFeedback([]), undefined);
+});
+
+test("legacy Architecture errors do not classify compatibility warnings as invalid diagrams", () => {
+  const slides = ['---\nlayout: title\n---\n```architecture\n{"$schema":42,"elements":[]}\n```'];
+  const validation = architectureValidationReport(slides);
+  assert.equal(validation.valid, true);
+  assert.equal(validation.diagnostics[0].severity, "warning");
+  assert.deepEqual(architectureValidationErrors(slides, { validation }), []);
 });

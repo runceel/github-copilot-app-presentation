@@ -1,17 +1,16 @@
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseArchitecture } from "./renderer/architecture.mjs";
+import { architectureSchemaReference } from "./architecture-reference.mjs";
+import {
+  UNCLOSED_ARCHITECTURE_MESSAGE,
+  validateArchitectureInput,
+} from "./architecture-validation.mjs";
 
 const EXT_DIR = dirname(fileURLToPath(import.meta.url));
 const README_PATH = join(EXT_DIR, "README.md");
-const SCHEMA_PATH = join(EXT_DIR, "schema", "architecture-v1.schema.json");
 const THEME_GUIDE_PATH = join(EXT_DIR, "docs", "custom-theme-authoring.md");
 const THEME_SCHEMA_PATH = join(EXT_DIR, "schema", "theme-v1.json");
-const GUIDE_POINTER =
-  "Use the markdstage_guide tool to review the format and schemas before using the MarkdStage canvas.";
-const PRESENTATION_PROMPT =
-  /\bpresent(?:ation|er|ing)?\b|\bslides?\b|slides?\.md|\bdeck\b/i;
 
 function section(markdown, heading) {
   const lines = markdown.split(/\r?\n/);
@@ -36,44 +35,6 @@ function section(markdown, heading) {
     }
   }
   return lines.slice(start, end).join("\n").trim();
-}
-
-function architectureSchemaSummary(schema) {
-  const defs = schema.$defs;
-  const summary = {
-    root: {
-      required: schema.required,
-      properties: Object.keys(schema.properties),
-      elementTypes: [
-        defs.nodeBase.properties.type.const,
-        defs.groupBase.properties.type.const,
-        defs.connector.properties.type.const,
-      ],
-    },
-    shape: defs.nodeBase.properties.shape.enum,
-    icon: {
-      builtIn: defs.iconName.enum,
-      assetPath: defs.iconAsset.description,
-    },
-    connector: {
-      labelLayer: defs.connector.properties.labelLayer,
-    },
-    style: {
-      keys: Object.keys(defs.style.properties),
-      colors: defs.color.description,
-      themeTokens: defs.themeToken.enum,
-      literalColors: defs.literalColor.description,
-    },
-  };
-  return [
-    "# Architecture DSL v1 schema summary",
-    "",
-    "Key details extracted at runtime from the bundled `schema/architecture-v1.schema.json`.",
-    "",
-    "```json",
-    JSON.stringify(summary, null, 2),
-    "```",
-  ].join("\n");
 }
 
 function themeSchemaSummary(schema) {
@@ -103,6 +64,7 @@ function themeSchemaSummary(schema) {
 }
 
 export async function readGuide(topic = "overview") {
+  if (topic === "architecture-schema") return architectureSchemaReference();
   const readme = await readFile(README_PATH, "utf8");
   switch (topic) {
     case "overview":
@@ -111,6 +73,7 @@ export async function readGuide(topic = "overview") {
         "",
         "Users can load workspace Markdown directly with **More controls > Open Markdown** (deterministic splitting without AI; natural-language summarization remains the AI's responsibility). The workspace root is the Git repository root when available, otherwise the folder opened for the current session.",
         "Use **More controls > Shape editing** to adjust the placement of an existing Architecture diagram. In the CLI, run `markdstage preview slides.md --watch`; it starts in viewing mode and enables the same placement editor plus the detailed Architecture designer. CLI `preview` without `--watch` is read-only. Comprehensive edits affect the source Markdown only when explicitly saved.",
+        "Before drafting Architecture DSL, request `architecture-schema` for the generated authoring contract. Before displaying a diagram, call `markdstage_validate` with explicit `format: \"dsl\"` and `source`, or `format: \"slides\"` and one-slide `slides` fragments. This read-only preflight needs no open canvas and does not read or change files.",
         "",
         "For details, request `slide-format`, `themes`, `custom-themes`, `theme-schema`, `architecture-dsl`, or `architecture-schema`.",
       ].join("\n");
@@ -133,69 +96,15 @@ export async function readGuide(topic = "overview") {
     }
     case "architecture-dsl":
       return section(readme, "## Architecture DSL v1");
-    case "architecture-schema": {
-      const schema = JSON.parse(await readFile(SCHEMA_PATH, "utf8"));
-      return architectureSchemaSummary(schema);
-    }
     default:
       throw new Error(`unknown MarkdStage guide topic: ${topic}`);
   }
-}
-
-export function createMarkdStageHooks() {
-  const primed = new Set();
-  return {
-    onSessionStart: ({ sessionId }) => {
-      primed.delete(sessionId);
-    },
-    onSessionEnd: ({ sessionId }) => {
-      primed.delete(sessionId);
-    },
-    onUserPromptSubmitted: ({ sessionId, prompt }) => {
-      if (primed.has(sessionId) || !PRESENTATION_PROMPT.test(prompt ?? "")) return;
-      primed.add(sessionId);
-      return { additionalContext: GUIDE_POINTER };
-    },
-    onPostToolUse: ({ sessionId, toolName }) => {
-      if (toolName === "markdstage_guide") primed.add(sessionId);
-    },
-  };
 }
 
 export function hasFrontMatter(markdown) {
   const normalized = markdown.replace(/\r\n?/g, "\n").replace(/^[\n \t\uFEFF]+/, "");
   if (!normalized.startsWith("---\n")) return false;
   return normalized.split("\n").slice(1).some((line) => line.trim() === "---");
-}
-
-function architectureSources(markdown) {
-  const sources = [];
-  let fence = "";
-  let lines = [];
-  for (const line of markdown.split(/\r?\n/)) {
-    if (!fence) {
-      const opening = line.match(/^\s*(`{3,}|~{3,})architecture\s*$/i);
-      if (opening) {
-        fence = opening[1];
-        lines = [];
-      }
-      continue;
-    }
-    const closing = new RegExp(`^${fence[0]}{${fence.length},}\\s*$`);
-    if (closing.test(line.trim())) {
-      sources.push(lines.join("\n"));
-      fence = "";
-      lines = [];
-    } else {
-      lines.push(line);
-    }
-  }
-  return {
-    sources,
-    unclosed: Boolean(fence),
-    unclosedBlockIndex: sources.length,
-    unclosedSource: fence ? lines.join("\n") : "",
-  };
 }
 
 function architectureError(slideIndex, blockIndex, code, message) {
@@ -209,56 +118,59 @@ function architectureError(slideIndex, blockIndex, code, message) {
   };
 }
 
-export function architectureValidationErrors(slides, { index } = {}) {
-  const targets = index === undefined
-    ? slides.map((slide, slideIndex) => ({ slide, slideIndex }))
-    : [{ slide: slides[index], slideIndex: index }];
-  const errors = [];
+export function architectureValidationReport(slides, { index, maxDiagnostics } = {}) {
+  if (index !== undefined &&
+      (!Number.isInteger(index) || index < 0 || index >= slides.length)) {
+    throw new RangeError("index must identify a slide in the provided array.");
+  }
+  const report = validateArchitectureInput({
+    format: "slides",
+    slides: index === undefined ? slides : [slides[index]],
+    ...(maxDiagnostics === undefined ? {} : { maxDiagnostics }),
+  });
+  if (index === undefined) return report;
+  const rebase = (item) => typeof item.slideIndex === "number"
+    ? { ...item, slideIndex: item.slideIndex + index, page: item.page + index }
+    : item;
+  return {
+    ...report,
+    scope: "slide",
+    index,
+    page: index + 1,
+    total: slides.length,
+    diagnostics: report.diagnostics.map(rebase),
+    blocks: report.blocks.map(rebase),
+    skipped: report.skipped.map(rebase),
+  };
+}
 
-  for (const { slide, slideIndex } of targets) {
-    const architecture = architectureSources(slide);
-    for (const [blockIndex, source] of architecture.sources.entries()) {
-      try {
-        parseArchitecture(source);
-      } catch (error) {
-        errors.push(
-          architectureError(
-            slideIndex,
-            blockIndex,
-            "invalid_architecture",
-            error?.message || String(error),
-          ),
-        );
+export function architectureValidationErrors(slides, { index, validation } = {}) {
+  if (Array.isArray(slides) && slides.length === 0 && index === undefined && !validation) return [];
+  const report = validation ?? architectureValidationReport(slides, { index });
+  const errors = [];
+  for (const block of report.blocks) {
+    if (!block.dslValid) {
+      const primary = report.diagnostics
+        .slice(block.diagnosticStart, block.diagnosticStart + block.diagnosticCount)
+        .find((diagnostic) => diagnostic.severity === "error");
+      if (primary) {
+        errors.push(architectureError(
+          block.slideIndex, block.blockIndex, "invalid_architecture", primary.message,
+        ));
       }
     }
-    if (architecture.unclosed) {
-      try {
-        parseArchitecture(architecture.unclosedSource);
-      } catch (error) {
-        errors.push(
-          architectureError(
-            slideIndex,
-            architecture.unclosedBlockIndex,
-            "invalid_architecture",
-            error?.message || String(error),
-          ),
-        );
-      }
-      errors.push(
-        architectureError(
-          slideIndex,
-          architecture.unclosedBlockIndex,
-          "unclosed_architecture_fence",
-          "The architecture code fence is not closed. Add ``` at the end.",
-        ),
-      );
+    if (block.closed === false) {
+      errors.push(architectureError(
+        block.slideIndex, block.blockIndex, "unclosed_architecture_fence",
+        UNCLOSED_ARCHITECTURE_MESSAGE,
+      ));
     }
   }
-
   return errors;
 }
 
-export function deckValidationFeedback(slides) {
+export function deckValidationFeedback(slides, { validation } = {}) {
+  if (Array.isArray(slides) && slides.length === 0 && !validation) return undefined;
   const warnings = [];
   slides.forEach((slide, slideIndex) => {
     if (!hasFrontMatter(slide)) {
@@ -267,7 +179,8 @@ export function deckValidationFeedback(slides) {
       );
     }
   });
-  for (const error of architectureValidationErrors(slides)) {
+  const report = validation ?? architectureValidationReport(slides);
+  for (const error of report.diagnostics) {
     if (error.code === "unclosed_architecture_fence") {
       warnings.push(
         `slide ${error.page}: ${error.message}`,
@@ -275,7 +188,14 @@ export function deckValidationFeedback(slides) {
       continue;
     }
     warnings.push(
-      `slide ${error.page}, architecture ${error.architecture}: ${error.message}. Review architecture-dsl and architecture-schema in markdstage_guide.`,
+      `${error.page ? `slide ${error.page}` : "Architecture validation"}${error.architecture ? `, architecture ${error.architecture}` : ""}: ${error.message} [${error.code}${error.pointer ? ` at ${error.pointer}` : ""}]. Review architecture-dsl and architecture-schema in markdstage_guide.`,
+    );
+  }
+  if (!report.complete) {
+    warnings.push(
+      report.truncated
+        ? `Architecture validation is incomplete: inspection limits were reached (${report.budget.limitsReached.join(", ")}). Validate smaller inputs; unchecked blocks are not valid.`
+        : "Architecture validation is incomplete: later stages were skipped after earlier errors. Fix the reported issues and validate again.",
     );
   }
   return warnings.length ? `Slide validation feedback:\n- ${warnings.join("\n- ")}` : undefined;

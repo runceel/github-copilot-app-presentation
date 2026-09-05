@@ -30,8 +30,10 @@ diagnostics listed above.
 
 The `markdstage_guide` tool provides the authoring references through focused topics such as
 `slide-format`, `themes`, `custom-themes`, `theme-schema`, `architecture-dsl`, and
-`architecture-schema`. Canvas actions provide Architecture validation, fixed-layout diagnostics,
-and selected slide captures.
+`architecture-schema`. Before drafting Architecture DSL, retrieve `architecture-schema`: its
+schema-derived reference includes all element fields, conditional requirements, and a complete
+example within 8 KiB UTF-8. The standalone `markdstage_validate` tool checks unloaded content;
+Canvas actions check the displayed snapshot, fixed layout, and selected slide captures.
 
 These capabilities allow Copilot to work from the Markdown grammar and structured measurements
 first, then use images only for issues that require visual judgment.
@@ -46,12 +48,12 @@ For a complete recorded example, follow
 
 1. **Provide the source and objective.** Identify the source file or notes, intended audience,
    presentation purpose, preferred theme, and approximate length.
-2. **Create the complete Markdown deck.** Copilot can consult the MarkdStage guidance, write the
-   slide fragments, and open the full deck in Canvas.
-3. **Review the rendered result.** Check the flow, density, diagrams, speaker notes, and terminology
-   in the active deck.
-4. **Validate structured content.** Architecture DSL can be checked for schema, reference, and
-   placement errors before visual review.
+2. **Create the complete Markdown deck.** Copilot consults the authoring contract and writes all
+   slide fragments.
+3. **Validate before display.** Use `markdstage_validate` to fix independent Architecture DSL
+   problems together. Do not treat an incomplete report as a successful check.
+4. **Open and review the same content.** Save and open the validated fragments without regenerating
+   their DSL. Review flow, density, diagrams, speaker notes, and terminology.
 5. **Inspect fixed 16:9 output.** Layout diagnostics identify pages that clip in PDF-equivalent
    output and provide measurements that can guide revisions.
 6. **Capture only the pages that need visual analysis.** Targeted PNG files help Copilot assess
@@ -63,8 +65,9 @@ For a complete recorded example, follow
 Source and objective
   → MarkdStage guidance and schemas
   → Markdown deck
+  → Read-only Architecture validation
   → Rendered Canvas
-  → Structured validation and 16:9 diagnostics
+  → Fixed 16:9 diagnostics
   → Targeted slide images when needed
   → Markdown revision
   → Presentation or PDF
@@ -113,11 +116,27 @@ Fix the affected Markdown pages and capture only the pages that still require vi
 
 ## Understand the validation tools
 
-### Architecture validation (`get_architecture_errors`)
+### Before-display validation (`markdstage_validate`)
+
+Use `{ "format": "dsl", "source": "..." }` for a DSL body or
+`{ "format": "slides", "slides": ["..."] }` for individual slide fragments.
+The tool requires no Canvas instance and changes neither files nor presentation/editor state.
+API `ok` is distinct from `valid`, `complete`, and `truncated`.
+
+Diagnostics include stable codes, JSON Pointers, severity, and contextual suggestions.
+Slide inputs add page and block positions. Independent problems can be returned together, while
+invalid JSON or structural prerequisites stop dependent checks. Bounded diagnostic collection
+reports truncation explicitly. Suggestions never overwrite, merge, or delete content automatically.
+Existing v1 acceptance is preserved; ignored parent-layout coordinates are authoring warnings.
+
+DSL validation does not verify local image existence, slide fit, or visual clarity.
+
+### Loaded Architecture validation (`get_architecture_errors`)
 
 Architecture validation reports machine-readable errors for the complete deck or a selected slide.
 Copilot can use the affected page, Architecture block, JSON path, and remediation to update the
-source without relying on trial and error.
+source without relying on trial and error. It uses the same validation rules as preflight,
+preserves the legacy block error list, and adds detailed diagnostics and stage-completeness data.
 
 ### Fixed 16:9 inspection (`inspect_layout`)
 

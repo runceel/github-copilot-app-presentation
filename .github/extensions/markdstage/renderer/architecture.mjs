@@ -1,13 +1,26 @@
+import { architectureContract } from "./architecture-contract.mjs";
+import {
+  ArchitectureError,
+  architectureCompatibilityWarnings,
+  architectureDiagnostic,
+  architectureFailureReport,
+  checkArchitectureReferences,
+  claimArchitectureId,
+  diagnosticLimit,
+  throwArchitectureDiagnostic,
+  unknownArchitectureField,
+} from "./architecture-diagnostics.mjs";
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DEFAULT_CANVAS = Object.freeze({ width: 1600, height: 900 });
-const DSL_VERSION = 1;
+const DSL_VERSION = architectureContract.root.properties.version.const;
 const EMPTY_ARCHITECTURE_SOURCE = '{\n  "version": 1,\n  "elements": []\n}\n';
 const MAX_SOURCE_LENGTH = 64 * 1024;
-const MAX_ELEMENTS = 200;
+const MAX_ELEMENTS = architectureContract.root.properties.elements.maxItems;
 const MAX_CONNECTORS = 100;
 const MAX_TOTAL_TEXT = 20_000;
 const MAX_DEPTH = 4;
-const MAX_POINTS = 12;
+const MAX_POINTS = architectureContract.elements.connector.properties.points.maxItems;
 const CONNECTOR_ENDPOINT_GAP = 14;
 const MIN_ORTHOGONAL_ENDPOINT_SPAN = 8;
 const CONNECTOR_LANE_SPACING = 52;
@@ -90,28 +103,20 @@ const ROUTE_FALLBACK_REMEDIES = Object.freeze({
   "no-clean-candidate": "every candidate route is blocked by another element",
 });
 
-const ID_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
-const SHAPES = new Set([
-  "rect",
-  "rounded-rect",
-  "ellipse",
-  "diamond",
-  "triangle",
-  "hexagon",
-  "parallelogram",
-]);
-const ROUTINGS = new Set(["straight", "orthogonal", "polyline"]);
-const PORTS = new Set(["auto", "top", "right", "bottom", "left"]);
-const LABEL_LAYERS = new Set(["front", "behind"]);
-const LAYOUTS = new Set(["row", "column", "grid", "layered"]);
-const LAYOUT_DIRECTIONS = new Set(["down", "right"]);
-const IMAGE_FITS = new Set(["contain", "cover", "stretch"]);
+const ID_PATTERN = new RegExp(architectureContract.definitions.identifier.pattern);
+const SHAPES = new Set(architectureContract.elements.node.properties.shape.enum);
+const ROUTINGS = new Set(architectureContract.elements.connector.properties.routing.enum);
+const PORTS = new Set(architectureContract.elements.connector.properties.fromPort.enum);
+const LABEL_LAYERS = new Set(architectureContract.elements.connector.properties.labelLayer.enum);
+const LAYOUTS = new Set(architectureContract.definitions.layoutObject.properties.type.enum);
+const LAYOUT_DIRECTIONS = new Set(architectureContract.definitions.layoutObject.properties.direction.enum);
+const IMAGE_FITS = new Set(architectureContract.elements.image.properties.fit.enum);
 // Recursion limit while layered layout reads the connection graph. This runs
 // before MAX_DEPTH validation, so impose an independent cutoff for unvalidated input.
 const MAX_GRAPH_SCAN_DEPTH = 16;
 // Fixed number of barycenter sweeps for deterministic output.
 const LAYERED_ORDERING_SWEEPS = 4;
-// Canonical built-in icon catalog; both ICONS and rendering derive from this table.
+// Rendering glyphs for the built-in icon names in the schema-derived contract.
 //
 // Naming: lowercase kebab-case (`^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$`) nouns for
 // general concepts, not product or vendor names. Names are public DSL vocabulary,
@@ -177,7 +182,7 @@ const ICON_SHAPES = Object.freeze({
     { tag: "path", attributes: { d: "m8.5 12 2.5 2.5 4.5-4.5" } },
   ],
 });
-const ICONS = new Set(Object.keys(ICON_SHAPES));
+const ICONS = new Set(architectureContract.definitions.iconName.enum);
 // User-provided icons must be repository files under `assets/`. Rendering uses
 // <image href="/assets/...">, served through safeJoin by the `/assets/*` route
 // in extension.mjs or the test harness.
@@ -196,7 +201,7 @@ const ASSET_PATH_PATTERN = new RegExp(
   `^assets/(?:${ASSET_PATH_SEGMENT}/)*${ASSET_PATH_SEGMENT}\\.(?:${ASSET_EXTENSION_PATTERN})$`,
 );
 const ICON_ASSET_PATTERN = ASSET_PATH_PATTERN;
-const MAX_ASSET_REFERENCE = 200;
+const MAX_ASSET_REFERENCE = architectureContract.definitions.assetPath.maxLength;
 const MAX_ICON_REFERENCE = MAX_ASSET_REFERENCE;
 const THEME_TOKENS = Object.freeze({
   accent: "var(--accent)",
@@ -222,97 +227,18 @@ function localAssetUrl(documentRef, path) {
   } catch (_) {}
   return `/${normalized}`;
 }
-const STYLE_KEYS = new Set([
-  "fill",
-  "stroke",
-  "textColor",
-  "strokeWidth",
-  "fontSize",
-  "opacity",
-  "dash",
-  "cornerRadius",
-]);
-const LAYOUT_KEYS = new Set([
-  "type",
-  "gap",
-  "rowGap",
-  "columnGap",
-  "padding",
-  "columns",
-  "direction",
-]);
-const ELEMENT_KEYS = Object.freeze({
-  node: new Set([
-    "type",
-    "id",
-    "shape",
-    "x",
-    "y",
-    "width",
-    "height",
-    "text",
-    "icon",
-    "ariaLabel",
-    "z",
-    "style",
-  ]),
-  group: new Set([
-    "type",
-    "id",
-    "x",
-    "y",
-    "width",
-    "height",
-    "title",
-    "ariaLabel",
-    "layout",
-    "z",
-    "style",
-    "children",
-  ]),
-  image: new Set([
-    "type",
-    "id",
-    "src",
-    "fit",
-    "x",
-    "y",
-    "width",
-    "height",
-    "ariaLabel",
-    "z",
-    "style",
-  ]),
-  connector: new Set([
-    "type",
-    "from",
-    "to",
-    "fromPort",
-    "toPort",
-    "label",
-    "labelLayer",
-    "ariaLabel",
-    "routing",
-    "points",
-    "arrow",
-    "lane",
-    "z",
-    "style",
-  ]),
-});
+const STYLE_KEYS = new Set(Object.keys(architectureContract.definitions.style.properties));
+const LAYOUT_KEYS = new Set(Object.keys(architectureContract.definitions.layoutObject.properties));
+const ELEMENT_KEYS = Object.freeze(Object.fromEntries(
+  Object.entries(architectureContract.elements).map(([type, definition]) =>
+    [type, new Set(Object.keys(definition.properties))],
+  ),
+));
 
 let renderSequence = 0;
 
-class ArchitectureError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "ArchitectureError";
-  }
-}
-
-function fail(path, message, remedy) {
-  const guidance = remedy ? `; ${remedy}` : "";
-  throw new ArchitectureError(`${path}: ${message}${guidance}`);
+function fail(path, message, remedy, details) {
+  throwArchitectureDiagnostic(architectureDiagnostic(path, message, remedy, details));
 }
 
 function describeValue(value) {
@@ -331,35 +257,40 @@ function isObject(value) {
 }
 
 function expectObject(value, path, remedy = "use a JSON object such as { }") {
-  if (!isObject(value)) fail(path, "must be an object", remedy);
+  if (!isObject(value)) fail(path, "must be an object", remedy, { code: "invalid_type" });
   return value;
 }
 
 function rejectUnknownKeys(value, allowed, path) {
   for (const key of Object.keys(value)) {
     if (!allowed.has(key)) {
-      fail(
-        `${path}.${key}`,
-        "is not supported",
-        `remove it or use one of: ${[...allowed].join(", ")}`,
-      );
+      throwArchitectureDiagnostic(unknownArchitectureField(value, key, allowed, path, value.type));
     }
   }
 }
 
-function numberIn(value, path, min, max, fallback, remedy) {
+function numberIn(value, path, min, max, fallback, remedy, details) {
   const candidate = value === undefined ? fallback : value;
   if (typeof candidate !== "number" || !Number.isFinite(candidate)) {
     fail(
       path,
       "must be a finite number",
       remedy ?? `replace ${describeValue(candidate)} with a number between ${min} and ${max}`,
+      { code: candidate === undefined ? "missing_required" : "invalid_type" },
     );
   }
   if (candidate < min || candidate > max) {
-    fail(path, `must be between ${min} and ${max}`, remedy ?? "adjust the value into that range");
+    const intrinsicExtentError = details?.category === "layout" &&
+      (candidate < architectureContract.definitions.extent.minimum ||
+       candidate > architectureContract.definitions.extent.maximum);
+    fail(path, `must be between ${min} and ${max}`, remedy ?? "adjust the value into that range",
+      { code: "out_of_range", ...(intrinsicExtentError ? {} : details) });
   }
   return candidate;
+}
+
+function contractNumber(value, path, definition, fallback) {
+  return numberIn(value, path, definition.minimum, definition.maximum, fallback);
 }
 
 function textValue(value, path, fallback = "", maxLength = 500, remedy) {
@@ -369,6 +300,7 @@ function textValue(value, path, fallback = "", maxLength = 500, remedy) {
       path,
       "must be a string",
       remedy ?? `replace ${describeValue(candidate)} with text in double quotes`,
+      { code: "invalid_type" },
     );
   }
   if (candidate.length > maxLength) {
@@ -376,6 +308,7 @@ function textValue(value, path, fallback = "", maxLength = 500, remedy) {
       path,
       `must be at most ${maxLength} characters`,
       remedy ?? `shorten it by ${candidate.length - maxLength} characters`,
+      { code: "text_limit" },
     );
   }
   return candidate;
@@ -387,6 +320,7 @@ function idValue(value, path) {
       path,
       "must start with a letter and contain only letters, numbers, '.', '_' or '-'",
       `replace ${describeValue(value)} with an id such as 'api-gateway' (64 characters or fewer)`,
+      { code: value === undefined ? "missing_required" : "invalid_identifier" },
     );
   }
   return value;
@@ -399,6 +333,7 @@ function enumValue(value, path, values, fallback) {
       path,
       `must be one of: ${[...values].join(", ")}`,
       `replace ${describeValue(candidate)} with one of them`,
+      { code: value === undefined && fallback === undefined ? "missing_required" : "invalid_value" },
     );
   }
   return candidate;
@@ -429,6 +364,7 @@ function assetPathValue(value, path) {
     `replace ${describeValue(candidate)} with a repository asset such as 'assets/images/diagram.png' (${ASSET_EXTENSIONS.map(
       (extension) => `.${extension}`,
     ).join(", ")} only; '..', 'data:' URIs and external URLs are rejected)`,
+    { code: value === undefined ? "missing_required" : "invalid_value" },
   );
 }
 
@@ -453,9 +389,10 @@ function colorValue(value, path, fallback) {
 }
 
 function normalizeStyle(value, path, defaults) {
+  const fields = architectureContract.definitions.style.properties;
   const style = value === undefined ? {} : expectObject(value, path);
   rejectUnknownKeys(style, STYLE_KEYS, path);
-  const dash = textValue(style.dash, `${path}.dash`, defaults.dash || "", 40);
+  const dash = textValue(style.dash, `${path}.dash`, defaults.dash || "", fields.dash.maxLength);
   if (dash && !/^\d+(?:\.\d+)?(?:[ ,]+\d+(?:\.\d+)?)*$/.test(dash)) {
     fail(
       `${path}.dash`,
@@ -467,15 +404,14 @@ function normalizeStyle(value, path, defaults) {
     fill: colorValue(style.fill, `${path}.fill`, defaults.fill),
     stroke: colorValue(style.stroke, `${path}.stroke`, defaults.stroke),
     textColor: colorValue(style.textColor, `${path}.textColor`, defaults.textColor),
-    strokeWidth: numberIn(style.strokeWidth, `${path}.strokeWidth`, 0.5, 20, defaults.strokeWidth),
-    fontSize: numberIn(style.fontSize, `${path}.fontSize`, 8, 160, defaults.fontSize),
-    opacity: numberIn(style.opacity, `${path}.opacity`, 0, 1, defaults.opacity ?? 1),
+    strokeWidth: contractNumber(style.strokeWidth, `${path}.strokeWidth`, fields.strokeWidth, defaults.strokeWidth),
+    fontSize: contractNumber(style.fontSize, `${path}.fontSize`, fields.fontSize, defaults.fontSize),
+    opacity: contractNumber(style.opacity, `${path}.opacity`, fields.opacity, defaults.opacity ?? 1),
     dash,
-    cornerRadius: numberIn(
+    cornerRadius: contractNumber(
       style.cornerRadius,
       `${path}.cornerRadius`,
-      0,
-      200,
+      fields.cornerRadius,
       defaults.cornerRadius ?? 24,
     ),
   };
@@ -483,20 +419,21 @@ function normalizeStyle(value, path, defaults) {
 
 function normalizePoint(value, path, origin) {
   const point = expectObject(value, path);
-  rejectUnknownKeys(point, new Set(["x", "y"]), path);
+  rejectUnknownKeys(point, new Set(Object.keys(architectureContract.definitions.point.properties)), path);
   return {
-    x: origin.x + numberIn(point.x, `${path}.x`, -4000, 4000),
-    y: origin.y + numberIn(point.y, `${path}.y`, -4000, 4000),
+    x: origin.x + contractNumber(point.x, `${path}.x`, architectureContract.definitions.coordinate),
+    y: origin.y + contractNumber(point.y, `${path}.y`, architectureContract.definitions.coordinate),
   };
 }
 
 function parseCanvas(value) {
   if (value === undefined) return { ...DEFAULT_CANVAS };
+  const fields = architectureContract.definitions.canvas.properties;
   const canvas = expectObject(value, "canvas");
-  rejectUnknownKeys(canvas, new Set(["width", "height"]), "canvas");
+  rejectUnknownKeys(canvas, new Set(Object.keys(architectureContract.definitions.canvas.properties)), "canvas");
   return {
-    width: numberIn(canvas.width, "canvas.width", 320, 4000, DEFAULT_CANVAS.width),
-    height: numberIn(canvas.height, "canvas.height", 180, 4000, DEFAULT_CANVAS.height),
+    width: contractNumber(canvas.width, "canvas.width", fields.width, DEFAULT_CANVAS.width),
+    height: contractNumber(canvas.height, "canvas.height", fields.height, DEFAULT_CANVAS.height),
   };
 }
 
@@ -514,23 +451,25 @@ function parseLayout(value, path) {
     };
   }
   const layout = expectObject(value, path);
+  const fields = architectureContract.definitions.layoutObject.properties;
   rejectUnknownKeys(layout, LAYOUT_KEYS, path);
-  const gap = numberIn(layout.gap, `${path}.gap`, 0, 240, 36);
+  const gap = contractNumber(layout.gap, `${path}.gap`, fields.gap, 36);
   const type = enumValue(layout.type, `${path}.type`, LAYOUTS);
   if (layout.direction !== undefined && type !== "layered") {
     fail(
       `${path}.direction`,
       "is only valid with layered layout",
       'set "type": "layered" or remove the direction',
+      { code: "invalid_condition" },
     );
   }
   return {
     type,
     gap,
-    rowGap: numberIn(layout.rowGap, `${path}.rowGap`, 0, 240, gap),
-    columnGap: numberIn(layout.columnGap, `${path}.columnGap`, 0, 240, gap),
-    padding: numberIn(layout.padding, `${path}.padding`, 0, 400, 54),
-    columns: Math.trunc(numberIn(layout.columns, `${path}.columns`, 1, 12, 3)),
+    rowGap: contractNumber(layout.rowGap, `${path}.rowGap`, fields.rowGap, gap),
+    columnGap: contractNumber(layout.columnGap, `${path}.columnGap`, fields.columnGap, gap),
+    padding: contractNumber(layout.padding, `${path}.padding`, fields.padding, 54),
+    columns: Math.trunc(contractNumber(layout.columns, `${path}.columns`, fields.columns, 3)),
     direction: enumValue(
       layout.direction,
       `${path}.direction`,
@@ -704,6 +643,7 @@ function layoutPlacements(children, group, layout, path, graphEdges = []) {
       `${path}.layout`,
       "padding and title leave no space for children",
       "reduce layout padding or increase the group width and height",
+      { code: "layout_fit", category: "layout" },
     );
   }
   const count = flowItems.length;
@@ -740,6 +680,7 @@ function layoutPlacements(children, group, layout, path, graphEdges = []) {
       `${path}.layout`,
       "children do not fit",
       "reduce layout gap/padding, enlarge the group, or move some children out",
+      { code: "layout_fit", category: "layout" },
     );
   }
   tracks.forEach((track, trackIndex) => {
@@ -767,18 +708,20 @@ function layoutPlacements(children, group, layout, path, graphEdges = []) {
       const width = numberIn(
         child.width,
         `${path}.children[${index}].width`,
-        1,
+        architectureContract.definitions.extent.minimum,
         cellWidth,
         defaultWidth,
         "the parent layout limits each cell; reduce the value, enlarge the group, or drop width to use the automatic size",
+        { code: "layout_extent", category: "layout" },
       );
       const height = numberIn(
         child.height,
         `${path}.children[${index}].height`,
-        1,
+        architectureContract.definitions.extent.minimum,
         cellHeight,
         defaultHeight,
         "the parent layout limits each cell; reduce the value, enlarge the group, or drop height to use the automatic size",
+        { code: "layout_extent", category: "layout" },
       );
       const cellX = vertical
         ? inner.x + offset + positionInTrack * (cellWidth + layout.columnGap)
@@ -814,12 +757,12 @@ function normalizeBox(element, origin, path, placement) {
   return {
     x:
       origin.x +
-      (placement?.x ?? numberIn(element.x, `${path}.x`, -4000, 4000)),
+      (placement?.x ?? contractNumber(element.x, `${path}.x`, architectureContract.definitions.coordinate)),
     y:
       origin.y +
-      (placement?.y ?? numberIn(element.y, `${path}.y`, -4000, 4000)),
-    width: placement?.width ?? numberIn(element.width, `${path}.width`, 1, 4000),
-    height: placement?.height ?? numberIn(element.height, `${path}.height`, 1, 4000),
+      (placement?.y ?? contractNumber(element.y, `${path}.y`, architectureContract.definitions.coordinate)),
+    width: placement?.width ?? contractNumber(element.width, `${path}.width`, architectureContract.definitions.extent),
+    height: placement?.height ?? contractNumber(element.height, `${path}.height`, architectureContract.definitions.extent),
   };
 }
 
@@ -833,12 +776,16 @@ function flattenElements(
   placements = new Map(),
   graphEdges = [],
 ) {
-  if (!Array.isArray(rawElements)) fail(path, "must be an array", "use a JSON array such as [ ]");
+  if (!Array.isArray(rawElements)) {
+    fail(path, "must be an array", "use a JSON array such as [ ]",
+      { code: rawElements === undefined ? "missing_required" : "invalid_type" });
+  }
   if (depth > MAX_DEPTH) {
     fail(
       path,
       `nesting must not exceed ${MAX_DEPTH} levels`,
       "flatten the structure or split the diagram across slides",
+      { code: "nesting_limit" },
     );
   }
 
@@ -848,24 +795,29 @@ function flattenElements(
         "elements",
         `must contain at most ${MAX_ELEMENTS} items`,
         "split the diagram across multiple slides",
+        { code: "element_limit" },
       );
     }
     const elementPath = `${path}[${localIndex}]`;
     const element = expectObject(raw, elementPath);
     const type = textValue(element.type, `${elementPath}.type`, "", 20);
     if (!Object.prototype.hasOwnProperty.call(ELEMENT_KEYS, type)) {
+      const supported = Object.keys(ELEMENT_KEYS);
+      const choices = `${supported.slice(0, -1).join(", ")}, or ${supported.at(-1)}`;
       fail(
         `${elementPath}.type`,
-        "must be node, group, image, or connector",
+        `must be ${choices}`,
         element.type === undefined
-          ? 'add a "type" of node, group, image, or connector'
-          : `replace ${describeValue(element.type)} with node, group, image, or connector`,
+          ? `add a "type" of ${choices}`
+          : `replace ${describeValue(element.type)} with ${choices}`,
+        { code: element.type === undefined ? "missing_required" : "invalid_value" },
       );
     }
     rejectUnknownKeys(element, ELEMENT_KEYS[type], elementPath);
+    const fields = architectureContract.elements[type].properties;
     const order = output.length;
     const defaultZ = type === "group" ? -50 : type === "connector" ? -10 : 0;
-    const z = numberIn(element.z, `${elementPath}.z`, -100, 100, defaultZ);
+    const z = contractNumber(element.z, `${elementPath}.z`, fields.z, defaultZ);
 
     if (type === "connector") {
       const routing = enumValue(
@@ -880,6 +832,7 @@ function flattenElements(
           `${elementPath}.points`,
           `must be an array with at most ${MAX_POINTS} points`,
           "remove extra waypoints or split the connector into several connectors",
+          { code: Array.isArray(points) ? "item_limit" : "invalid_type" },
         );
       }
       if (routing !== "polyline" && points.length) {
@@ -887,6 +840,7 @@ function flattenElements(
           `${elementPath}.points`,
           "is only valid with polyline routing",
           'set "routing": "polyline" or remove the points',
+          { code: "invalid_condition" },
         );
       }
       if (element.arrow !== undefined && typeof element.arrow !== "boolean") {
@@ -894,6 +848,7 @@ function flattenElements(
           `${elementPath}.arrow`,
           "must be a boolean",
           `replace ${describeValue(element.arrow)} with true or false`,
+          { code: "invalid_type" },
         );
       }
       output.push({
@@ -902,14 +857,14 @@ function flattenElements(
         to: idValue(element.to, `${elementPath}.to`),
         fromPort: enumValue(element.fromPort, `${elementPath}.fromPort`, PORTS, "auto"),
         toPort: enumValue(element.toPort, `${elementPath}.toPort`, PORTS, "auto"),
-        label: textValue(element.label, `${elementPath}.label`, "", 200),
+        label: textValue(element.label, `${elementPath}.label`, "", fields.label.maxLength),
         labelLayer: enumValue(
           element.labelLayer,
           `${elementPath}.labelLayer`,
           LABEL_LAYERS,
           "front",
         ),
-        ariaLabel: textValue(element.ariaLabel, `${elementPath}.ariaLabel`, "", 300),
+        ariaLabel: textValue(element.ariaLabel, `${elementPath}.ariaLabel`, "", fields.ariaLabel.maxLength),
         routing,
         points: points.map((point, index) =>
           normalizePoint(point, `${elementPath}.points[${index}]`, origin),
@@ -918,7 +873,7 @@ function flattenElements(
         lane:
           element.lane === undefined
             ? null
-            : Math.trunc(numberIn(element.lane, `${elementPath}.lane`, -12, 12)),
+            : Math.trunc(contractNumber(element.lane, `${elementPath}.lane`, fields.lane)),
         z,
         order,
         sourcePath: elementPath,
@@ -936,14 +891,7 @@ function flattenElements(
     }
 
     const id = idValue(element.id, `${elementPath}.id`);
-    if (ids.has(id)) {
-      fail(
-        `${elementPath}.id`,
-        `duplicates '${id}'`,
-        "give every node, group, and image a unique id across the whole diagram",
-      );
-    }
-    ids.add(id);
+    claimArchitectureId(ids, id, `${elementPath}.id`);
     const box = normalizeBox(element, origin, elementPath, placements.get(localIndex));
 
     if (type === "node") {
@@ -959,9 +907,9 @@ function flattenElements(
         id,
         shape,
         ...box,
-        text: textValue(element.text, `${elementPath}.text`, "", 500),
+        text: textValue(element.text, `${elementPath}.text`, "", fields.text.maxLength),
         icon,
-        ariaLabel: textValue(element.ariaLabel, `${elementPath}.ariaLabel`, "", 300),
+        ariaLabel: textValue(element.ariaLabel, `${elementPath}.ariaLabel`, "", fields.ariaLabel.maxLength),
         z,
         order,
         sourcePath: elementPath,
@@ -985,7 +933,7 @@ function flattenElements(
         ...box,
         src: assetPathValue(element.src, `${elementPath}.src`),
         fit: enumValue(element.fit, `${elementPath}.fit`, IMAGE_FITS, "contain"),
-        ariaLabel: textValue(element.ariaLabel, `${elementPath}.ariaLabel`, "", 300),
+        ariaLabel: textValue(element.ariaLabel, `${elementPath}.ariaLabel`, "", fields.ariaLabel.maxLength),
         z,
         order,
         sourcePath: elementPath,
@@ -1002,6 +950,11 @@ function flattenElements(
       return;
     }
 
+    if (type !== "group") {
+      fail(`${elementPath}.type`, "has no runtime implementation",
+        "use a supported element or update the runtime together with its contract",
+        { code: "unsupported_element" });
+    }
     const groupStyle = normalizeStyle(element.style, `${elementPath}.style`, {
       fill: "accentSoft",
       stroke: "accentLine",
@@ -1016,8 +969,8 @@ function flattenElements(
       type,
       id,
       ...box,
-      title: textValue(element.title, `${elementPath}.title`, "", 200),
-      ariaLabel: textValue(element.ariaLabel, `${elementPath}.ariaLabel`, "", 300),
+      title: textValue(element.title, `${elementPath}.title`, "", fields.title.maxLength),
+      ariaLabel: textValue(element.ariaLabel, `${elementPath}.ariaLabel`, "", fields.ariaLabel.maxLength),
       layout: parseLayout(element.layout, `${elementPath}.layout`),
       z,
       order,
@@ -1026,6 +979,10 @@ function flattenElements(
     };
     output.push(group);
     const children = element.children === undefined ? [] : element.children;
+    if (!Array.isArray(children)) {
+      fail(`${elementPath}.children`, "must be an array", "use a JSON array such as [ ]",
+        { code: "invalid_type" });
+    }
     const childPlacements = layoutPlacements(
       children,
       group,
@@ -1096,6 +1053,7 @@ function assignConnectorLanes(elements) {
         `${connector.sourcePath}.lane`,
         `duplicates explicit lane ${connector.lane}`,
         "give overlapping connectors different lane values, or omit lane to assign them automatically",
+        { code: "duplicate_lane", category: "layout" },
       );
     }
   });
@@ -1135,6 +1093,7 @@ function assignConnectorLanes(elements) {
           record.connector.sourcePath,
           "has no available connector lane",
           "reduce the number of connectors between the same elements, or set explicit lane values",
+          { code: "lane_unavailable", category: "layout" },
         );
       }
       record.connector.lane = selected;
@@ -1208,29 +1167,35 @@ export function normalizeArchitectureSource(source) {
   return typeof source === "string" && source.trim() === "" ? EMPTY_ARCHITECTURE_SOURCE : source;
 }
 
-export function parseArchitecture(source) {
+function readArchitectureSource(source) {
   if (typeof source !== "string") {
-    fail("diagram", "must be JSON text", "pass the fenced block contents as a string");
+    fail("diagram", "must be JSON text", "pass the fenced block contents as a string",
+      { code: "invalid_type", category: "json" });
   }
   if (source.length > MAX_SOURCE_LENGTH) {
     fail(
       "diagram",
       `must be at most ${MAX_SOURCE_LENGTH} characters`,
       "split the diagram across multiple slides",
+      { code: "source_limit", category: "json" },
     );
   }
   const normalizedSource = normalizeArchitectureSource(source);
-  let raw;
   try {
-    raw = JSON.parse(normalizedSource);
+    return JSON.parse(normalizedSource);
   } catch (error) {
+    if (!(error instanceof SyntaxError)) throw error;
     const detail = error?.message ? ` (${error.message})` : "";
     fail(
       "diagram",
       `contains invalid JSON${detail}`,
       "check for trailing commas, unquoted keys, or missing braces",
+      { code: "invalid_json", category: "json" },
     );
   }
+}
+
+function parseArchitectureModel(raw, stages) {
   const root = expectObject(
     raw,
     "diagram",
@@ -1238,7 +1203,7 @@ export function parseArchitecture(source) {
   );
   rejectUnknownKeys(
     root,
-    new Set(["$schema", "version", "canvas", "title", "description", "elements"]),
+    new Set(Object.keys(architectureContract.root.properties)),
     "diagram",
   );
   const version = numberIn(
@@ -1255,12 +1220,12 @@ export function parseArchitecture(source) {
   const model = {
     version,
     canvas: parseCanvas(root.canvas),
-    title: textValue(root.title, "title", "Architecture diagram", 200),
+    title: textValue(root.title, "title", "Architecture diagram", architectureContract.root.properties.title.maxLength),
     description: textValue(
       root.description,
       "description",
       "Architecture diagram rendered from a constrained JSON DSL.",
-      1000,
+      architectureContract.root.properties.description.maxLength,
     ),
     elements: [],
   };
@@ -1275,40 +1240,14 @@ export function parseArchitecture(source) {
     new Map(),
     collectGraphEdges(root.elements),
   );
-  const connectable = new Set(
-    model.elements.filter((element) => element.type !== "connector").map((element) => element.id),
-  );
-  let connectorCount = 0;
-  model.elements.forEach((element) => {
-    if (element.type !== "connector") return;
-    connectorCount += 1;
-    if (!connectable.has(element.from)) {
-      fail(
-        `${element.sourcePath}.from`,
-        `references unknown element '${element.from}'`,
-        `add a node or group with id '${element.from}', or point the connector at an existing id`,
-      );
-    }
-    if (!connectable.has(element.to)) {
-      fail(
-        `${element.sourcePath}.to`,
-        `references unknown element '${element.to}'`,
-        `add a node or group with id '${element.to}', or point the connector at an existing id`,
-      );
-    }
-    if (element.from === element.to) {
-      fail(
-        element.sourcePath,
-        "self-referencing connectors are not supported",
-        "point the connector at a different element",
-      );
-    }
-  });
+  stages.structure = "passed";
+  const connectorCount = checkArchitectureReferences(model.elements, undefined, { checkIds: false });
   if (connectorCount > MAX_CONNECTORS) {
     fail(
       "elements",
       `must contain at most ${MAX_CONNECTORS} connectors`,
       "split the diagram across multiple slides",
+      { code: "connector_limit", category: "semantic" },
     );
   }
   if (totalTextLength(model) > MAX_TOTAL_TEXT) {
@@ -1316,13 +1255,55 @@ export function parseArchitecture(source) {
       "diagram",
       `text content must be at most ${MAX_TOTAL_TEXT} characters`,
       "shorten node text, group titles, labels, and descriptions",
+      { code: "total_text_limit", category: "semantic" },
     );
   }
+  stages.semantic = "passed";
   assignConnectorLanes(model.elements);
+  stages.layout = "passed";
   model.elements = model.elements
     .slice()
     .sort((left, right) => left.z - right.z || left.order - right.order);
   return model;
+}
+
+export function validateArchitecture(source, { maxDiagnostics } = {}) {
+  const limit = diagnosticLimit(maxDiagnostics);
+  const stages = { json: "skipped", structure: "skipped", semantic: "skipped", layout: "skipped" };
+  let raw;
+  let model;
+  try {
+    raw = readArchitectureSource(source);
+    stages.json = "passed";
+    model = parseArchitectureModel(raw, stages);
+  } catch (error) {
+    if (!(error instanceof ArchitectureError) || !error.diagnostic) throw error;
+    return architectureFailureReport(raw, error.diagnostic, {
+      maxDiagnostics: limit,
+      maxElements: MAX_ELEMENTS,
+      maxDepth: MAX_DEPTH,
+      stages,
+    });
+  }
+  const warnings = architectureCompatibilityWarnings(raw);
+  return {
+    valid: true,
+    complete: true,
+    truncated: false,
+    truncationReasons: [],
+    stages,
+    diagnostics: warnings.diagnostics,
+    model,
+  };
+}
+
+export function parseArchitecture(source) {
+  const validation = validateArchitecture(source);
+  if (validation.valid) return validation.model;
+  const diagnostic = validation.diagnostics[0];
+  const error = new ArchitectureError(diagnostic.message, diagnostic);
+  error.validation = validation;
+  throw error;
 }
 
 function svgElement(documentRef, tag, attributes = {}) {

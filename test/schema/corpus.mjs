@@ -1009,4 +1009,31 @@ export const corpus = [
       }),
     ]),
   },
+  {
+    name: "out-of-range coordinates on a layout child",
+    expect: "accept",
+    divergence: {
+      schema: "reject",
+      reason:
+        "Parent-managed placement ignores x/y altogether, including numbers outside the schema range. " +
+        "Preflight reports the ignored authoring values as warnings without changing v1 acceptance.",
+    },
+    source: doc([
+      group({
+        layout: "row",
+        children: [{ type: "node", id: "c1", x: 9000, y: -9000 }],
+      }),
+    ]),
+  },
+  {
+    name: "non-string root schema reference is ignored",
+    expect: "accept",
+    divergence: {
+      schema: "reject",
+      reason:
+        "The v1 runtime has always ignored root $schema without reading or resolving it. " +
+        "JSON Schema requires a string for editor completion; this is a warning, not a new runtime rejection.",
+    },
+    source: doc([node()], { $schema: { ignored: true } }),
+  },
 ];

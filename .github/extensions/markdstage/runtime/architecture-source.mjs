@@ -2,6 +2,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 import { parseArchitecture } from "../renderer/architecture.mjs";
+import { ArchitectureError } from "../renderer/architecture-diagnostics.mjs";
 import {
   findArchitectureBlocks,
   replaceArchitectureBlock,
@@ -85,7 +86,11 @@ export async function readArchitectureSourceTarget(workspaceRoot, sourcePath, bl
   try {
     parseArchitecture(block.body);
   } catch (error) {
-    throw sourceError("invalid_architecture", error?.message || "Invalid Architecture DSL.");
+    if (!(error instanceof ArchitectureError)) throw error;
+    throw Object.assign(
+      sourceError("invalid_architecture", error.message || "Invalid Architecture DSL."),
+      { diagnostic: error.diagnostic, validation: error.validation },
+    );
   }
   return { ...target, markdown, source: block.body };
 }
@@ -103,10 +108,13 @@ export function saveArchitectureSource({
     try {
       parseArchitecture(source);
     } catch (error) {
+      if (!(error instanceof ArchitectureError)) throw error;
       return {
         ok: false,
         error: "invalid_architecture",
         message: error?.message || "The diagram is invalid.",
+        diagnostic: error.diagnostic,
+        validation: error.validation,
       };
     }
 

@@ -581,6 +581,8 @@ export async function startArchitectureEditorServer({
     if (
       [
         "/renderer/architecture.mjs",
+        "/renderer/architecture-contract.mjs",
+        "/renderer/architecture-diagnostics.mjs",
         "/renderer/architecture-edit.mjs",
         "/renderer/architecture-document.mjs",
       ].includes(route)

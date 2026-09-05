@@ -115,7 +115,8 @@ When writing explicit JSON, `elements` is required by the JSON Schema.
   unsupported elements, styles, or colors render an inline diagram error while
   preserving other slide content. DSL values never generate HTML, script, or
   event attributes. Generated asset URLs stay on same-origin `/assets/...`.
-- `version` is currently `1` and defaults to v1. Limits include 64 KiB source,
+- `version` is currently `1` and defaults to v1. Limits include 65,536 source
+  code units (UTF-16),
   200 total elements, 100 connectors, four nesting levels, 12 polyline
   intermediate points, 20,000 total text characters, and 200-character icon/src
   references.
