@@ -206,13 +206,48 @@ OS file dialog is used.
 The extension provides `markdstage_guide`. Before authoring Markdown for the
 MarkdStage canvas, AI should request the required `overview`, `slide-format`,
 `themes`, `custom-themes`, `theme-schema`, `architecture-dsl`, or
-`architecture-schema` topic. Runtime guidance is generated from this README and
-`schema/architecture-v1.schema.json`, so user-scoped extension installs expose
-the same contract.
+`architecture-schema` topic. **Before drafting Architecture DSL, request
+`architecture-schema` first.** It contains the schema-derived element fields,
+fixed versus parent-managed placement requirements, and a self-contained example
+within an 8 KiB UTF-8 response budget. Use `architecture-dsl` for detailed behavior.
+Runtime guidance is generated from this README and the bundled schema contract,
+so user-scoped extension installs expose the same vocabulary.
 
-When the extension detects a presentation-related prompt, it adds a short hint
-to use `markdstage_guide` at most once per session. No hint is added after the
-tool has already been called, and session-end cleanup removes the state.
+Use the standalone **`markdstage_validate`** tool before opening a newly authored
+diagram. Its input is explicitly one of:
+
+```json
+{ "format": "dsl", "source": "{\"elements\":[]}" }
+```
+
+```json
+{ "format": "slides", "slides": ["## Diagram\n\n```architecture\n{\"elements\":[]}\n```"] }
+```
+
+Each `slides` entry is one slide fragment, not an entire Markdown deck. The tool
+does not require a canvas and never changes the displayed deck, page, files, or
+editor save state. Optional `maxDiagnostics` is an integer from 1 to 100
+(default 50). Inspection examines at most 200 slide positions and 200 blocks,
+262,144 UTF-16 code units per source/slide input, and 2,097,152 code units across
+slides. These inspection budgets do not replace the existing DSL source and
+element limits. Reports distinguish API `ok`, content `valid`, validation `complete`,
+and `truncated` collection, with per-block stage status and stable-coded
+diagnostics. JSON Pointers identify fields; slide inputs add page/block positions.
+Repair suggestions are contextual and never applied automatically.
+
+Fix reported independent problems together, then validate again and pass
+**the same content** to saving and `open_canvas` or `load_deck`. Check
+`inspect_layout` separately afterward. A valid DSL does not guarantee asset
+existence, readable labels, or slide fit. Invalid JSON stops dependent checks in
+that block, not other readable blocks; bounded checks never claim skipped work
+succeeded. The existing canvas still permits invalid diagrams to appear as
+inline errors rather than rejecting an entire load.
+
+Authoring guidance is carried by tool/canvas descriptions, the overview, and
+Agent Skills. The extension does not register advisory SDK session hooks:
+some hosts cannot provide a hook processor, and optional guide reminders must
+not prevent tools or canvases from starting. This does not change the host's
+permission handling or file-hook settings.
 
 ### Markdown file syntax
 
@@ -451,7 +486,8 @@ When writing explicit JSON, `elements` is required by the JSON Schema.
   unsupported elements, styles, or colors render an inline diagram error while
   preserving other slide content. DSL values never generate HTML, script, or
   event attributes. Generated asset URLs stay on same-origin `/assets/...`.
-- `version` is currently `1` and defaults to v1. Limits include 64 KiB source,
+- `version` is currently `1` and defaults to v1. Limits include 65,536 source
+  code units (UTF-16),
   200 total elements, 100 connectors, four nesting levels, 12 polyline
   intermediate points, 20,000 total text characters, and 200-character icon/src
   references.
@@ -996,7 +1032,7 @@ fails with `invalid_input`; pass the complete `slides` array or call
 | `load_deck` | `{ slides: string[], index?: number, theme?: "dark" | "light" | "microsoft" | "custom", sourceName?: string }`. Replace/reload the deck for mid-presentation content or theme changes. `index` defaults to `0`; theme defaults to `dark`. `sourceName` is metadata only and never reads or watches Markdown. Appends one back cover without duplication. Returns `{ ok, version, index, total, theme, validationFeedback? }`. Missing front matter or Architecture errors do not prevent display; remediation is returned in `validationFeedback` and logged for open. |
 | `goto_slide` | `{ index: number }`. Select a clamped zero-based index. Intended for explicit chat requests, not normal navigation. Returns `{ ok, changed, version, index, total }`. |
 | `show_slide` | `{ markdown: string }`. Temporarily replace the current slide. Supports front matter keys `deck`, `kicker`, `page`, `total`, `title`, `layout`, `size`, and `theme`. Omitted theme inherits the deck theme. The override is included in output snapshots until navigation or deck replacement resumes the registered deck. |
-| `get_architecture_errors` | `{ index?: number }`. Validate the complete deck or one zero-based slide, including temporary content. Returns `{ ok, scope, index?, page?, total, errorCount, errors }`; errors contain `{ slideIndex, page, blockIndex, architecture, code, message }`. No deck and out-of-range indexes are errors. |
+| `get_architecture_errors` | `{ index?: number }`. Validate the complete deck or one zero-based slide, including temporary content. Preserves `{ ok, scope, index?, page?, total, errorCount, errors }` and legacy block errors; adds `valid`, `complete`, `truncated`, detailed `diagnostics`, and block-stage results from the same validator as `markdstage_validate`. No deck and out-of-range indexes are errors. |
 | `open_presenter` | No input. Start one synchronized movable/resizable 1280×720 Chromium app-mode window. Use `F11` on Windows for full screen. Returns `{ ok, started, alreadyRunning, browser?, pid? }`. |
 | `close_presenter` | No input. Stop presenter and remove its temporary profile. Returns `{ ok, stopped }`. |
 | `inspect_layout` | `{ index?: number, includeFits?: boolean }`. Render the registered in-memory PDF snapshot with the fixed 1280×720 output layout; this does not inspect the source file on disk. Omit `index` for one preferred whole-deck inspection. Serialize targeted calls because PDF, layout, and PNG jobs are exclusive. By default, return only clipped pages; `includeFits` includes successful pages. Returns dimensions, issue counts, overflow measurements, nested scroll containers, and a bounded list of element hints. Requires Edge, Chrome, or Chromium. |
@@ -1037,6 +1073,8 @@ fails with `invalid_input`; pass the complete `slides` array or call
 .github/extensions/markdstage/
   extension.mjs             # Canvas declaration, loopback server, and actions
   architecture-canvas.mjs   # Canvas adapter for the shared Architecture Editor
+  architecture-reference.mjs # Compact schema-derived authoring reference
+  architecture-validation.mjs # Pure unloaded-input and slide validation
   architecture-editor/
     index.html               # Full diagram-editor canvas shell
     editor.css               # Workspace, tree, and inspector styles
@@ -1044,6 +1082,7 @@ fails with `invalid_input`; pass the complete `slides` array or call
   copilot-extension.json     # Manifest for Gist sharing
   markdown-deck.mjs         # Raw Markdown splitting for canvas import
   scripts/
+    generate-architecture-contract.mjs # Generate/check browser-safe schema metadata
     markdown-blocks.mjs     # Scan and replace architecture fences
     markdown-files.mjs      # Scan workspace Markdown
     markdown-watcher.mjs    # Watch and debounce source-backed Markdown
@@ -1054,6 +1093,8 @@ fails with `invalid_input`; pass the complete `slides` array or call
     slides.css              # Built-in dark/light/microsoft themes and navigation UI
     renderer.js             # Front matter, marked, Mermaid, Architecture, SSE, controls
     architecture.mjs        # Validate JSON DSL and create safe SVG DOM
+    architecture-contract.mjs # Generated structural vocabulary; no runtime dependencies
+    architecture-diagnostics.mjs # Bounded structured diagnostics and reference checks
     architecture-edit.mjs   # DOM-independent move/detach/Undo/Redo/serialization
     architecture-editor.mjs # Placement UI and Advanced editing entry point
     architecture-document.mjs # Full-editor command/session API
@@ -1062,6 +1103,7 @@ fails with `invalid_input`; pass the complete `slides` array or call
     architecture-source.mjs # Atomic Architecture block persistence and conflicts
   schema/
     architecture-v1.schema.json # Architecture DSL v1 JSON Schema (draft 2020-12)
+    architecture-contract.mjs # Derive metadata from Schema references and conditions
     README.md               # Schema use, versioning, and migration policy
     examples/               # Samples with relative $schema references
   vendor/

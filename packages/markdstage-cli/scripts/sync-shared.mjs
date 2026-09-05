@@ -27,6 +27,8 @@ const ENTRIES = [
   "README.md",
   "THIRD-PARTY-NOTICES.md",
   "architecture-editor",
+  "architecture-reference.mjs",
+  "architecture-validation.mjs",
   "deck-state.mjs",
   "markdown-deck.mjs",
   "markdstage-guide.mjs",

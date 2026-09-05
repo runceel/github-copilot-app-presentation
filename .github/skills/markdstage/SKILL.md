@@ -370,6 +370,12 @@ Use a `mermaid` fence for automatically laid-out flowcharts, sequence diagrams,
 class diagrams, pie charts, and related diagrams. Mermaid is bundled and works
 offline. Syntax errors render an error while preserving other slide content.
 
+Before writing Architecture DSL, request `markdstage_guide` topic
+`architecture-schema`. This compact, schema-derived authoring contract includes
+all element fields, conditional placement requirements, and a complete example.
+Request `architecture-dsl` when advanced behavior needs explanation; do not infer
+missing fields from a different diagram language.
+
 Use an `architecture` fence when positions, dimensions, containers, and overlap
 must be stable. Architecture DSL v1 is stable. See
 `.github/extensions/markdstage/README.md` and
@@ -440,7 +446,21 @@ Generate the complete ordered `slides` array. Fill correct one-based `page` and
 allow canvas auto-sizing. Select the requested theme once for the deck, not in
 every slide's front matter. This generation happens only at startup.
 
-### 4. Open the complete deck
+### 4. Validate Architecture DSL, then open the complete deck
+
+If any slide contains Architecture DSL, call the standalone `markdstage_validate`
+tool with `{ "format": "slides", "slides": [...] }` before first display. Each
+entry must be one slide fragment. To check a DSL body alone, use
+`{ "format": "dsl", "source": "<JSON text>" }`; do not mix the two formats.
+
+Check `valid`, `complete`, and `truncated`, not merely API `ok`. Use stable codes,
+JSON Pointers, and slide/block positions to fix independent errors together.
+Suggestions are not automatic repairs: preserve existing values and review
+changes to text meaning. Revalidate and save/display the exact same content.
+An incomplete report does not certify unexamined semantic or layout stages.
+This tool never opens a canvas or changes files, the active page, or save state.
+Use `get_architecture_errors` for the already loaded snapshot and
+`inspect_layout` separately for visual fit.
 
 Call `open_canvas` once:
 

@@ -9,8 +9,8 @@ fences. It supports editor completion and validation as well as automated CI val
 | `examples/*.architecture.json` | Working examples with `$schema` |
 
 This directory is **intentionally included in the distribution ZIP** so users can
-reference the schema locally. The extension does not load it at runtime (see
-`.github/RELEASING.md`).
+reference the schema locally. Browser rendering uses a generated, dependency-free
+ES-module contract rather than loading JSON Schema or a validation package.
 
 ## Usage
 
@@ -91,13 +91,50 @@ constraints, so `renderer/architecture.mjs` is authoritative:
 | Self-referencing connectors are prohibited | Same as above |
 | Each `id` is unique across the complete tree | Applies to the flattened set of nested elements |
 | 200 elements / 100 connectors / 20,000 text characters | Aggregated **after flattening**, not expressible by `maxItems` on one array |
-| 64 KiB source | String length before parsing |
+| 65,536 source code units (UTF-16) | Existing JavaScript string-length limit before parsing; distinct from UTF-8 guide-response budgets |
 | Layout fit (`children do not fit`) | Calculated dynamically from child sizes and group interior dimensions |
 | Child `width` / `height` maximum under `layout` | Maximum depends on `cellWidth` / `cellHeight` |
 | The `assets/` file referenced by `node.icon` / `image.src` exists | The parser does not access the file system; a missing file renders an empty image region |
 
 `parseArchitecture` can fail even after schema validation. **The parser always
 makes the final determination of whether a diagram can render.**
+
+### Shared authoring and diagnostic boundary
+
+The bundled JSON Schema is the source of structural vocabulary, not a second
+runtime acceptance policy. A reproducible generation step derives browser-safe
+metadata for permitted fields, element types, scalar constraints, and conditional
+requirements. The compact AI reference and runtime vocabulary consume that same
+metadata. No UI or tool maintains its own permitted-field list.
+
+Rendering, editing, saving, CLI validation, and unloaded-input validation share
+the existing normalizer and semantic checks. Successfully normalized v1 input
+remains accepted even where the authoring schema is intentionally stricter.
+Such differences are authoring warnings, not new errors. On rejected input,
+the common diagnostic layer explains independently checkable structural issues
+from the derived contract and uses the same ID/reference checks as rendering.
+It neither repairs the input nor reruns the parser with deleted fields or
+invented defaults.
+
+Diagnostics carry stable codes, categories, severity, JSON Pointers, human
+messages, and nonautomatic suggestions. A conflicting replacement value is
+reported rather than overwritten. JSON parsing, structural, semantic, and
+layout stages distinguish passed, failed, and skipped work. Bounded diagnostic
+collection reports truncation explicitly; a skipped stage is not evidence that
+its constraints passed. Legacy exception messages and block-level error arrays
+remain available alongside the detailed report.
+
+Unloaded validation is a read-only boundary: it accepts explicit DSL text or
+individual Markdown slide fragments and has no authority to open a canvas,
+change its current page, read or write files, or modify editor drafts.
+API execution success is separate from content validity and completeness.
+Diagnostic budgets are not additional DSL v1 restrictions. Image existence,
+slide clipping, and visual clarity still require separate asset/output review.
+
+This preserves the existing schema/runtime responsibility split without a
+browser-side schema dependency or a parser replacement. The tradeoff is a
+generated artifact that must be kept in sync; a drift check makes that
+requirement enforceable.
 
 ### Invariant: P ⊆ A, except for documented divergences
 
@@ -112,6 +149,8 @@ divergence must make the schema stricter, and every instance is listed below.**
 | # | Case | Behavior | Reason |
 | --- | --- | --- | --- |
 | 1 | A child of a group with `layout` has nonnumeric `x` / `y` | Parser accepts; schema rejects | Placement is calculated automatically under `layout`, so the parser silently discards `x` / `y` without validating their values. This likely indicates an authoring mistake that the schema should report. Tightening the parser would reject previously accepted input and would be a breaking change. |
+| 2 | A layout child has numeric `x` / `y` outside the schema range | Parser accepts; schema rejects | Parent-managed placement ignores these values just as it ignores nonnumeric coordinates. Preflight reports a compatibility warning. |
+| 3 | Root `$schema` is not a string | Parser accepts; schema rejects | v1 ignores this metadata without resolving it. Editor completion requires a string; preflight warns without changing runtime acceptance. |
 
 Divergences are recorded as `divergence` entries in `test/schema/corpus.mjs`,
 and tests fail when no reason string is present. **CI detects silent divergence.**
@@ -224,5 +263,21 @@ Because `layered` calculates hierarchy from connector direction, **do not specif
 child `x` / `y`**. This matches existing `grid` / `row` / `column` behavior.
 
 The validation library (`ajv`) is a **root devDependency**. The extension ships
-as a ZIP and must run without `node_modules`, so do not import the schema or ajv
-from `renderer/architecture.mjs`.
+as a ZIP and must run without `node_modules`, so do not import JSON Schema or
+ajv from the renderer. Regenerate the browser-safe metadata after a schema
+change with:
+
+```powershell
+node .github\extensions\markdstage\scripts\generate-architecture-contract.mjs
+```
+
+The same command with `--check` fails on drift. The authoring reference, including
+its self-contained example, must remain within 8 KiB UTF-8. Public valid examples
+are checked against both Schema and runtime; intentionally invalid examples
+remain explicitly marked as described above.
+
+The generated module has a separate distribution budget: it must stay below
+1,000,000 bytes, the conservative interpretation of the installer's 1 MB
+single-file limit. An automated size check measures the actual generated file.
+This is independent of both the 8 KiB guide-response budget and the existing
+DSL source-length limit.

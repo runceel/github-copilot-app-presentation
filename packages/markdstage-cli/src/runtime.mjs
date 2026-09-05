@@ -48,6 +48,7 @@ const [
   guide,
   presenterWindow,
   markdownFiles,
+  architectureValidation,
 ] = await Promise.all([
   load("runtime/errors.mjs"),
   load("runtime/deck-session.mjs"),
@@ -58,6 +59,7 @@ const [
   load("markdstage-guide.mjs"),
   load("presenter-window.mjs"),
   load("scripts/markdown-files.mjs"),
+  load("architecture-validation.mjs"),
 ]);
 
 export const { MarkdStageError } = errors;
@@ -75,9 +77,11 @@ export const { findChromiumBrowser, terminateProcessTree, isProcessRunning } = b
 export const { captureDirectoryName, pdfNameForSource, pptxNameForSource } = outputPaths;
 export const {
   architectureValidationErrors,
+  architectureValidationReport,
   deckValidationFeedback,
   hasFrontMatter,
   readGuide,
 } = guide;
+export const { validateArchitectureInput, createArchitectureValidationTool } = architectureValidation;
 export const { buildPresenterBrowserArgs } = presenterWindow;
 export const { isMarkdownPath, MARKDOWN_MAX_BYTES } = markdownFiles;

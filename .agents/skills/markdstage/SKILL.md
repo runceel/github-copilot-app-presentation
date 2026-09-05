@@ -22,11 +22,15 @@ what the MarkdStage canvas and MarkdStage Desktop render.
    required diagrams, and output format.
 2. Read only the relevant guidance. Start with
    `markdstage guide slide-format`, then retrieve `themes`,
-   `custom-themes`, or `architecture-dsl` when needed.
+   `custom-themes`, or `architecture-schema` when needed. Before drafting
+   Architecture DSL, read the compact `architecture-schema` contract first;
+   use `architecture-dsl` for advanced behavior.
 3. Create the complete deck as one Markdown source file (see
    `references/slide-format.md`).
 4. Validate structure, themes, and Architecture DSL before visual review:
-   `markdstage validate slides.md --json`.
+   `markdstage validate slides.md --json`. Review diagnostic codes, JSON Pointers,
+   and completeness, fix independent issues together, and preserve the same
+   validated content when presenting. Suggestions are never automatic repairs.
 5. Use `markdstage preview slides.md --watch` for live source-backed authoring.
    It reloads on save without losing the current slide and keeps the last valid
    deck while a save is incomplete.

@@ -58,10 +58,11 @@ import {
 } from "./deck-state.mjs";
 import {
   architectureValidationErrors,
-  createMarkdStageHooks,
+  architectureValidationReport,
   deckValidationFeedback,
   readGuide,
 } from "./markdstage-guide.mjs";
+import { createArchitectureValidationTool } from "./architecture-validation.mjs";
 import { buildPresenterBrowserArgs } from "./presenter-window.mjs";
 import {
   DEFAULT_THEME,
@@ -2042,12 +2043,14 @@ const architectureEditorManager = createArchitectureEditorManager({
   logger: (message, level) => log(message, level),
 });
 
+// Some hosts cannot register SDK session hooks. Advisory guide hints belong in
+// tool/canvas metadata, not in a hook dependency that can prevent startup.
 const session = await joinSession({
   tools: [
     {
       name: "markdstage_guide",
       description:
-        "Call before creating slides with the MarkdStage canvas. Returns the slide-fragment format, front matter, themes, custom themes, and Architecture DSL schemas.",
+        "Call before creating slides with the MarkdStage canvas. Request architecture-schema BEFORE drafting Architecture DSL, then use markdstage_validate on explicit source or slides BEFORE display. Returns the slide-fragment format, front matter, themes, custom themes, and the generated Architecture authoring contract.",
       parameters: {
         type: "object",
         properties: {
@@ -2070,14 +2073,14 @@ const session = await joinSession({
       },
       handler: async ({ topic } = {}) => readGuide(topic ?? "overview"),
     },
+    createArchitectureValidationTool(),
   ],
-  hooks: createMarkdStageHooks(),
   canvases: [
     createCanvas({
       id: "MarkdStage",
       displayName: "MarkdStage",
       description:
-        "Markdown, ready for the stage. A MarkdStage canvas that displays themed Markdown slides. Pass slides/index/theme to open the deck immediately; omit input only to refocus an existing instance. Any non-empty open input must include slides. sourceName is metadata and never reads or watches Markdown. Use More controls for output preview, editing, presentation, import, refresh, and export; inspect_layout provides compact clipping diagnostics, capture_slides creates selected 1280x720 PNGs, open_presenter opens an external presentation window, export_pdf produces final PDF output, and export_pptx produces hybrid editable PowerPoint output. Navigate within the canvas with ◀ ▶, arrow keys, the slide list, or a Surface Pen on supported Windows systems.",
+        "Markdown, ready for the stage. A MarkdStage canvas that displays themed Markdown slides. Read markdstage_guide before authoring; for Architecture DSL, request architecture-schema and use markdstage_validate before display. Pass slides/index/theme to open the deck immediately; omit input only to refocus an existing instance. Any non-empty open input must include slides. sourceName is metadata and never reads or watches Markdown. Use More controls for output preview, editing, presentation, import, refresh, and export; inspect_layout provides compact clipping diagnostics, capture_slides creates selected 1280x720 PNGs, open_presenter opens an external presentation window, export_pdf produces final PDF output, and export_pptx produces hybrid editable PowerPoint output. Navigate within the canvas with ◀ ▶, arrow keys, the slide list, or a Surface Pen on supported Windows systems.",
       inputSchema: {
         type: "object",
         description:
@@ -2180,13 +2183,15 @@ const session = await joinSession({
               themeFile: ctx.input?.themeFile,
               sourceName: ctx.input?.sourceName,
             });
-            const validationFeedback = deckValidationFeedback(slides);
+            const validation = architectureValidationReport(slides);
+            const validationFeedback = deckValidationFeedback(slides, { validation });
             return {
               ok: true,
               version: inst.version,
               index: inst.index,
               total: inst.slides.length,
               theme: inst.theme,
+              validation,
               ...(validationFeedback ? { validationFeedback } : {}),
             };
           },
@@ -2283,7 +2288,7 @@ const session = await joinSession({
         {
           name: "get_architecture_errors",
           description:
-            "Get syntax errors for the Architecture DSL currently targeted for display. Omit index to validate the complete deck, or provide a zero-based index to validate only that slide. Includes temporary replacements made by show_slide.",
+            "Get legacy Architecture errors plus bounded canonical diagnostics and stage completeness for the content currently targeted for display. Omit index to validate the complete deck, or provide a zero-based index to validate only that slide. Includes temporary replacements made by show_slide. For unloaded content use the standalone markdstage_validate tool instead.",
           inputSchema: {
             type: "object",
             properties: {
@@ -2327,9 +2332,13 @@ const session = await joinSession({
               );
             }
             activateInstance(inst);
-            const errors = architectureValidationErrors(
+            const validation = architectureValidationReport(
               slides,
               hasIndex ? { index } : {},
+            );
+            const errors = architectureValidationErrors(
+              slides,
+              { validation },
             );
             return {
               ok: true,
@@ -2338,6 +2347,16 @@ const session = await joinSession({
               total: slides.length,
               errorCount: errors.length,
               errors,
+              valid: validation.valid,
+              complete: validation.complete,
+              truncated: validation.truncated,
+              stages: validation.stages,
+              diagnostics: validation.diagnostics,
+              diagnosticCount: validation.diagnosticCount,
+              blocks: validation.blocks,
+              skipped: validation.skipped,
+              limits: validation.limits,
+              budget: validation.budget,
             };
           },
         },
@@ -2661,8 +2680,11 @@ const session = await joinSession({
             });
           }
         }
-        const validationFeedback = Array.isArray(input?.slides)
-          ? deckValidationFeedback(input.slides)
+        const validation = openInput.kind === "deck"
+          ? architectureValidationReport(openInput.slides)
+          : undefined;
+        const validationFeedback = validation
+          ? deckValidationFeedback(openInput.slides, { validation })
           : undefined;
         if (validationFeedback) {
           log(`MarkdStage: ${validationFeedback}`, "warning");
@@ -2670,7 +2692,7 @@ const session = await joinSession({
         return {
           title: "MarkdStage",
           url: inst.url,
-          ...(validationFeedback ? { validationFeedback } : {}),
+          ...(validationFeedback ? { validationFeedback, status: validationFeedback } : {}),
         };
       },
       onClose: async (ctx) => {
